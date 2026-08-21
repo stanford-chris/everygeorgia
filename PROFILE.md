@@ -97,8 +97,16 @@ cutoff does not.
 
 ## Pinned thread
 
-Five posts, all inside 300 characters. Post 1 is the pinned one; the rest thread
+Six posts, all inside 300 characters. Post 1 is the pinned one; the rest thread
 beneath it.
+
+Every post opens with a label or a claim and then a colon, which is what makes
+the thread read as a set of cards rather than six paragraphs. ⚠️ **Capitalise
+after the colon only where a full sentence follows** — posts 3, 4 and 6 do, posts
+1, 2 and 5 do not. Post 2 was wrong on this until 21 August 2026 and read
+"How things are chosen: Only from issues…"; the fragment takes a lowercase
+"only". It became visible only once the pattern was consistent enough to compare
+across.
 
 **1 — what this is (269)**
 ```
@@ -115,13 +123,19 @@ arbitrary.
 
 **2 — how things are chosen (262)**
 ```
-How things are chosen: Only from issues the Digital Library of Georgia marks "No Copyright – United States" and only from a handful of categories I've picked deliberately.
+How things are chosen: only from issues the Digital Library of Georgia marks "No Copyright – United States" and only from a handful of categories I've picked deliberately.
 
 Anything touching slavery, the Ku Klux Klan or racial violence I select and frame myself.
 ```
 "the Klan" was spelled out to **Ku Klux Klan** — better on a first mention, and
 it does not assume the reader's shorthand. "Never at random." was cut here; post
 3 still carries the idea ("so this one doesn't draw at random").
+
+⚠️ **The second sentence is proportionate, and it was measured.** Roughly one
+pre-1931 front page in five carries slavery, lynching or Klan vocabulary before
+"negro" is counted at all, and 47% mention it. The full table and its three
+cautions are in `README.md`. This is not a rare problem being dressed up as a
+common one.
 
 **3 — why (246)**
 ```
@@ -138,14 +152,12 @@ that has to be exactly right.
 sentence is the archive, and the archive is not pre-1931 — 161,368 of its
 4,564,007 pages mention lynching. Drop the qualifier and the figure is attached
 to a denominator it was not measured on. Post 3 is also the most likely of the
-five to be screenshotted, being the difficult one, and a caption does not travel
+six to be screenshotted, being the difficult one, and a caption does not travel
 with a screenshot.
 
-**4 — alt text and who runs it (249)**
+**4 — alt text (113)**
 ```
-Alt text carries the actual words of the clip, not a description of it, so a screen reader gets what the page says.
-
-Run by @stanfordc.bsky.social — Georgia native, Grady College, first job at The Augusta Chronicle. Corrections welcome and acted on.
+Alt text: It carries the actual words of the clip, not a description, so a screen reader gets what the page says.
 ```
 
 **5 — the avatar (277, link as a facet)**
@@ -156,14 +168,47 @@ gahistoricnewspapers.galileo.usg.edu/lccn/…
 ```
 → facet target: `https://gahistoricnewspapers.galileo.usg.edu/lccn/sn85034222/1875-02-23/ed-1/seq-1/`
 
-⚠️ **Post 5 needs the link as a facet.** With the URL written out it is 309
+⚠️ **This post needs the link as a facet.** With the URL written out it is 309
 characters. A facet stores the URI outside the text, so the visible form costs
 45 characters rather than 75. Verified against live posts: the full URL does not
 appear in `record.text` at all.
 
-⚠️ **Keep post 3.** It is the least comfortable of the five and the one that
+**6 — who runs it (233)**
+```
+Run by @stanfordc.bsky.social: Born in Atlanta, I'm a graduate of the journalism school at UGA (@ugagrady.bsky.social). I've had a 30-year career in newspapers, starting at The Augusta Chronicle. Corrections are welcome and acted on.
+```
+✅ **Both handles were verified to resolve on 21 August 2026** via
+`app.bsky.actor.getProfile`: `stanfordc.bsky.social` ("Chris Stanford") and
+`ugagrady.bsky.social` ("UGA Grady College of Journalism and Mass
+Communication"). Check again before posting rather than trusting this line — a
+handle is an identifier, and this project has already put two reconstructed
+LCCNs into sample posts.
+
+⚠️ **Use the bare handle, never the profile URL.** The draft carried
+`https://bsky.app/profile/ugagrady.bsky.social`, which pushed the post to 355 and
+renders as a raw link. The handle costs 24 characters less, reaches the same
+place and renders as a real mention.
+
+⚠️ **Alt text and the biography were one post until 21 August 2026, and splitting
+them is what made the rest fit.** Welded together they were 355 characters and
+every version that fit required cutting the biography to a CV line. They are also
+unrelated claims, and the alt text commitment was the weaker for sitting on top
+of a résumé.
+
+⚠️ **The thread ends here on purpose.** The last post is where the reader is
+left, and "corrections are welcome and acted on" is the line someone replies to.
+The alternative considered was ending on the avatar, whose facet link points back
+into the archive and keeps the emphasis off the author — a real argument for an
+account whose posture is deference to the archive, and rejected only because post
+1 already hands the reader that link.
+
+⚠️ **Keep post 3.** It is the least comfortable of the six and the one that
 makes the account defensible, because it says the difficult thing before anyone
 has to ask.
+
+⚠️ **Six posts is longer than anyone reads.** What has to land — what this is,
+how things are chosen, and why — is in the first three. Anything added later goes
+at the tail, never in front of those.
 
 ## The avatar
 

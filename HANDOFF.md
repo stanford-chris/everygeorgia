@@ -19,7 +19,7 @@ up rather than letting it drift into a tacit yes.
 | --- | --- |
 | Roster | `data/georgia_roster.csv` — 1,158 of 1,164 titles, 158 counties |
 | Avatar | `avatar/avatar_G_dark_72.png` — blackletter G, Macon, 23 Feb 1875 |
-| Profile text | `PROFILE.md` — handle, name, bio, five pinned posts |
+| Profile text | `PROFILE.md` — handle, name, bio, six pinned posts |
 | Picture detector | Works; see README. Finds pictures, not specifically cartoons |
 | Permission email | Sent |
 
