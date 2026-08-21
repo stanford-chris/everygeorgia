@@ -168,6 +168,17 @@ common one.
 ```
 This archive is not a neutral record: Roughly 160,000 of its pages mention lynching, and a bot drawing at random would eventually post something indefensible. This one doesn't draw at random.
 ```
+⚠️ **Posts 1 to 3 carry no disclaimer, and that was decided rather than
+overlooked.** After the move, "Unofficial" appears only in the bio and post 6 is
+the thread's only disclaimer — so a screenshot of the first three posts, which is
+the most plausible way for someone to mistake this for DLG's own account, has
+nothing explicit on it. Considered and accepted on 21 August 2026. Post 1 cannot
+hold the line without going over 300, and the alternative was trimming post 1 to
+make room. Post 2 names the Digital Library of Georgia as an outside authority
+this account defers to for rights, which reads as unaffiliated by implication.
+**If that judgment ever looks wrong, the fix is to trim post 1, not to put the
+line back into post 3, where it did not belong.**
+
 ⚠️ **The affiliation disclaimer left this post on 21 August 2026 and belongs in
 post 6.** It read "Not affiliated with the Digital Library of Georgia" and was a
 statement about the account's provenance stranded at the end of a post about the
