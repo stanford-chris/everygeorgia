@@ -60,7 +60,20 @@ run `f725ed9` → `53f27c4`.
 
 **The rights join, on DLG — but not for the reason previously recorded here.**
 `data/georgia_rights.csv` still does not exist and nothing is cached, so the
-eventual run starts from scratch at about 1,088 pages.
+eventual run starts from scratch at 1,088 pages.
+
+**Where 1,088 comes from, so nobody re-derives it.** DLG holds 371,998 GHN
+records, of which **271,937** are NoC-US. At DLG's 250-per-page ceiling that is
+1,087.75, so 1,088 — one page fewer would hold 271,750 and fall 187 records
+short. The record count was a live query at 14:43 on 21 August and came as a
+complete rights breakdown that closes exactly against its own total: NoC-US
+271,937, No Known Copyright 42,466, Copyright Not Evaluated 35,464, In Copyright
+22,131, summing to 371,998. Deep pagination was separately verified to reach page
+1,088, which matters because Solr-backed APIs often fail well before that depth.
+
+⚠️ **The run does not depend on that constant.** `rights_join.py:140` reads
+`total_count` from page 1 and recomputes `npages` at run time, so if DLG's
+holdings grow the job adapts and only the prose here goes stale.
 
 ⚠️ **DLG is not down. It is shedding load and serving browsers first.** Measured
 21 August: a Safari user-agent returned 200 on four of four attempts across the
