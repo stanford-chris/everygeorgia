@@ -52,7 +52,29 @@ GHN = "Georgia+Historic+Newspapers"
 URL = ("https://dlg.usg.edu/records.json?per_page=250&page={p}"
        "&f%5Bcollection_titles_sms%5D%5B%5D=" + GHN +
        "&f%5Brights_facet%5D%5B%5D=" + NOC)
+# ⚠️ Do NOT identify records by parsing their DLG id. Roughly 15% of GHN
+# records use a second id shape -- `dlg_ghn_adb1927-1945`, a batch code and a
+# sequence -- which carries neither an LCCN nor a date. An id-parsing join
+# silently dropped them and undercounted every title in those batches.
+# Every record instead carries edm_is_shown_by: its canonical GHN URL, which
+# holds the LCCN, the date and the edition. Read that.
+SHOWN_RE = re.compile(r"/lccn/([^/]+)/(\d{4}-\d{2}-\d{2})/ed-(\d+)")
 ID_RE = re.compile(r"^dlg_ghn_(.+?)-(\d{4}-\d{2}-\d{2})-ed-(\d+)$")
+
+
+def identify(doc):
+    """(lccn, date, edition) for a DLG record, or None."""
+    shown = doc.get("edm_is_shown_by") or []
+    if isinstance(shown, str):
+        shown = [shown]
+    for u in shown:
+        m = SHOWN_RE.search(u)
+        if m:
+            return m.group(1), m.group(2), int(m.group(3))
+    m = ID_RE.match(doc.get("id", ""))          # fallback only
+    if m:
+        return m.group(1), m.group(2), int(m.group(3))
+    return None
 PAUSE = 0.25
 
 
@@ -129,11 +151,11 @@ def main():
         except RuntimeError as e:
             print(f"  page {p}: {e}", file=sys.stderr); continue
         for doc in d["response"]["docs"]:
-            m = ID_RE.match(doc["id"])
-            if not m:
+            hit = identify(doc)
+            if not hit:
                 unparsed += 1; continue
-            lccn, date, ed = m.groups()
-            per[lccn].append((date, int(ed)))
+            lccn, date, ed = hit
+            per[lccn].append((date, ed))
         if p % 100 == 0:
             print(f"  {p}/{npages} pages, {len(per)} titles so far", file=sys.stderr)
 
