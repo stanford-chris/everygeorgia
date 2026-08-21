@@ -167,10 +167,32 @@ pre-1931 front page in five carries slavery, lynching or Klan vocabulary before
 cautions are in `README.md`. This is not a rare problem being dressed up as a
 common one.
 
-**3 — why (191)**
+**3 — why (204)**
 ```
-This archive is not a neutral record: Roughly 160,000 of its pages mention lynching, and a bot drawing at random would eventually post something indefensible. This one doesn't draw at random.
+These posts are not representative of the archive: Roughly 160,000 of its pages mention lynching, and a bot drawing at random would eventually post something indefensible. This one doesn't draw at random.
 ```
+⚠️ **"representative", not "neutral", and the claim is about the feed rather than
+the archive.** This post said "This archive is not a neutral record" until
+21 August 2026. Two problems, and the second is the substantive one.
+
+"Neutral" was doing two jobs: it can mean *unbiased*, or it can mean *a fair
+sample*. Only the second is the claim worth making, and "representative" says it
+without the ambiguity.
+
+More importantly the accusation was pointed the wrong way. The archive is
+faithful — it preserves what was printed, and lynching and slavery were part of
+what was printed. The thing that is **not** a fair sample is this account's feed:
+nameplates, ads and market reports are a gentler nineteenth-century Georgia than
+the archive actually holds. That is the harder admission and the more honest one,
+and it describes our own output rather than characterising DLG's holdings, which
+matters while their permission is outstanding.
+
+⚠️ **Do not "restore" a claim that the papers were unbiased.** Many were not —
+Klan notices ran as community news and slave sales as ordinary classifieds. The
+post avoids the question entirely, which is why it must stay on "representative".
+
+⚠️ **"These posts", not "Posts".** Same reason post 5 says "This account's
+avatar": the post has to say whose in a screenshot.
 ⚠️ **Posts 1 to 3 carry no disclaimer, and that was decided rather than
 overlooked.** After the move, "Unofficial" appears only in the bio and post 6 is
 the thread's only disclaimer — so a screenshot of the first three posts, which is
