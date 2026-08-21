@@ -147,6 +147,31 @@ we emailed UGA promising to be a light touch.
 so a run interrupted at page 900 resumes there. The script exits immediately and
 silently once the csv exists, so the job costs nothing after it succeeds.
 
+⚠️ **DLG is not down; it is shedding load, and it serves browsers first.**
+Measured 21 August 2026. The 503 is DLG's own application response — `text/plain`,
+`retry-after: 60`, body "The Digital Library of Georgia is currently unavailable
+- please try again shortly", **no Cloudflare headers and no `cf-ray`** — so it is
+not a bot challenge and there is no cookie or session a browser visit could
+establish for us to reuse. Loading a page by hand in Safari does nothing for the
+scripts. Across three spaced rounds a Safari user-agent returned 200 every time
+(4 of 4 across all tests that evening) while our own identifying UA returned 503,
+200, 503, on the same URL seconds apart.
+
+⛔ **Do not spoof a browser user-agent to get through.** Our UA names the project
+and carries the same address that emailed UGA asking permission. If DLG is under
+load and serving humans before bots, that is the right priority, and working
+around it would take capacity from a struggling service while our request sits
+unanswered in their inbox.
+
+⚠️ **This may mean the 3/3 gate never fires.** The probe was calibrated for "is
+DLG up?", but the real condition is "is DLG willing to talk to *us* right now?"
+If our UA succeeds around one time in three while browsers are served cleanly,
+three consecutive clean probes may effectively never occur, and the job will
+decline forever against a service that would answer slowly. Do not loosen it to
+fire 1,088 requests into a host that is shedding load. If it persists beyond a
+day or two, raise it with UGA alongside the permission chase — they run the API
+and may have a bulk route or be willing to let a known client through.
+
 The plist lives in `~/Library/LaunchAgents`; the copy here is a **mirror, not the
 loaded file**. A job bootstrapped from `~/Scripts` does not survive a reboot.
 Verify which is live before trusting either:
