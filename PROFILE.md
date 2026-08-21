@@ -129,9 +129,9 @@ page — nameplate at the top, headline beneath it, ads and market reports insid
 and shortened "advertisement" to "ad"; it was a better sentence in isolation and
 was dropped because it made the two lists disagree.
 
-**2 — how things are chosen (262)**
+**2 — how things are chosen (272)**
 ```
-How things are chosen: only from issues the Digital Library of Georgia marks "No Copyright – United States" and only from a handful of categories I've picked deliberately.
+How things are chosen: only from issues that the Digital Library of Georgia marks "No Copyright – United States" and only from a handful of categories that I've picked deliberately.
 
 Anything touching slavery, the Ku Klux Klan or racial violence I select and frame myself.
 ```
