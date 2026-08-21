@@ -164,18 +164,15 @@ pre-1931 front page in five carries slavery, lynching or Klan vocabulary before
 cautions are in `README.md`. This is not a rare problem being dressed up as a
 common one.
 
-**3 — why (244)**
+**3 — why (191)**
 ```
 This archive is not a neutral record: Roughly 160,000 of its pages mention lynching, and a bot drawing at random would eventually post something indefensible. This one doesn't draw at random.
-
-Not affiliated with the Digital Library of Georgia.
 ```
-⚠️ **"the Digital Library of Georgia", not "the DLG", and no "Unofficial,".**
-Both changes serve the same end. This is the post most likely to be screenshotted
-without the thread around it, so it cannot lean on an acronym the reader has not
-been given — post 2 introduces the DLG in full, and a screenshot of post 3 does
-not carry post 2. Dropping "Unofficial," also stops the word appearing in both
-the bio and the thread, which had happened by accident rather than by decision.
+⚠️ **The affiliation disclaimer left this post on 21 August 2026 and belongs in
+post 6.** It read "Not affiliated with the Digital Library of Georgia" and was a
+statement about the account's provenance stranded at the end of a post about the
+corpus. Post 6 is the post about who runs the account, so it says it there. Post
+1 was the other candidate and cannot take it: both drafts ran past 300.
 ⚠️ **"mention lynching", not 'contain the word "lynched"'.** The ONI index stems:
 `lynch`, `lynched`, `lynching` and `lynchings` all return the same total. The old
 wording named a specific word the number does not measure, and this is the post
@@ -200,9 +197,9 @@ denominator matters here more than anywhere else.
 Alt text: It carries the actual words of the clip, not a description, so a screen reader gets what the page says.
 ```
 
-**5 — the avatar (277, link as a facet)**
+**5 — the avatar (288, link as a facet)**
 ```
-The avatar is a clipping too: An ornate blackletter capital G from the nameplate of the Georgia Weekly Telegraph and Georgia Journal & Messenger, Macon, Feb. 23, 1875. The white pitting in the strokes is the microfilm, not a filter.
+This account's avatar is a clipping too: An ornate blackletter capital G from the nameplate of the Georgia Weekly Telegraph and Georgia Journal & Messenger, Macon, Feb. 23, 1875. The white pitting in the strokes is the microfilm, not a filter.
 
 gahistoricnewspapers.galileo.usg.edu/lccn/…
 ```
@@ -213,9 +210,9 @@ characters. A facet stores the URI outside the text, so the visible form costs
 45 characters rather than 75. Verified against live posts: the full URL does not
 appear in `record.text` at all.
 
-**6 — who runs it (233)**
+**6 — who runs it (269)**
 ```
-Run by @stanfordc.bsky.social: Born in Atlanta, I'm a graduate of the journalism school at UGA (@ugagrady.bsky.social). I've had a 30-year career in newspapers, starting at The Augusta Chronicle. Corrections are welcome and acted on.
+Run by @stanfordc.bsky.social, not the Digital Library of Georgia: Born in Atlanta, I'm a graduate of the journalism school at UGA (@ugagrady.bsky.social). I've had a 30-year career in newspapers, starting at The Augusta Chronicle. Corrections are welcome and acted on.
 ```
 ✅ **Both handles were verified to resolve on 21 August 2026** via
 `app.bsky.actor.getProfile`: `stanfordc.bsky.social` ("Chris Stanford") and
