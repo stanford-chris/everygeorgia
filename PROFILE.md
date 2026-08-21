@@ -108,9 +108,9 @@ after the colon only where a full sentence follows** — posts 3, 4 and 6 do, po
 "only". It became visible only once the pattern was consistent enough to compare
 across.
 
-**1 — what this is (280)**
+**1 — what this is (275)**
 ```
-What this is: clippings from Georgia's newspapers before 1931 — a nameplate, an advertisement, a headline, a market report — with the name of the paper, the date and a link to the full issue.
+What this is: clippings from Georgia's newspapers before 1931 — nameplates, advertisements, headlines, market reports — with the name of the paper, the date and a link to the full issue.
 
 Everything comes from Georgia Historic Newspapers: gahistoricnewspapers.galileo.usg.edu
 ```
@@ -120,8 +120,11 @@ the name of the paper", because the first could be read as the paper itself.
 
 ⚠️ **The four lanes are named identically here and in the bio, and that is the
 point.** A visitor reads both within seconds. They are listed **nameplates,
-advertisements, headlines, market reports** in both places, and a change to one
-list is a change to two. An intermediate draft reordered this post to follow the
+advertisements, headlines, market reports** in both places — same words, same
+order, same plural — and a change to one list is a change to two. The plural also
+agrees with "clippings"; an intermediate draft wrote them singular with articles
+("a nameplate, an advertisement…"), which disagreed in number with the noun it
+was expanding. An intermediate draft reordered this post to follow the
 page — nameplate at the top, headline beneath it, ads and market reports inside —
 and shortened "advertisement" to "ad"; it was a better sentence in isolation and
 was dropped because it made the two lists disagree.
