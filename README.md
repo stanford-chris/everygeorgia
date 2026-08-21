@@ -74,3 +74,36 @@ A caption does not travel with a screenshot. The question is not "can I frame th
 but **"is the image defensible with no words attached?"** A Georgia bishop's headline
 calling the Klan un-American passes. A 1920 paper printing the Klan founder's denial
 as news fails, because the image alone is Klan publicity whatever the caption says.
+
+## The rights join runs itself
+
+`com.chrisstanford.everygeorgiarights` fires `rights_join_tick.sh` **every 15
+minutes**, and that job is the only thing that needs to happen for
+`data/georgia_rights.csv` to appear.
+
+⚠️ **It is a timer, not a resident watcher, and that is the point.** launchd
+re-fires a `StartInterval` job after the machine wakes; a long-lived process
+polling in a loop does not survive sleep. The first attempt at this was a
+`nohup` loop, which would have died at the first lid-close.
+
+⚠️ **It probes before it works.** DLG was returning 503 on 7 of 8 requests on
+21 August 2026, and the join makes 1,088 of them. Only a clean 3/3 health check
+starts it; anything less logs a line and exits. Starting into a degraded service
+would mean thousands of retries against a host already shedding load, days after
+we emailed UGA promising to be a light touch.
+
+⚠️ **Every partial attempt is progress.** Pages are cached under `data/rights/`,
+so a run interrupted at page 900 resumes there. The script exits immediately and
+silently once the csv exists, so the job costs nothing after it succeeds.
+
+The plist lives in `~/Library/LaunchAgents`; the copy here is a **mirror, not the
+loaded file**. A job bootstrapped from `~/Scripts` does not survive a reboot.
+Verify which is live before trusting either:
+
+```bash
+launchctl print gui/$UID/com.chrisstanford.everygeorgiarights | grep 'path ='
+tail -5 ~/Scripts/everygeorgia/data/await_dlg.log
+```
+
+Once the csv lands, this job can be booted out and its plist deleted — but do it
+from outside the job, never from within it.
