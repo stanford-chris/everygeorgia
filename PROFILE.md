@@ -36,7 +36,7 @@ running a URL detector over the text, and a hyphen in the domain kills it.
 233 of 256 characters.
 
 ```
-Clippings from Georgia's newspapers before 1931: nameplates, advertisements, headlines, market reports.
+Clippings from Georgia's newspapers before 1931: Nameplates, advertisements, headlines, market reports.
 
 From Georgia Historic Newspapers, presented online by the Digital Library of Georgia. Unofficial. Run by @stanfordc.bsky.social.
 ```
@@ -101,16 +101,24 @@ Six posts, all inside 300 characters. Post 1 is the pinned one; the rest thread
 beneath it.
 
 Every post opens with a label or a claim and then a colon, which is what makes
-the thread read as a set of cards rather than six paragraphs. ⚠️ **Capitalise
-after the colon only where a full sentence follows** — posts 3, 4 and 6 do, posts
-1, 2 and 5 do not. Post 2 was wrong on this until 21 August 2026 and read
-"How things are chosen: Only from issues…"; the fragment takes a lowercase
-"only". It became visible only once the pattern was consistent enough to compare
-across.
+the thread read as a set of cards rather than six paragraphs.
+
+⚠️ **Capitalise after that colon in every case, including where a fragment
+follows, and do not "correct" it.** This is a deliberate departure, decided
+21 August 2026. The house rule elsewhere is to capitalise after a mid-sentence
+colon only when a full sentence follows, and by that rule posts 1, 2 and 5 and
+the bio should all read lowercase. They do not, because here the colon is
+functioning as a card heading rather than as punctuation inside a sentence, and a
+thread where three cards start capital and three start lowercase looks like an
+error rather than a rule. Consistency of shape beat consistency with the grammar,
+knowingly.
+
+⚠️ **The exception is post 1's second colon**, which introduces a URL. That one
+stays as it is; capitalising a domain breaks it.
 
 **1 — what this is (275)**
 ```
-What this is: clippings from Georgia's newspapers before 1931 — nameplates, advertisements, headlines, market reports — with the name of the paper, the date and a link to the full issue.
+What this is: Clippings from Georgia's newspapers before 1931 — nameplates, advertisements, headlines, market reports — with the name of the paper, the date and a link to the full issue.
 
 Everything comes from Georgia Historic Newspapers: gahistoricnewspapers.galileo.usg.edu
 ```
@@ -131,13 +139,14 @@ was dropped because it made the two lists disagree.
 
 **2 — how things are chosen (272)**
 ```
-How things are chosen: only from issues that the Digital Library of Georgia marks "No Copyright – United States" and only from a handful of categories that I've picked deliberately.
+How things are chosen: Only from issues that the Digital Library of Georgia marks "No Copyright – United States" and only from a handful of categories that I've picked deliberately.
 
 Anything touching slavery, the Ku Klux Klan or racial violence I select and frame myself.
 ```
 "the Klan" was spelled out to **Ku Klux Klan** — better on a first mention, and
 it does not assume the reader's shorthand. "Never at random." was cut here; post
-3 still carries the idea ("so this one doesn't draw at random").
+3 still carries the idea ("so this one doesn't draw at random"). The capital
+"Only" is deliberate: see the note at the head of this section.
 
 ⚠️ **The second sentence is proportionate, and it was measured.** Roughly one
 pre-1931 front page in five carries slavery, lynching or Klan vocabulary before
@@ -183,7 +192,7 @@ Alt text: It carries the actual words of the clip, not a description, so a scree
 
 **5 — the avatar (277, link as a facet)**
 ```
-The avatar is a clipping too: an ornate blackletter capital G from the nameplate of the Georgia Weekly Telegraph and Georgia Journal & Messenger, Macon, Feb. 23, 1875. The white pitting in the strokes is the microfilm, not a filter.
+The avatar is a clipping too: An ornate blackletter capital G from the nameplate of the Georgia Weekly Telegraph and Georgia Journal & Messenger, Macon, Feb. 23, 1875. The white pitting in the strokes is the microfilm, not a filter.
 
 gahistoricnewspapers.galileo.usg.edu/lccn/…
 ```
