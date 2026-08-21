@@ -44,11 +44,12 @@ filtered set. Do not quote a range until the join produces one.
 
 ## Open questions for Chris
 
-1. **Does post 4 keep "Corrections welcome and acted on"?** He was inclined to
-   cut it. Recommendation: keep. Three errors of exactly that kind occurred
-   during one afternoon of building — a caption claiming "a subscriber's
-   signature" when the evidence showed an addressed delivery copy, two
-   reconstructed LCCNs that produced wrong links, and OCR mangling display type.
+1. ~~**Does post 4 keep "Corrections welcome and acted on"?**~~ **Resolved
+   21 August 2026: cut.** It now reads "Corrections welcome." in post 6. "Acted
+   on" promises future behaviour nothing guarantees; a correction that arrives
+   and is not acted on makes the line a lie. Do not restore it. (This session
+   twice recommended keeping it, and was twice overruled — the reasoning is in
+   `PROFILE.md`.)
 2. **Does the account need an A.I. disclosure?** Alt text for nameplates,
    advertisements and market notes can come from the page's own OCR, and
    captions can be templated from metadata — so possibly none is needed, which

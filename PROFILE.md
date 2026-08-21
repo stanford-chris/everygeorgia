@@ -246,9 +246,9 @@ characters. A facet stores the URI outside the text, so the visible form costs
 45 characters rather than 75. Verified against live posts: the full URL does not
 appear in `record.text` at all.
 
-**6 — who runs it (269)**
+**6 — who runs it (252)**
 ```
-Run by @stanfordc.bsky.social, not the Digital Library of Georgia: Born in Atlanta, I'm a graduate of the journalism school at UGA (@ugagrady.bsky.social). I've had a 30-year career in newspapers, starting at The Augusta Chronicle. Corrections are welcome and acted on.
+Run by @stanfordc.bsky.social, not the Digital Library of Georgia: Born in Atlanta, I'm a graduate of the journalism school at UGA (@ugagrady.bsky.social). I've had a 30-year career in newspapers, starting at The Augusta Chronicle. Corrections welcome.
 ```
 ✅ **Both handles were verified to resolve on 21 August 2026** via
 `app.bsky.actor.getProfile`: `stanfordc.bsky.social` ("Chris Stanford") and
@@ -256,6 +256,20 @@ Run by @stanfordc.bsky.social, not the Digital Library of Georgia: Born in Atlan
 Communication"). Check again before posting rather than trusting this line — a
 handle is an identifier, and this project has already put two reconstructed
 LCCNs into sample posts.
+
+⚠️ **"Corrections welcome", not "Corrections welcome and acted on". Do not put
+the promise back.** Cut 21 August 2026 as an overpromise: "acted on" commits to
+future behaviour that nothing guarantees, and a correction that arrives and is
+not acted on turns the line into a broken promise. "Welcome" is a true statement
+about the present. This is the same posture as refusing "Every" in the account
+name, refusing a date range the data could not support, and refusing to read
+silence from UGA as permission — a claim goes in only if it can be kept.
+
+An earlier note here argued the opposite, on the grounds that "and acted on" is
+a commitment rather than a pleasantry and that three errors of exactly that kind
+occurred in one afternoon of building. That reasoning is not wrong about the
+errors; it is wrong about what a public promise costs. The errors argue for
+fixing things, not for advertising that you will.
 
 ⚠️ **Use the bare handle, never the profile URL.** The draft carried
 `https://bsky.app/profile/ugagrady.bsky.social`, which pushed the post to 355 and
@@ -269,7 +283,7 @@ unrelated claims, and the alt text commitment was the weaker for sitting on top
 of a résumé.
 
 ⚠️ **The thread ends here on purpose.** The last post is where the reader is
-left, and "corrections are welcome and acted on" is the line someone replies to.
+left, and "Corrections welcome" is the line someone replies to.
 The alternative considered was ending on the avatar, whose facet link points back
 into the archive and keeps the emphasis off the author — a real argument for an
 account whose posture is deference to the archive, and rejected only because post
