@@ -123,12 +123,23 @@ Anything touching slavery, the Ku Klux Klan or racial violence I select and fram
 it does not assume the reader's shorthand. "Never at random." was cut here; post
 3 still carries the idea ("so this one doesn't draw at random").
 
-**3 — why (256)**
+**3 — why (246)**
 ```
-This archive is not a neutral record. In its pre-1931 pages, roughly 118,000 contain the word "lynched." A bot drawing at random would eventually post something indefensible, so this one doesn't draw at random.
+This archive is not a neutral record: Roughly 118,000 of its pre-1931 pages mention lynching, and a bot drawing at random would eventually post something indefensible. This one doesn't draw at random.
 
 Unofficial, and not affiliated with the DLG.
 ```
+⚠️ **"mention lynching", not 'contain the word "lynched"'.** The ONI index stems:
+`lynch`, `lynched`, `lynching` and `lynchings` all return 118,518. The old
+wording named a specific word the number does not measure, and this is the post
+that has to be exactly right.
+
+⚠️ **"pre-1931" stays, and is not redundant with post 1.** The subject of the
+sentence is the archive, and the archive is not pre-1931 — 161,368 of its
+4,564,007 pages mention lynching. Drop the qualifier and the figure is attached
+to a denominator it was not measured on. Post 3 is also the most likely of the
+five to be screenshotted, being the difficult one, and a caption does not travel
+with a screenshot.
 
 **4 — alt text and who runs it (249)**
 ```

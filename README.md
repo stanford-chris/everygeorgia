@@ -47,10 +47,48 @@ Any cutoff year invented here would override DLG's own item-level determination.
 roughly 28% carry no rights statement. That state is `unknown`, and it is not the
 same as `none`. Neither may be treated as permission.
 
-**The corpus is not neutral, and a random draw is not viable.** In pre-1931 pages,
-~118,000 contain "lynched" and 8,600 "negro for sale". Sampling real daily front
-pages 1885–1908, a keyword blocklist rejected **15 of 24**. The filter removes the
+**The corpus is not neutral, and a random draw is not viable.** Measured 21 August
+2026 against 2,272,709 pre-1931 pages, of which 353,576 are front pages:
+
+| term | all pages | front pages |
+| --- | --- | --- |
+| `slave` (stems `slaves`) | 197,981 — 8.7% | 39,818 — **11.3%** |
+| `lynch*` | 118,518 — 5.2% | 27,283 — **7.7%** |
+| `ku klux` | 17,000 — 0.7% | 4,886 — 1.4% |
+| `negro for sale` | 8,673 — 0.4% | 1,950 — 0.6% |
+| any of those three subjects | 318,881 — 14.0% | 68,315 — **19.3%** |
+| `negro` alone | 719,394 — 31.7% | 166,982 — **47.2%** |
+
+Roughly **one pre-1931 front page in five** carries slavery, lynching or Klan
+vocabulary before "negro" is counted at all, and nearly half mention it. Sampling
+real daily front pages 1885–1908, a keyword blocklist rejected **15 of 24** — a
+result these proportions predict rather than contradict. The filter removes the
 era, not an occasional problem.
+
+Three cautions travel with the table, and none of them are pedantry:
+
+- **It counts vocabulary, not subject.** Same rule as everywhere else here:
+  search finds shape, never genre. "Slave" catches classical allusion and
+  temperance rhetoric; "negro" spans neutral news, church notices and the Black
+  press writing about itself. Every figure is an **upper bound** on subject.
+- **It is page-level, and the lanes are crops.** A nameplate is the top band of a
+  page. A page mentioning lynching almost never mentions it in the masthead, so
+  the nameplate lane's real exposure is far below 7.7%. That is why it is the
+  lane to launch with. **The crop-level measure is still not possible** and waits
+  on the rights join: sample N NoC-US issues per lane and score the actual crops.
+  Do that before the advertisement and headline lanes open; the nameplate lane
+  does not need it.
+- **⚠️ The index stems, so no count here names a single word.** `lynch`,
+  `lynched`, `lynching` and `lynchings` all return 118,518; `slave` and `slaves`
+  both return 197,981. `slavery` is separate at 91,544. Never quote one of these
+  figures as the count of a literal word — post 3 did, and was corrected.
+
+⚠️ **`date1`/`date2` take ISO dates, and a wrong format is silently ignored.**
+`date1=1763&date2=1930&dateFilterType=yearRange` returns the **whole corpus**
+with an HTTP 200 and no warning — 4,564,007 pages read as a plausible answer. Use
+`date1=1763-01-01&date2=1930-12-31&dateFilterType=range&searchType=advanced`, and
+sanity-check any new filter against a range you can predict. `sequence=1`
+restricts to front pages.
 
 **The blocklist silences the Black press.** It rejected the front pages of *The
 Colored American* (Augusta, 6 Jan 1866) and *The Colored Tribune* (Savannah), because
