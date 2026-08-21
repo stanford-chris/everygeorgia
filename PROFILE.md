@@ -116,9 +116,9 @@ knowingly.
 ⚠️ **The exception is post 1's second colon**, which introduces a URL. That one
 stays as it is; capitalising a domain breaks it.
 
-**1 — what this is (275)**
+**1 — what this is (264)**
 ```
-What this is: Clippings from Georgia's newspapers before 1931 — nameplates, advertisements, headlines, market reports — with the name of the paper, the date and a link to the full issue.
+What this is: Clippings from Georgia's newspapers before 1931 — nameplates, headlines, ads, market reports — with the name of the paper, the date and a link to the full issue.
 
 Everything comes from Georgia Historic Newspapers: gahistoricnewspapers.galileo.usg.edu
 ```
@@ -126,13 +126,23 @@ Two edits on 21 August 2026. "a clipping a few times a day" became "clippings",
 dropping a cadence claim that has not been decided. "with the paper" became "with
 the name of the paper", because the first could be read as the paper itself.
 
-⚠️ **The four lanes are named identically here and in the bio, and that is the
-point.** A visitor reads both within seconds. They are listed **nameplates,
-advertisements, headlines, market reports** in both places — same words, same
-order, same plural — and a change to one list is a change to two. The plural also
-agrees with "clippings"; an intermediate draft wrote them singular with articles
-("a nameplate, an advertisement…"), which disagreed in number with the noun it
-was expanding. An intermediate draft reordered this post to follow the
+⚠️ **The lane list here differs from the bio's on purpose. Do not reconcile
+them.** This post reads **nameplates, headlines, ads, market reports**; the bio
+reads **Nameplates, advertisements, headlines, market reports**. Two differences,
+both deliberate:
+
+- **Order.** This post follows the page — nameplate at the top, headline beneath
+  it, ads and market reports inside. The bio is a plain listing with no sentence
+  around it, so it has no page to follow.
+- **"ads" against "advertisements".** This post is a sentence in the account's
+  own voice and takes the conversational word. The bio is the formal description.
+
+They were forcibly matched on 21 August 2026 and unmatched the same evening. The
+matching looked like tidiness and was not asked for: the instruction naming
+"nameplates, advertisements, headlines, market reports" was about the **bio**.
+Both lists are plural and unarticled, which is the one thing they do share — an
+earlier draft here wrote them singular with articles ("a nameplate, an
+advertisement…"), disagreeing in number with the "clippings" it expands. An intermediate draft reordered this post to follow the
 page — nameplate at the top, headline beneath it, ads and market reports inside —
 and shortened "advertisement" to "ad"; it was a better sentence in isolation and
 was dropped because it made the two lists disagree.
