@@ -100,14 +100,18 @@ cutoff does not.
 Five posts, all inside 300 characters. Post 1 is the pinned one; the rest thread
 beneath it.
 
-**1 — what this is (268)**
+**1 — what this is (269)**
 ```
-What this is: clippings from Georgia's newspapers before 1931 — a nameplate, an advertisement, a headline, a market report — with the paper, the date and a link to the full issue.
+What this is: clippings from Georgia's newspapers before 1931 — a nameplate, a headline, an ad, a market report — with the name of the paper, the date and a link to the full issue.
 
 Everything comes from Georgia Historic Newspapers: gahistoricnewspapers.galileo.usg.edu
 ```
-"a clipping a few times a day" became "clippings" on 21 August 2026. It reads
-better and it drops a cadence claim that has not been decided.
+Three edits on 21 August 2026. "a clipping a few times a day" became
+"clippings", dropping a cadence claim that has not been decided. "with the paper"
+became "with the name of the paper", because the first could be read as the paper
+itself. And the four lanes were reordered to follow the page — nameplate at the
+top, headline beneath it, ads and market reports inside — where the old order was
+arbitrary.
 
 **2 — how things are chosen (262)**
 ```
