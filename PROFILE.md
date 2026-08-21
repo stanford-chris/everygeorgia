@@ -108,18 +108,23 @@ after the colon only where a full sentence follows** — posts 3, 4 and 6 do, po
 "only". It became visible only once the pattern was consistent enough to compare
 across.
 
-**1 — what this is (269)**
+**1 — what this is (280)**
 ```
-What this is: clippings from Georgia's newspapers before 1931 — a nameplate, a headline, an ad, a market report — with the name of the paper, the date and a link to the full issue.
+What this is: clippings from Georgia's newspapers before 1931 — a nameplate, an advertisement, a headline, a market report — with the name of the paper, the date and a link to the full issue.
 
 Everything comes from Georgia Historic Newspapers: gahistoricnewspapers.galileo.usg.edu
 ```
-Three edits on 21 August 2026. "a clipping a few times a day" became
-"clippings", dropping a cadence claim that has not been decided. "with the paper"
-became "with the name of the paper", because the first could be read as the paper
-itself. And the four lanes were reordered to follow the page — nameplate at the
-top, headline beneath it, ads and market reports inside — where the old order was
-arbitrary.
+Two edits on 21 August 2026. "a clipping a few times a day" became "clippings",
+dropping a cadence claim that has not been decided. "with the paper" became "with
+the name of the paper", because the first could be read as the paper itself.
+
+⚠️ **The four lanes are named identically here and in the bio, and that is the
+point.** A visitor reads both within seconds. They are listed **nameplates,
+advertisements, headlines, market reports** in both places, and a change to one
+list is a change to two. An intermediate draft reordered this post to follow the
+page — nameplate at the top, headline beneath it, ads and market reports inside —
+and shortened "advertisement" to "ad"; it was a better sentence in isolation and
+was dropped because it made the two lists disagree.
 
 **2 — how things are chosen (262)**
 ```
@@ -137,12 +142,18 @@ pre-1931 front page in five carries slavery, lynching or Klan vocabulary before
 cautions are in `README.md`. This is not a rare problem being dressed up as a
 common one.
 
-**3 — why (237)**
+**3 — why (244)**
 ```
 This archive is not a neutral record: Roughly 160,000 of its pages mention lynching, and a bot drawing at random would eventually post something indefensible. This one doesn't draw at random.
 
-Unofficial, and not affiliated with the DLG.
+Not affiliated with the Digital Library of Georgia.
 ```
+⚠️ **"the Digital Library of Georgia", not "the DLG", and no "Unofficial,".**
+Both changes serve the same end. This is the post most likely to be screenshotted
+without the thread around it, so it cannot lean on an acronym the reader has not
+been given — post 2 introduces the DLG in full, and a screenshot of post 3 does
+not carry post 2. Dropping "Unofficial," also stops the word appearing in both
+the bio and the thread, which had happened by accident rather than by decision.
 ⚠️ **"mention lynching", not 'contain the word "lynched"'.** The ONI index stems:
 `lynch`, `lynched`, `lynching` and `lynchings` all return the same total. The old
 wording named a specific word the number does not measure, and this is the post
