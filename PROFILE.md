@@ -137,23 +137,30 @@ pre-1931 front page in five carries slavery, lynching or Klan vocabulary before
 cautions are in `README.md`. This is not a rare problem being dressed up as a
 common one.
 
-**3 — why (246)**
+**3 — why (237)**
 ```
-This archive is not a neutral record: Roughly 118,000 of its pre-1931 pages mention lynching, and a bot drawing at random would eventually post something indefensible. This one doesn't draw at random.
+This archive is not a neutral record: Roughly 160,000 of its pages mention lynching, and a bot drawing at random would eventually post something indefensible. This one doesn't draw at random.
 
 Unofficial, and not affiliated with the DLG.
 ```
 ⚠️ **"mention lynching", not 'contain the word "lynched"'.** The ONI index stems:
-`lynch`, `lynched`, `lynching` and `lynchings` all return 118,518. The old
+`lynch`, `lynched`, `lynching` and `lynchings` all return the same total. The old
 wording named a specific word the number does not measure, and this is the post
 that has to be exactly right.
 
-⚠️ **"pre-1931" stays, and is not redundant with post 1.** The subject of the
-sentence is the archive, and the archive is not pre-1931 — 161,368 of its
-4,564,007 pages mention lynching. Drop the qualifier and the figure is attached
-to a denominator it was not measured on. Post 3 is also the most likely of the
-six to be screenshotted, being the difficult one, and a caption does not travel
-with a screenshot.
+⚠️ **The figure and the denominator must move together, and they have moved
+twice.** The sentence's subject is the archive, so the number has to be the
+archive's: **161,368** of GHN's 4,564,007 pages mention lynching, quoted as
+"roughly 160,000". The pre-1931 subset is a different number — 118,518 of
+2,272,709 — and an earlier draft paired that figure with the unqualified word
+"pages", which reads as a claim about the whole archive and understates it. If
+this sentence ever regains "pre-1931", the figure goes back to 118,000 in the
+same edit. Never move one without the other.
+
+⚠️ **Post 3 is the most likely of the six to be screenshotted**, being the
+difficult one, and a caption does not travel with a screenshot. It has to be true
+standing alone, with no thread around it — which is the whole reason the
+denominator matters here more than anywhere else.
 
 **4 — alt text (113)**
 ```
