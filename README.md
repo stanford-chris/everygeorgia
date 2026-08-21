@@ -100,6 +100,19 @@ means a commencement address; "prospectus" is one-in-seven the newspaper sense;
 "the editor regrets" returned a poem about a rejection slip. Selectors that work do
 so because the phrase is genre-specific ("sarsaparilla" only appears in advertising).
 
+**"Issue" and "edition" are different units, and only one of them is what DLG
+marks.** An edition sits *inside* an issue: every identifier is
+`/lccn/<lccn>/<date>/ed-1/seq-<n>/`, and on a sampled record the `edition` field
+comes back `None` with an empty `edition_label`, because nearly every paper here
+printed once a day. A morning and an evening printing would be two editions of
+one issue. **DLG's rights statements are issue-level** — 371,998 records against
+518,801 issues — so any sentence about what is postable has to say "issues".
+"Editions" was proposed for post 2 on 21 August 2026 as the more natural word and
+rejected for exactly this: it would name a unit DLG does not mark, in the one
+sentence where the account stakes its permission claim. It is also the unit to
+get right when building the lanes — picking "an issue per title" means picking
+`ed-1` unless a title genuinely has more.
+
 **Carry identifiers through; never reconstruct them.** Guessing LCCNs put two wrong
 links into sample posts and killed a lookup outright.
 

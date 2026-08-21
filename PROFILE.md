@@ -158,6 +158,9 @@ it does not assume the reader's shorthand. "Never at random." was cut here; post
 3 still carries the idea ("so this one doesn't draw at random"). The capital
 "Only" is deliberate: see the note at the head of this section.
 
+⚠️ **"issues", never "editions".** DLG marks rights on issues; an edition is a
+sub-unit inside one. See `README.md`. Considered and rejected 21 August 2026.
+
 ⚠️ **The second sentence is proportionate, and it was measured.** Roughly one
 pre-1931 front page in five carries slavery, lynching or Klan vocabulary before
 "negro" is counted at all, and 47% mention it. The full table and its three
