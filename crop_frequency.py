@@ -38,6 +38,8 @@ Usage:
     python3 crop_frequency.py --sample 120          # OCR pass over a sample
     python3 crop_frequency.py --calibrate --sample 60   # detector health only
     python3 crop_frequency.py --sample 40 --seed 7  # a different draw
+    python3 crop_frequency.py --lane headline --sample 120 --by-decade
+    python3 crop_frequency.py --lane block --sample 120 --by-decade --slave-ads
 """
 import csv
 import glob
@@ -49,6 +51,7 @@ import sys
 from collections import Counter
 
 import ghn_api
+import lanes
 import nameplate
 from rights_join import identify
 
@@ -65,6 +68,16 @@ SEED = 20260826              # fixed, so a quoted figure can be reproduced
 SUBJECT_PREFIXES = ("slave", "lynch", "klux")
 NEGRO_PREFIXES = ("negro", "negre")     # negre*: a common OCR reading of negro
 README_PAGE_RATES = {"subjects": 19.3, "negro": 47.2}   # front pages, pre-1931
+
+# ⚠️ The slave-sale scan is deliberately NARROW and exact. It asks whether a
+# person-term and a sale-term sit in the SAME crop-sized block, which is the
+# shape of a slave-sale notice: a few lines of body type in a classified
+# column. It is not a subject classifier and will catch a runaway notice, a
+# hiring advertisement and an estate sale alongside the thing it is looking
+# for. That is the right direction to err for a gate.
+PERSON_PREFIXES = ("negro", "negre", "slave", "wench", "mulatto")
+SALE_PREFIXES = ("sale", "sold", "sell", "auction", "vendue", "hire",
+                 "runaway", "reward")
 
 WORD_RE = re.compile(r"[a-z]+")
 
@@ -85,6 +98,34 @@ def score(words, prefixes):
         for p in prefixes:
             if t.startswith(p):
                 hits[p] += 1
+    return hits
+
+
+LANES = ("nameplate", "headline", "ad", "block")
+
+
+def crops_for(lane, words, cw, ch):
+    """Candidate crops for a lane, in OCR space. Never raises."""
+    if lane == "nameplate":
+        b = nameplate.nameplate_box(words, cw, ch)
+        return [b] if b else []
+    if lane == "headline":
+        nb = nameplate.nameplate_box(words, cw, ch)
+        return lanes.headline_boxes(words, cw, ch, nb[3] if nb else 0)
+    if lane == "ad":
+        return lanes.display_ad_boxes(words, cw, ch)
+    if lane == "block":
+        return lanes.text_blocks(words, cw, ch)
+    raise ValueError(f"unknown lane: {lane}")
+
+
+def slave_ad_blocks(words, cw, ch):
+    """Blocks where a person-term and a sale-term co-occur. Exact, not a model."""
+    hits = []
+    for b in lanes.text_blocks(words, cw, ch):
+        inside = nameplate.words_in(words, b)
+        if score(inside, PERSON_PREFIXES) and score(inside, SALE_PREFIXES):
+            hits.append(b)
     return hits
 
 
@@ -136,93 +177,160 @@ def title_pass():
     return len(rows), len(subj), len(neg)
 
 
-def sample_pass(n, seed, calibrate=False):
+def sample_pass(n, seed, calibrate=False, lane="nameplate", by_decade=False,
+                slave_scan=False, since=None, until=None):
     issues, npages = noc_issues()
+    if since or until:
+        issues = [i for i in issues
+                  if (not since or i[1] >= since) and (not until or i[1] < until)]
+        print(f"date filter {since or '...'} to {until or '...'}: "
+              f"{len(issues):,} issues", file=sys.stderr)
     print(f"NoC-US pre-{CUTOFF[:4]} issues available: {len(issues):,} "
           f"(from {npages} cached DLG pages)", file=sys.stderr)
     rng = random.Random(seed)
     draw = rng.sample(issues, min(n, len(issues)))
 
-    stats = Counter()
+    st = Counter()
+    dec = {}                      # decade -> Counter
     band_fracs = []
-    crop_examples = []
+    examples = []
     for i, (lccn, date, ed) in enumerate(draw, 1):
+        d = date[:3] + "0s"
+        dd = dec.setdefault(d, Counter())
         try:
             page = ghn_api.front_page(lccn, date, ed)
             c = page.coords()
         except (ghn_api.FetchError, ValueError) as e:
-            stats["unreadable"] += 1
+            st["unreadable"] += 1
             print(f"  [{i}/{len(draw)}] {lccn} {date}: NOT CHECKED -- {e}",
                   file=sys.stderr)
             continue
         words = c["words"]
         if not words:
-            stats["no_ocr"] += 1
+            st["no_ocr"] += 1
             continue
-        stats["scored_page"] += 1
+        st["scored_page"] += 1
+        dd["pages"] += 1
 
-        box = nameplate.nameplate_box(words, c["width"], c["height"])
-        if box is None:
-            stats["no_nameplate"] += 1
-        else:
-            stats["scored_crop"] += 1
-            band_fracs.append(box[3] / c["height"])
-            crop_words = nameplate.words_in(words, box)
-            cs = score(crop_words, SUBJECT_PREFIXES)
-            cn = score(crop_words, NEGRO_PREFIXES)
-            if cs:
-                stats["crop_subjects"] += 1
-                crop_examples.append((lccn, date, "subjects", dict(cs)))
-            if cn:
-                stats["crop_negro"] += 1
-                crop_examples.append((lccn, date, "negro", dict(cn)))
-
-        if score(words, SUBJECT_PREFIXES):
-            stats["page_subjects"] += 1
+        page_hit = False
+        page_flagged = bool(score(words, SUBJECT_PREFIXES))
+        if page_flagged:
+            st["page_subjects"] += 1; dd["page_subjects"] += 1
         if score(words, NEGRO_PREFIXES):
-            stats["page_negro"] += 1
-        if i % 10 == 0:
+            st["page_negro"] += 1; dd["page_negro"] += 1
+
+        boxes = crops_for(lane, words, c["width"], c["height"])
+        if not boxes:
+            st["no_crop"] += 1
+            continue
+        st["pages_with_crop"] += 1
+        dd["pages_with_crop"] += 1
+        for box in boxes:
+            st["crops"] += 1; dd["crops"] += 1
+            band_fracs.append(box[3] / c["height"])
+            inside = nameplate.words_in(words, box)
+            cs, cn = score(inside, SUBJECT_PREFIXES), score(inside, NEGRO_PREFIXES)
+            if cs:
+                st["crop_subjects"] += 1; dd["crop_subjects"] += 1
+            if cn:
+                st["crop_negro"] += 1; dd["crop_negro"] += 1
+            if page_flagged:
+                st["crops_on_flagged"] += 1
+                if cs or cn:
+                    st["crop_any_on_flagged"] += 1
+            if cs or cn:
+                # ⚠️ Counted once per CROP, not summed from the two columns: a
+                # crop carrying both terms is one bad crop, and adding the
+                # columns printed "200.0%" before this was fixed.
+                st["crop_any"] += 1; dd["crop_any"] += 1; page_hit = True
+            if (cs or cn) and len(examples) < 12:
+                examples.append((lccn, date, dict(cs), dict(cn)))
+        if page_hit:
+            st["pages_hit"] += 1; dd["pages_hit"] += 1
+
+        if slave_scan:
+            sb = slave_ad_blocks(words, c["width"], c["height"])
+            if sb:
+                st["slave_pages"] += 1; dd["slave_pages"] += 1
+                st["slave_blocks"] += len(sb); dd["slave_blocks"] += len(sb)
+
+        if i % 20 == 0:
             print(f"  [{i}/{len(draw)}] ...", file=sys.stderr)
 
     print()
-    print(f"sample: {len(draw)} issues, seed {seed}")
-    print(f"  front pages read              {stats['scored_page']}")
-    print(f"  NOT CHECKED (fetch failed)    {stats['unreadable']}")
-    print(f"  no OCR at all                 {stats['no_ocr']}")
-    print(f"  nameplate detected            {stats['scored_crop']}")
-    print(f"  detector refused              {stats['no_nameplate']}")
+    print(f"lane: {lane}    sample: {len(draw)} issues, seed {seed}")
+    print(f"  front pages read              {st['scored_page']}")
+    print(f"  NOT CHECKED (fetch failed)    {st['unreadable']}")
+    print(f"  pages yielding a crop         {st['pages_with_crop']}")
+    print(f"  pages yielding none           {st['no_crop']}")
+    print(f"  crops produced                {st['crops']}")
     if band_fracs:
         band_fracs.sort()
-        mid = band_fracs[len(band_fracs) // 2]
-        print(f"  band height, median           {mid*100:.1f}% of page "
+        print(f"  crop height, median           "
+              f"{band_fracs[len(band_fracs)//2]*100:.1f}% of page "
               f"(min {band_fracs[0]*100:.1f}%, max {band_fracs[-1]*100:.1f}%)")
     if calibrate:
-        return stats
+        return st
 
-    p, c = stats["scored_page"], stats["scored_crop"]
-    if not p or not c:
-        sys.exit("nothing scored -- refusing to report a rate")
+    p_, cr = st["scored_page"], st["crops"]
+    if not p_ or not cr:
+        print("\n  no crop produced: nothing to report, and this is NOT a "
+              "finding of safety.")
+        return st
     print()
-    print("  measure                       page      nameplate crop")
+    print("  measure                       page      this lane's crops   pages w/ a hit")
     for key, label in (("subjects", "slavery/lynching/Klan"), ("negro", "negro")):
-        pr = stats[f"page_{key}"] / p * 100
-        cr = stats[f"crop_{key}"] / c * 100
-        print(f"  {label:<28} {pr:5.1f}%    {cr:5.1f}%"
-              f"      (README page-level: {README_PAGE_RATES[key]}%)")
-    if crop_examples:
-        print("\n  every crop-level hit, for reading by eye:")
-        for lccn, date, kind, hits in crop_examples:
-            print(f"    {lccn} {date}  {kind}: {hits}")
-    else:
-        print("\n  no crop-level hit in this sample.")
-    print("\n⚠️ Upper bounds on subject, and the crop column is additionally\n"
-          "   depressed by display-type OCR. Read --titles beside it.")
-    return stats
+        print(f"  {label:<28} {st[f'page_{key}']/p_*100:5.1f}%    "
+              f"{st[f'crop_{key}']/cr*100:5.1f}%")
+    print(f"  {'either, per crop':<28} {'':>5}     {st['crop_any']/cr*100:5.1f}%")
+    print(f"  {'either, per page':<28} {'':>5}     {'':>5}       "
+          f"{st['pages_hit']/p_*100:5.1f}%")
+    if st["crops_on_flagged"]:
+        print()
+        print("  ⚠️ On the pages whose BODY TEXT already carries slavery/lynching/Klan")
+        print("     vocabulary, this lane's crops carry it "
+              f"{st['crop_any_on_flagged']/st['crops_on_flagged']*100:.1f}% of the time")
+        print(f"     ({st['crop_any_on_flagged']} of {st['crops_on_flagged']} crops). "
+              "A LOW number here is not safety: it means")
+        print("     the crop is blind to what the page is about, so the lane cannot")
+        print("     screen itself on the crop alone.")
+    if slave_scan:
+        print()
+        print(f"  slave-sale shape (person-term + sale-term in one block):")
+        print(f"    pages carrying at least one   {st['slave_pages']} of {p_} "
+              f"({st['slave_pages']/p_*100:.1f}%)")
+        print(f"    blocks                        {st['slave_blocks']}")
+
+    if by_decade:
+        print()
+        print("  by decade (pages / crops / % of crops carrying either term)")
+        for d in sorted(dec):
+            v = dec[d]
+            if not v["crops"]:
+                print(f"    {d}  pages {v['pages']:3d}  crops {v['crops']:4d}   -")
+                continue
+            rate = v["crop_any"] / v["crops"] * 100
+            extra = (f"   slave-shape pages {v['slave_pages']}"
+                     if slave_scan and v["slave_pages"] else "")
+            print(f"    {d}  pages {v['pages']:3d}  crops {v['crops']:4d}   "
+                  f"{rate:5.1f}%{extra}")
+
+    if examples:
+        print("\n  crop-level hits, for reading by eye:")
+        for lccn, date, cs, cn in examples:
+            print(f"    {lccn} {date}  {cs or ''} {cn or ''}")
+    print("\n⚠️ Upper bounds on subject, and depressed by OCR quality. A lane "
+          "geometry\n   that has not been designed yet is an assumption, not a "
+          "specification.")
+    return st
 
 
 def main():
     args = sys.argv[1:]
     n, seed = 120, SEED
+    since = until = None
+    lane = "nameplate"
+    by_decade = slave_scan = False
     titles = calibrate = False
     i = 0
     while i < len(args):
@@ -239,6 +347,22 @@ def main():
             i += 1; seed = int(args[i])
         elif a.startswith("--seed="):
             seed = int(a.split("=", 1)[1])
+        elif a == "--lane" and i + 1 < len(args):
+            i += 1; lane = args[i]
+        elif a.startswith("--lane="):
+            lane = a.split("=", 1)[1]
+        elif a == "--by-decade":
+            by_decade = True
+        elif a == "--slave-ads":
+            slave_scan = True
+        elif a == "--since" and i + 1 < len(args):
+            i += 1; since = args[i]
+        elif a.startswith("--since="):
+            since = a.split("=", 1)[1]
+        elif a == "--until" and i + 1 < len(args):
+            i += 1; until = args[i]
+        elif a.startswith("--until="):
+            until = a.split("=", 1)[1]
         else:
             sys.exit(f"unknown argument: {a}")
         i += 1
@@ -247,7 +371,9 @@ def main():
         if not calibrate and "--sample" not in " ".join(args):
             return
         print()
-    sample_pass(n, seed, calibrate)
+    if lane not in LANES:
+        sys.exit(f"unknown lane: {lane} (one of {', '.join(LANES)})")
+    sample_pass(n, seed, calibrate, lane, by_decade, slave_scan, since, until)
 
 
 if __name__ == "__main__":

@@ -20,8 +20,10 @@ actually observed on the page it is named after.
 import unittest
 
 import ghn_api
+import lanes
 import nameplate
-from crop_frequency import NEGRO_PREFIXES, SUBJECT_PREFIXES, norm, score
+from crop_frequency import (NEGRO_PREFIXES, PERSON_PREFIXES, SALE_PREFIXES,
+                            SUBJECT_PREFIXES, norm, score, slave_ad_blocks)
 import nameplate_crop as npc
 
 
@@ -345,6 +347,101 @@ class Captions(unittest.TestCase):
         page = ghn_api.Page("sn89053320", "1901-06-08", 1, 1, 1, 1, "s")
         for s in npc.describe(meta, "1901-06-08", page):
             self.assertNotIn("—", s)
+
+
+class Lanes(unittest.TestCase):
+    """The advertisement and headline geometries. ⚠️ These lanes have not been
+    designed, so what is pinned here is the SHAPE of the measurement, not a
+    specification of a lane. If a real design lands, these change."""
+
+    def test_ornament_fragments_are_not_headlines(self):
+        """REGRESSION, Georgia Citizen 27 January 1852. The only "display"
+        words on that page were eleven single characters ('I', 'f', '1') at
+        26-31% down: column rules and ornaments misread. Every one would have
+        become a headline crop."""
+        words = [W(300 + i * 400, 5300 + (i % 3) * 20, 90, 400, c)
+                 for i, c in enumerate("Iff11f11111")]
+        words += body_block(2000, 100, 180, 64, width=14000)
+        self.assertEqual(
+            lanes.headline_boxes(words, 14748, 20736, nameplate_bottom=1200), [],
+            "eleven single characters on one line is an ornament rule, not a "
+            "headline, however many of them there are")
+        real = words + [W(6000, 5300, 900, 400, "MURDER")]
+        self.assertTrue(
+            lanes.headline_boxes(real, 14748, 20736, nameplate_bottom=1200),
+            "one real word on the same line makes it a headline again")
+
+    def test_runaway_deck_is_refused_not_truncated(self):
+        """A deck can chain down a column of decreasing type until it has
+        cropped most of the page. Measured max before the cap: 89.7%."""
+        head = [W(100, 300, 300, 120, "BIG"), W(450, 300, 300, 120, "NEWS")]
+        deck = [W(100, 300 + 150 * k, 600, 100, "more") for k in range(1, 9)]
+        words = head + deck + body_block(300, 3000, 20, 10, width=700)
+        boxes = lanes.headline_boxes(words, 796, 1190, nameplate_bottom=200)
+        for b in boxes:
+            self.assertLessEqual(b[3], lanes.MAX_CROP_FRAC * 1190 + 1)
+
+    def test_headline_never_starts_inside_the_nameplate_band(self):
+        words = [W(100, 60, 400, 90, "MASTHEAD")]
+        words += [W(100, 400, 300, 60, "REAL"), W(420, 400, 300, 60, "HEAD")]
+        words += body_block(400, 700, 15, 7)
+        boxes = lanes.headline_boxes(words, 796, 1190, nameplate_bottom=200)
+        self.assertTrue(all(b[1] >= 200 - 30 for b in boxes), boxes)
+
+    def test_display_ads_are_taken_from_the_lower_half_only(self):
+        upper = [W(100, 200, 300, 70, "UPPER"), W(420, 200, 300, 70, "HEAD")]
+        lower = [W(100, 900, 300, 70, "FAIR"), W(420, 900, 300, 70, "EXPO")]
+        words = upper + lower + body_block(400, 300, 12, 7)
+        boxes = lanes.display_ad_boxes(words, 796, 1190)
+        self.assertTrue(boxes)
+        for b in boxes:
+            self.assertGreaterEqual(b[1] + b[3], 1190 * lanes.UPPER_HALF)
+
+    def test_text_blocks_cover_the_text_area(self):
+        words = body_block(500, 100, 20, 7, width=700)
+        blocks = lanes.text_blocks(words, 796, 1190)
+        self.assertEqual(len(blocks), lanes.GRID_COLS * lanes.GRID_ROWS)
+        self.assertTrue(all(b[2] > 0 and b[3] > 0 for b in blocks))
+
+    def test_a_one_word_banner_headline_is_kept(self):
+        """⛔ Do not re-add a minimum word count. A one-word head is real, and
+        in this corpus it is the loudest kind: "LYNCHED", "HANGED"."""
+        words = [W(200, 400, 400, 90, "LYNCHED")]
+        words += body_block(400, 700, 15, 7)
+        self.assertTrue(
+            lanes.headline_boxes(words, 796, 1190, nameplate_bottom=200))
+
+    def test_text_blocks_on_an_empty_page_are_empty(self):
+        self.assertEqual(lanes.text_blocks([], 796, 1190), [])
+
+    def test_slave_shape_needs_both_terms_in_the_SAME_block(self):
+        """⚠️ The load-bearing rule. Both terms somewhere on a page is nearly
+        every antebellum page; both in one crop-sized block is the shape of a
+        notice. Scoring the page instead of the block would report ~100% and
+        mean nothing."""
+        together = [W(50, 52, 40, 10, "Negroes"), W(100, 53, 40, 10, "sale")]
+        together += body_block(200, 40, 8, 10, width=700)
+        self.assertTrue(slave_ad_blocks(together, 796, 1190))
+
+        apart = [W(20, 20, 40, 10, "Negroes"), W(700, 1150, 40, 10, "auction")]
+        apart += body_block(200, 40, 8, 10, width=700)
+        blocks = slave_ad_blocks(apart, 796, 1190)
+        self.assertEqual(blocks, [],
+                         "opposite corners of the page is not one notice")
+
+    def test_slave_shape_needs_a_person_term_not_just_a_sale(self):
+        words = [W(50, 50, 40, 10, "sale"), W(100, 60, 40, 10, "auction")]
+        words += body_block(200, 40, 8, 10, width=700)
+        self.assertEqual(slave_ad_blocks(words, 796, 1190), [])
+
+    def test_person_and_sale_prefixes_match_the_real_boilerplate(self):
+        """The wording actually found: "Sales of Negroes by Administators,
+        Executors or Guardians, must be at Public Auction"."""
+        real = "Sales of Negroes by Administators Executors or Guardians must "\
+               "be at Public Auction".split()
+        ws = [W(i * 10, 10, 8, 10, t) for i, t in enumerate(real)]
+        self.assertTrue(score(ws, PERSON_PREFIXES))
+        self.assertTrue(score(ws, SALE_PREFIXES))
 
 
 if __name__ == "__main__":

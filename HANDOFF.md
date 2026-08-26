@@ -181,6 +181,90 @@ be done without a model, and the question stays open for it.
 reverse of the scheduled bots in this estate and deliberate: see
 [[reference_seoul_index_dry_run_flag]], where `--help` published a live card.
 
+## The advertisement and headline lanes, measured 26 August 2026
+
+⚠️⚠️ **NEITHER LANE HAS BEEN DESIGNED, so these measure a provisional geometry
+and not a specification.** They are drawn generously, to find more candidate
+crops rather than fewer. If a real design lands, re-run `crop_frequency.py`
+rather than quoting these.
+
+Sample of 120 pre-1931 NoC-US issues (seed 20260826), held out on 60 more at an
+unseen seed. "Crops" is the share of individual crops carrying slavery,
+lynching, Klan or "negro" vocabulary; "pages" is the share of front pages
+yielding at least one such crop.
+
+| lane | crops | pages | held out |
+| --- | --- | --- | --- |
+| nameplate | **0.0%** | **0.0%** | 0.0% |
+| headline | 5.6% | 7.0% | 5.7% |
+| display advertisement | 1.1% | 1.7% | 4.1% |
+| any text block (the bound) | 5.5% | **62.6%** | — |
+
+⚠️⚠️ **THE MOST IMPORTANT NUMBER HERE IS NOT IN THAT TABLE, AND IT IS NOT GOOD
+NEWS.** On the pages whose body text already carries slavery/lynching/Klan
+vocabulary, a headline crop carries it only **16.3% of the time**, and a display
+ad crop **3.1%**. A low crop figure is therefore **NOT a safety finding**: it
+means the crop is blind to what the page around it is about. **These lanes
+cannot screen themselves on the crop alone**, which is exactly the property that
+made the nameplate lane safe. Any headline or advertisement lane must gate on
+the WHOLE PAGE, not on its own crop.
+
+⚠️ **Both figures are floors, and the headline one especially.** A headline is
+display type, which is the worst-recognised text on a page, so scoring a
+headline crop's OCR under-reports by construction. The nameplate lane had an
+exact second measure to sit beside it (the roster titles); these have none.
+
+### The advertisement lane before 1865 is a different problem entirely
+
+`crop_frequency.py --lane block --slave-ads` looks for a person-term and a
+sale-term inside one crop-sized block, which is the shape of a slave-sale
+notice. Front pages carrying at least one:
+
+| | |
+| --- | --- |
+| whole sample | 25 of 115 (**21.7%**) |
+| **before 1865** | 55 of 80 (**68.8%**) |
+| 1865 onward | 13 of 79 (16.5%) |
+
+⚠️⚠️ **AND THE ANTEBELLUM HITS ARE NOT ADVERTISEMENTS. THEY ARE THE PAPER'S OWN
+STANDING RATE CARD**, read by eye on four of them. The wording, from the
+Milledgeville paper of 24 August 1850:
+
+> "Sales of Negroes by Administators, Executors or Guardians, must be at Public
+> Auction, on the first Tuesday in the month, between the legal hours of sale,
+> before the Court House..."
+
+That is boilerplate legal-notice furniture, printed on the front page of
+essentially every antebellum Georgia issue, not an advertisement somebody
+placed. **So the exposure is not a matter of which ad you pick.** It is on the
+page, in the same fixed position, every week, for decades. A lane that crops
+antebellum front-page text at random is not occasionally unlucky: it is drawing
+from a pool where roughly two pages in three carry this.
+
+✅ **It also sits close to the nameplate**, which is worth knowing before anyone
+loosens that band: these blocks were found 13% to 30% down the page. The
+nameplate band runs 3.9% to 13.5% and measured 0.0% across 180 issues, so it is
+clear today, and the margin is thinner than it looks.
+
+⛔ **The slave-sale scan is a SHAPE, not a subject classifier.** It catches
+runaway notices, hiring advertisements and ordinary estate sales alongside what
+it is looking for, and one of the four read by eye was a plain advertising rate
+card with no slave content at all. That is the right direction to err for a
+gate, and the wrong direction for a statistic: read 21.7% and 68.8% as "carries
+this shape", never as "is a slave-sale advertisement".
+
+### What this says about sequencing
+
+- **The nameplate lane stands alone as safe**, and for a structural reason no
+  other lane has: a paper's own name cannot be about a lynching.
+- **A headline lane needs a page-level gate**, because its crop cannot see what
+  it is part of. That gate already exists in the page-level figures.
+- **An advertisement lane needs an era gate before anything else.** Post-1865 it
+  is a normal editorial problem; pre-1865 the front page carries slave-sale
+  boilerplate as standing furniture.
+- ⛔ **None of this is a recommendation to open either lane.** It is the
+  measurement step 5 asked for, so that the decision is made on numbers.
+
 **Everything else, on UGA.**
 
 ## Open questions for Chris

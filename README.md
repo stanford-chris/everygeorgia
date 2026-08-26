@@ -42,6 +42,9 @@ this kind of clipping and stopped in December 2024.
   `level0`; the server's own `info.json` says **level2** and arbitrary region
   crops demonstrably work. Trust `info.json`.
 - `nameplate.py` — the nameplate detector, by geometry and never by text.
+- `lanes.py` — provisional crop geometries for the headline and advertisement
+  lanes, plus the text-block bound. ⚠️ Neither lane is designed, so these
+  measure an assumption; they are drawn generously on purpose.
 - `nameplate_crop.py` — one clipping: image, caption and alt text, four gates.
 - `crop_frequency.py` — the crop-level measurement above, plus `--titles`.
 - `permission_followup.py` — the UGA reminder. ⛔ Mails Chris, never UGA.
@@ -93,9 +96,16 @@ Three cautions travel with the table, and none of them are pedantry:
   and "negro" **54.8% against 0.0%**. Held out on a second sample the
   thresholds had never seen, both stayed 0.0%. And exactly, with no sampling:
   **none of the 843 postable titles carries that vocabulary in its own name.**
-  Run it with `crop_frequency.py`. ⚠️ **Still owed for the advertisement and
-  headline lanes** before either opens: a band taken from the middle of a page
-  has none of the nameplate's structural protection.
+  Run it with `crop_frequency.py`. ✅ **The advertisement and headline lanes were
+  measured on 26 August 2026 too**, and they are a different picture: headline
+  crops 5.6%, display-ad crops 1.1%, any text block 5.5% of crops but **62.6%
+  of pages**. ⚠️ **A low crop figure there is not safety.** On pages whose body
+  text already carries the vocabulary, a headline crop carries it only 16.3% of
+  the time: the crop is blind to the page around it, so those lanes cannot
+  screen themselves and must gate on the whole page. And before 1865, **68.8%
+  of front pages carry a slave-sale-shaped block** which turns out to be the
+  paper's own standing legal-notice rate card, not an advertisement. See
+  HANDOFF.md.
 - **⚠️ The index stems, so no count here names a single word.** `lynch`,
   `lynched`, `lynching` and `lynchings` all return 118,518; `slave` and `slaves`
   both return 197,981. `slavery` is separate at 91,544. Never quote one of these
