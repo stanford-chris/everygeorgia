@@ -33,6 +33,19 @@ this kind of clipping and stopped in December 2024.
   per-issue rights. **Not yet run to completion:** DLG was returning 503 on roughly
   three requests in four on 21 August. The script now probes first and refuses to
   start rather than grind against a struggling service.
+- `ghn_api.py` — Open ONI manifests, word-level OCR coordinates and IIIF region
+  crops. Read-only, cached, and it cannot post. ⚠️ **The OCR coordinate space is
+  not the image space** and is not consistent between pages: measured from
+  796x1190 to 22839x31677 against images of 3080x4607 and 4879x6435, so it is
+  both smaller and larger than the image depending on the page. Always scale
+  through `Page.to_image()`. ⚠️ The manifest's inline IIIF profile claims
+  `level0`; the server's own `info.json` says **level2** and arbitrary region
+  crops demonstrably work. Trust `info.json`.
+- `nameplate.py` — the nameplate detector, by geometry and never by text.
+- `nameplate_crop.py` — one clipping: image, caption and alt text, four gates.
+- `crop_frequency.py` — the crop-level measurement above, plus `--titles`.
+- `permission_followup.py` — the UGA reminder. ⛔ Mails Chris, never UGA.
+- `test_nameplate.py` — 37 tests, stdlib only, verified by mutation.
 - `avatar/avatar_G_dark_72.png` — a blackletter G from the *Georgia Weekly Telegraph
   and Georgia Journal & Messenger*, Macon, 23 February 1875. Source image kept
   alongside it so the provenance travels with the asset.
@@ -74,10 +87,15 @@ Three cautions travel with the table, and none of them are pedantry:
 - **It is page-level, and the lanes are crops.** A nameplate is the top band of a
   page. A page mentioning lynching almost never mentions it in the masthead, so
   the nameplate lane's real exposure is far below 7.7%. That is why it is the
-  lane to launch with. **The crop-level measure is still not possible** and waits
-  on the rights join: sample N NoC-US issues per lane and score the actual crops.
-  Do that before the advertisement and headline lanes open; the nameplate lane
-  does not need it.
+  lane to launch with. ✅ **The crop-level measure has now been made**
+  (26 August 2026): on the same pages and by the same method, slavery/lynching/
+  Klan vocabulary runs **27.0% at page level and 0.0% in the nameplate crop**,
+  and "negro" **54.8% against 0.0%**. Held out on a second sample the
+  thresholds had never seen, both stayed 0.0%. And exactly, with no sampling:
+  **none of the 843 postable titles carries that vocabulary in its own name.**
+  Run it with `crop_frequency.py`. ⚠️ **Still owed for the advertisement and
+  headline lanes** before either opens: a band taken from the middle of a page
+  has none of the nameplate's structural protection.
 - **⚠️ The index stems, so no count here names a single word.** `lynch`,
   `lynched`, `lynching` and `lynchings` all return 118,518; `slave` and `slaves`
   both return 197,981. `slavery` is separate at 91,544. Never quote one of these
@@ -126,7 +144,15 @@ but **"is the image defensible with no words attached?"** A Georgia bishop's hea
 calling the Klan un-American passes. A 1920 paper printing the Klan founder's denial
 as news fails, because the image alone is Klan publicity whatever the caption says.
 
-## The rights join runs itself
+## The rights join is done
+
+✅ **Completed 11:45 on 22 August 2026**, from 910 of 1,088 DLG pages: 843 of
+1,158 titles postable, **218,505 pre-1931 NoC-US issues** across 840 titles.
+`com.chrisstanford.everygeorgiarights` was booted out and both copies of its
+plist deleted on 26 August. The section below is kept because the reasoning in
+it outlives the job.
+
+## How the rights join ran itself
 
 `com.chrisstanford.everygeorgiarights` fires `rights_join_tick.sh` **every 15
 minutes**, and that job is the only thing that needs to happen for

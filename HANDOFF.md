@@ -1,4 +1,4 @@
-# everygeorgia — where things stand, 21 August 2026 (evening)
+# everygeorgia — where things stand, 26 August 2026
 
 A Bluesky account posting clippings from **Georgia Historic Newspapers**, run by
 the Digital Library of Georgia at UGA. Read `README.md` for the technical
@@ -14,6 +14,19 @@ require written permission from the holding institution to *publish*, and a
 public account is publication. Silence is not permission; set a date to follow
 up rather than letting it drift into a tacit yes.
 
+✅ **That follow-up date now exists, and until 26 August 2026 it did not.** The
+instruction above was written on the 21st and never carried out: a grep of this
+repo, the memory file and the observation log found no date, no reminder and no
+job anywhere. The only thing standing between the project and death by drift was
+somebody happening to ask. `permission_followup.py` now mails Chris if UGA has
+not replied, first on **4 September 2026** (two weeks after the email) and every
+14 days after that, under `com.chrisstanford.everygeorgiafollowup` (weekly
+check, Fridays 09:30, `~/Library/LaunchAgents`).
+
+⛔ **It sends nothing to UGA and must never learn how.** It prompts Chris; the
+decision to write again is his. Silence it with
+`permission_followup.py --resolved "what happened"` once they reply.
+
 ⛔ **Do not send a second email yet.** Decided 21 August: wait to hear back
 before writing again, including about the API trouble below.
 
@@ -27,6 +40,10 @@ before writing again, including about the API trouble below.
 | Corpus measurement | Frequency table in `README.md`, measured not estimated |
 | Picture detector | Works; see README. Finds pictures, not specifically cartoons |
 | Permission email | Sent |
+| Rights join | **Completed 22 August**, 1,159 rows. 843 titles postable |
+| Nameplate lane | **Built 26 August**: detector, crop pipeline, 37 tests |
+| Crop-level measure | **Done 26 August.** Step 5 below is discharged |
+| Follow-up reminder | **Set 26 August**, first fires 4 September |
 
 The thread runs 264, 272, 204, 113, 288, 252 characters. Post 1 is pinned; 2–6
 thread beneath. Only post 5 needs a link facet. Both handles in post 6 resolved
@@ -56,47 +73,113 @@ run `f725ed9` → `53f27c4`.
   front page in five carries slavery, lynching or Klan vocabulary before "negro"
   is counted at all; 47% mention it. Table and three cautions in `README.md`.
 
-## Blocked, and on what
+## No longer blocked on DLG
 
-**The rights join, on DLG — but not for the reason previously recorded here.**
-`data/georgia_rights.csv` still does not exist and nothing is cached, so the
-eventual run starts from scratch at 1,088 pages.
+⚠️ **This section said "Blocked, on DLG" until 26 August 2026 and had been
+wrong for four days.** The health gate it worried might never fire fired at
+21:25 on 21 August, and `data/georgia_rights.csv` was written at 11:45 on the
+22nd. Read `data/await_dlg.log`; do not trust a status line in a file nobody
+has re-read.
 
-**Where 1,088 comes from, so nobody re-derives it.** DLG holds 371,998 GHN
-records, of which **271,937** are NoC-US. At DLG's 250-per-page ceiling that is
-1,087.75, so 1,088 — one page fewer would hold 271,750 and fall 187 records
-short. The record count was a live query at 14:43 on 21 August and came as a
-complete rights breakdown that closes exactly against its own total: NoC-US
-271,937, No Known Copyright 42,466, Copyright Not Evaluated 35,464, In Copyright
-22,131, summing to 371,998. Deep pagination was separately verified to reach page
-1,088, which matters because Solr-backed APIs often fail well before that depth.
+**The join, and the number that decides the shape of this project:**
 
-⚠️ **The run does not depend on that constant.** `rights_join.py:140` reads
-`total_count` from page 1 and recomputes `npages` at run time, so if DLG's
-holdings grow the job adapts and only the prose here goes stale.
+| | |
+| --- | --- |
+| Roster titles | 1,158 |
+| Postable (≥1 NoC-US issue) | **843** |
+| No NoC-US record | 315 (`unknown`, never `none`, and never permission) |
+| Total NoC-US issues | **224,097** |
+| Pre-1931 NoC-US issues | **218,505**, across 840 titles |
+| Date span | 1763-04-07 to 2021-02-25 |
 
-⚠️ **DLG is not down. It is shedding load and serving browsers first.** Measured
-21 August: a Safari user-agent returned 200 on four of four attempts across the
-evening while our own identifying UA returned 503, 200, 503 on the same URL
-seconds apart. The 503 is DLG's own application response — `text/plain`,
-`retry-after: 60`, no Cloudflare headers, no `cf-ray` — so it is **not** a bot
-challenge, and loading a page by hand in a browser establishes no session the
-scripts could reuse. This corrects the earlier entry, which read the failing
-health probe as an outage.
+That answers "six-month bot or two-year one": supply is not the constraint at
+any cadence, and it never will be. Selection is
+([[reference_bot_variety_is_selection_not_supply]]).
 
-⛔ **Do not spoof a browser user-agent.** Ours names the project and carries the
-same address that emailed UGA. If DLG is serving humans before bots under load,
-that is the correct priority.
+⚠️ **910 of 1,088 DLG pages are cached, not all of them**, so these are floors.
+Fourteen page fetches failed during the join and are logged in
+`data/rights_join.log`.
 
-⚠️ **The 3/3 health gate may therefore never fire.** It was calibrated for "is
-DLG up?" when the real condition is "will DLG talk to *us* right now?" Do not
-loosen it to fire 1,088 requests into a load-shedding host. If it persists, the
-fix is to ask UGA — but see the one rule above: not until they reply.
+⛔ `com.chrisstanford.everygeorgiarights` was **booted out and both copies of
+its plist deleted on 26 August 2026**, per step 3 below. It had run 431 times,
+the last 400-odd of them exiting immediately because the csv existed. Nothing
+schedules it now and nothing should.
 
-`com.chrisstanford.everygeorgiarights` is **left running deliberately**. Three
-requests every 900 seconds is about 12 an hour, light enough not to matter, and
-it is the only thing that will notice recovery unattended. Watch
-`data/await_dlg.log` for a line reading `health 3/3`.
+## The nameplate lane is built, and the crop-level measure is done
+
+Step 5 said: sample N NoC-US issues per lane and score the actual crops, before
+the advertisement and headline lanes open. Done 26 August 2026.
+
+| | measured on the same pages, by the same method |
+| --- | --- |
+| slavery / lynching / Klan | page **27.0%** → nameplate crop **0.0%** |
+| "negro" | page **54.8%** → nameplate crop **0.0%** |
+
+Sample of 120 pre-1931 NoC-US issues (seed 20260826): 115 front pages read, 84
+nameplates detected, 31 refused. Held out on a second draw the thresholds had
+never seen (seed 424242, 60 issues): 38 detected of 57, **0.0% on both measures
+again**. Twelve crops from that held-out draw were read by eye and all twelve
+are clean nameplates.
+
+✅ **And the exact measure, which needs no sampling at all: none of the 843
+postable titles carries slavery, lynching or Klan vocabulary in its own name.**
+`crop_frequency.py --titles` scores the roster strings rather than OCR, so that
+one is definitive rather than an estimate.
+
+⚠️ **Both crop figures are upper bounds that are additionally DEPRESSED by
+OCR.** Display type is the worst-recognised text on a page, so a nameplate crop
+under-reports by construction. That is exactly why the title pass exists beside
+it; neither measure is trusted alone.
+
+**Files:**
+
+- `ghn_api.py` — ONI manifests, OCR coordinates, IIIF region crops. Read-only.
+- `nameplate.py` — the detector. Geometry, never text.
+- `nameplate_crop.py` — one clipping: image, caption, alt text. Four gates.
+- `crop_frequency.py` — the measurement above.
+- `test_nameplate.py` — **37 tests, stdlib only, no network.** Verified by
+  mutation: six deliberate breakages were each confirmed to fail the suite and
+  pass again on restore.
+
+⚠️⚠️ **THE THREE FAILURES THAT SHAPED IT ARE THE PART WORTH KEEPING.** Each was
+a plausible-looking crop, not a crash, and each is now a named regression test:
+
+1. **Macon Telegraph, 8 June 1901.** A headline set at 0.52 of the masthead
+   height chained into the cluster and the crop came out reading **"SHERIFF OF
+   CARROLL FIRES ON THE MOB"**. Fixed by requiring a joining row to be ≥0.65 of
+   the first row's height. Legitimate second lines measure 0.74 and above.
+2. **Athens Banner, 29 December 1908.** The blackletter masthead produced *no*
+   display boxes at all, so the detector locked onto the first thing that did:
+   the headline deck 10.4% down, cropping **"YOUNG NEGRO GIRL KILLED BENEATH
+   SEABOARD ENGINE"** as a nameplate. Fixed by tightening the top bound from
+   25% of the page to 9% — measured, not chosen: across 98 detections the
+   cluster top ran median 5.2%, p90 9.9%. Savannah Morning News, 20 October
+   1877, failed the same way at 9.7%.
+3. **Griffin Daily News, 3 June 1916.** A 23-row chain down the page produced a
+   band 30% deep. It was a baseball score, and on another day it would not be.
+
+⚠️ **Both of the crops that reached a human were caught BY EYE, not by an
+assertion.** The vocabulary gate flagged them, which is the belt working, but
+the geometry should never have offered them. Read the crops; do not read only
+the summary line.
+
+⚠️ **The detector refuses roughly a quarter to a third of pages, and refusal is
+the design.** A page whose masthead did not OCR is not a page with a small
+nameplate: it is a page the detector cannot read, and a band drawn from the only
+thing it *can* see is a guess dressed as a measurement. There are 218,505
+issues; skipping a third costs nothing.
+
+✅ **This lane needs no model, and that is a real contribution to open question
+2.** The crop is chosen by arithmetic and the caption and alt text are built
+from the title, city and date the archive already holds exactly. Nothing about
+a nameplate post is generated, so there is nothing to disclose. **That settles
+the disclosure question for this lane only** — the headline lane still cannot
+be done without a model, and the question stays open for it.
+
+⛔ **Nothing here can post.** No `atproto` import, no credential, no account.
+`nameplate_crop.py` additionally writes nothing without `--out`, which is the
+reverse of the scheduled bots in this estate and deliberate: see
+[[reference_seoul_index_dry_run_flag]], where `--help` published a live card.
 
 **Everything else, on UGA.**
 
@@ -125,17 +208,24 @@ it is the only thing that will notice recovery unattended. Watch
 
 ## Next moves, in order
 
-1. **Wait.** For UGA, and for `data/await_dlg.log` to report `health 3/3`.
-2. When `data/georgia_rights.csv` appears, report how many of the 1,158 titles
-   have a postable issue and the true earliest/latest NoC-US dates. That number
-   decides whether this is a six-month bot or a two-year one.
-3. Boot out `com.chrisstanford.everygeorgiarights` once the csv lands and delete
-   its plist — **from outside the job, never from within it.**
-4. Build the nameplate lane first. It is the safest by a distance: a nameplate is
-   the top band of a page, so the page-level frequencies barely touch it.
-5. Before the advertisement and headline lanes open, measure at the **crop**
-   level — sample N NoC-US issues per lane and score the actual crops. The
-   nameplate lane does not need this.
+1. ~~Wait for `data/await_dlg.log` to report `health 3/3`.~~ **Done 21 August.**
+2. ~~Report how many titles have a postable issue.~~ **Done: 843, and 218,505
+   pre-1931 issues.**
+3. ~~Boot out `com.chrisstanford.everygeorgiarights` and delete its plist.~~
+   **Done 26 August**, from outside the job.
+4. ~~Build the nameplate lane.~~ **Done 26 August.**
+5. ~~Measure at the crop level before the advertisement and headline lanes
+   open.~~ **Done 26 August for the nameplate lane.** ⚠️ Still owed for the
+   **advertisement** and **headline** lanes before either opens: the figures
+   above are the nameplate band's, and say nothing about a crop taken from the
+   middle of a page.
+6. **Wait for UGA**, and answer the reminder when it arrives on 4 September.
+7. When permission lands, read the reply for conditions before building
+   anything else. A yes with conditions changes which lanes ship, which is what
+   open question 2 turns on.
+
+`rights_join_tick.sh` is spent but kept: it documents how the join was gated,
+and it exits 0 in silence the moment the csv exists.
 
 ## Things that will bite a fresh session
 
