@@ -42,6 +42,12 @@ this kind of clipping and stopped in December 2024.
   `level0`; the server's own `info.json` says **level2** and arbitrary region
   crops demonstrably work. Trust `info.json`.
 - `nameplate.py` — the nameplate detector, by geometry and never by text.
+- `gates.py` — the decision layer: PASS / REVIEW / REFUSE. ⚠️ **REVIEW is not a
+  refusal.** The page-level vocabulary gate returns REVIEW precisely so that a
+  blanket deny does not erase the Black press, which has three postable issues
+  of "The Colored Tribune" to lose. The advertisement lane's era floor is
+  1867, measured: publishers carried the standing slave-sale rate card for a
+  year after the war.
 - `lanes.py` — provisional crop geometries for the headline and advertisement
   lanes, plus the text-block bound. ⚠️ Neither lane is designed, so these
   measure an assumption; they are drawn generously on purpose.

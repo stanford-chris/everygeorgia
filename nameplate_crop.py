@@ -23,17 +23,26 @@ and date the archive already holds exactly. That is the answer this lane
 contributes to open question 2: the nameplate lane has nothing to disclose,
 because nothing about it is generated.
 
-Four gates, and a page must pass all four:
+Gates, in order, all of them in gates.py except the two about the image:
 
   1. geometry   nameplate.py finds a confident band, or refuses the page
-  2. vocabulary no sensitive term inside the band. Independent of the geometry,
-                and it is the belt: on 26 August 2026 a looser detector cropped
-                "SHERIFF OF CARROLL FIRES ON THE MOB" out of the Macon
-                Telegraph and called it a nameplate.
-  3. shape      a nameplate is a wide, shallow strip. A crop that comes back
+  2. rights,    gates.check(): NoC-US recorded, before the 1931 cutoff, and
+     era, crop  after this lane's era floor; and no sensitive term inside the
+                band. That last is the belt: on 26 August 2026 a looser
+                detector cropped "SHERIFF OF CARROLL FIRES ON THE MOB" out of
+                the Macon Telegraph and called it a nameplate.
+  3. page       ⚠️ the sensitive vocabulary anywhere on the page returns
+                REVIEW, not a refusal. The crop cannot see the page it came
+                from: measured, a headline crop carries what its page carries
+                only 16.3% of the time. REVIEW keeps a person in it without
+                erasing the titles that use this vocabulary most.
+  4. shape      a nameplate is a wide, shallow strip. A crop that comes back
                 nearly square means the band was wrong whatever the maths said.
-  4. arrival    the bytes are a real JPEG of the size asked for. A curl 200 is
+  5. arrival    the bytes are a real JPEG of the size asked for. A curl 200 is
                 not arrival.
+
+⚠️ `clip()` returns a verdict and does NOT raise on REVIEW. A caller that
+treats "not PASS" as "error" throws away the distinction this is built on.
 
 Usage:
     python3 nameplate_crop.py sn89053135 1898-01-06            # report only
@@ -46,6 +55,7 @@ import os
 import random
 import sys
 
+import gates
 import ghn_api
 import nameplate
 from crop_frequency import (NEGRO_PREFIXES, SUBJECT_PREFIXES, noc_issues,
@@ -121,30 +131,48 @@ def check_image(data, want_width):
     return im.width, im.height
 
 
-def clip(lccn, date, ed=1, width=CROP_WIDTH):
-    """The whole pipeline for one issue. Raises Refused, never guesses."""
+def clip(lccn, date, ed=1, width=CROP_WIDTH, lane="nameplate"):
+    """The whole pipeline for one issue.
+
+    Returns a dict carrying `verdict`. Raises Refused only when there is
+    nothing to show at all: no rights, wrong era, no geometry, or a crop that
+    itself carries the vocabulary. A REVIEW verdict comes back as a normal
+    result with `postable` False, because a person is meant to look at it."""
+    page = None
+    box = None
+    inside = []
+    words = []
     meta = roster().get(lccn)
-    if not meta:
-        raise Refused(f"{lccn} is not in the roster")
-    if date >= "1931-01-01":
-        raise Refused(f"{date} is on or after the project's 1931 cutoff")
-    if meta.get("postable") != "yes":
-        raise Refused(f"{lccn} has no NoC-US issue recorded")
-    page = ghn_api.front_page(lccn, date, ed)
-    c = page.coords()
-    box = nameplate.nameplate_box(c["words"], c["width"], c["height"])
-    if box is None:
-        raise Refused("geometry gate: no confident nameplate band")
-    inside = check_words(c["words"], box)
+
+    if meta is not None and meta.get("postable") == "yes" and date < "1931-01-01":
+        page = ghn_api.front_page(lccn, date, ed)
+        c = page.coords()
+        words = c["words"]
+        box = nameplate.nameplate_box(words, c["width"], c["height"])
+        inside = nameplate.words_in(words, box) if box else []
+
+    crop_hits = set()
+    page_hits = set()
+    for prefixes in (SUBJECT_PREFIXES, NEGRO_PREFIXES):
+        crop_hits |= set(score(inside, prefixes))
+        page_hits |= set(score(words, prefixes))
+
+    verdict = gates.check(lane, lccn, date, crop_hits=crop_hits,
+                          page_hits=page_hits, have_geometry=box is not None)
+    if verdict.outcome == gates.REFUSE:
+        raise Refused("; ".join(verdict.reasons))
+
     image_box = page.to_image(box)
     data = page.fetch_crop(image_box, width)
     w, h = check_image(data, width)
     caption, alt, credit = describe(meta, date, page)
     return {
-        "lccn": lccn, "date": date, "edition": ed,
-        "band_fraction": box[3] / c["height"],
+        "lccn": lccn, "date": date, "edition": ed, "lane": lane,
+        "verdict": verdict, "postable": verdict.postable,
+        "band_fraction": box[3] / page.coords()["height"],
         "image_box": image_box, "size": (w, h),
         "words_in_band": [t[4] for t in inside],
+        "page_hits": sorted(page_hits),
         "caption": caption, "alt": alt, "credit": credit,
         "bytes": data,
     }
@@ -195,13 +223,18 @@ def main():
         except (Refused, ghn_api.FetchError, ValueError) as e:
             sys.exit(f"refused: {e}")
 
-    print(f"{r['lccn']} {r['date']} ed-{r['edition']}")
+    print(f"{r['lccn']} {r['date']} ed-{r['edition']}   [{r['verdict'].outcome}]")
+    for why in r["verdict"].reasons:
+        print(f"  gate       {why}")
     print(f"  band       {r['band_fraction']*100:.1f}% of page, "
           f"image box {r['image_box']}, crop {r['size'][0]}x{r['size'][1]}")
     print(f"  in band    {' '.join(r['words_in_band'][:18]) or '(no readable text)'}")
     print(f"  caption    {r['caption']}")
     print(f"  alt        {r['alt']}")
     print(f"  credit     {r['credit']}")
+    if out and not r["postable"]:
+        print("  ⚠️ NOT auto-postable: writing the file anyway so a person can "
+              "look at it,\n     which is what REVIEW means.")
     if out:
         with open(out, "wb") as f:
             f.write(r["bytes"])

@@ -253,6 +253,80 @@ card with no slave content at all. That is the right direction to err for a
 gate, and the wrong direction for a statistic: read 21.7% and 68.8% as "carries
 this shape", never as "is a slave-sale advertisement".
 
+## The gates, added 26 August 2026
+
+`gates.py` is the decision layer. ⚠️ **It has THREE outcomes, not two, and that
+is the whole design.**
+
+| | |
+| --- | --- |
+| **PASS** | may be posted automatically |
+| **REVIEW** | a person decides. **NOT a refusal, and never counted as one** |
+| **REFUSE** | out of bounds: no rights, wrong era, or the crop itself carries it |
+
+The split follows the project's own editorial test. REFUSE is for when the
+**image** is indefensible with no words attached. REVIEW is for when the image
+is fine and its **context** is not, which is a judgement and stays with a
+person.
+
+### ⚠️⚠️ Why the page gate is REVIEW and must never become REFUSE
+
+A binary allow/deny on this vocabulary **erases the Black press.** The README
+has recorded since before any of this existed that a keyword blocklist rejected
+the front pages of "The Colored American" (Augusta, 6 January 1866) and "The
+Colored Tribune" (Savannah), because they share vocabulary with slave-sale
+advertisements. Those are the titles this vocabulary appears in most, for the
+obvious reason.
+
+**Measured against the real roster: "The Colored Tribune" has THREE postable
+issues in the entire corpus, and "Atlanta independent" has one.** A blanket
+deny does not reduce those titles, it deletes them. `BlackPressIsNotErased` in
+the test suite asserts, against the real csv rather than a synthetic one, that
+both come back REVIEW and never REFUSE. If that test ever goes red the gate has
+become the thing this project set out not to build.
+
+⚠️ **REVIEW is not an exemption either.** A crop that itself carries the
+vocabulary is REFUSED whoever printed it: the rule is about the image, not
+about the publisher. That is also pinned.
+
+### The era gate is 1867, and it was measured rather than reasoned
+
+The obvious date is emancipation. The obvious date is wrong. Sampling **196
+front pages across 1855-1882**, stratified so no year dominates, the share
+carrying a person-term and a sale-term in one block ran:
+
+| | |
+| --- | --- |
+| 1855-1865 | 43% to 100%, mostly 70-85% |
+| 1866 | **42.9%** |
+| 1867 onward | 14% to 43%, the false-positive floor |
+
+Publishers carried the standing legal-notice type for a **year after the war**,
+so a gate at 1865 would still draw from a pool where two front pages in five
+carry it. The floor is `1867-01-01`, on the advertisement lane only.
+
+⚠️ **1861 reads 0.0% in that scan, on five pages.** That is small-sample noise,
+not a wartime pause. Do not read the year-by-year figures as a trend.
+
+### What the gates cost
+
+`crop_frequency.py --gates --lane <lane> --sample N`, 80 issues each:
+
+| lane | PASS | REVIEW | REFUSE |
+| --- | --- | --- | --- |
+| nameplate | 25.0% | 47.5% | 23.8% |
+| advertisement | 21.2% | 27.5% | 47.5% |
+
+⚠️ **A PASS share is not a supply figure.** 25% of 218,505 is still about
+55,000 auto-postable issues. And for the nameplate lane a REVIEW costs almost
+nothing in practice: a masthead is the same every week, so it is the same
+picture on a different date.
+
+⚠️ **The report names the titles most often sent to REVIEW, deliberately.** The
+effect on any particular paper must be visible rather than silent, which is the
+only way anyone would notice the Black-press problem returning by a different
+route.
+
 ### What this says about sequencing
 
 - **The nameplate lane stands alone as safe**, and for a structural reason no

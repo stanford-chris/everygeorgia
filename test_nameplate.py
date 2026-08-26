@@ -19,6 +19,7 @@ actually observed on the page it is named after.
 """
 import unittest
 
+import gates
 import ghn_api
 import lanes
 import nameplate
@@ -442,6 +443,132 @@ class Lanes(unittest.TestCase):
         ws = [W(i * 10, 10, 8, 10, t) for i, t in enumerate(real)]
         self.assertTrue(score(ws, PERSON_PREFIXES))
         self.assertTrue(score(ws, SALE_PREFIXES))
+
+
+class Gates(unittest.TestCase):
+    """⚠️ THE REVIEW-NOT-REFUSE TESTS ARE THE POINT OF THIS CLASS. A binary
+    allow/deny gate on this vocabulary erases the Black press, which is the one
+    outcome the whole design exists to avoid."""
+
+    def setUp(self):
+        self._saved = gates._roster
+        gates._roster = {
+            "sn00000001": {"lccn": "sn00000001", "title": "The Test herald.",
+                           "postable": "yes"},
+            "sn00000002": {"lccn": "sn00000002", "title": "The Unrighted.",
+                           "postable": "no"},
+        }
+
+    def tearDown(self):
+        gates._roster = self._saved
+
+    def test_a_clean_crop_on_a_clean_page_passes(self):
+        v = gates.check("nameplate", "sn00000001", "1898-01-06")
+        self.assertEqual(v.outcome, gates.PASS)
+        self.assertTrue(v.postable)
+
+    def test_vocabulary_on_the_page_is_REVIEW_not_REFUSE(self):
+        """⚠️ The single most important assertion here. The crop is clean; the
+        page is not; a person decides. Turning this into a refusal is what
+        silences the titles that use this vocabulary most."""
+        v = gates.check("nameplate", "sn00000001", "1898-01-06",
+                        page_hits={"negro"})
+        self.assertEqual(v.outcome, gates.REVIEW)
+        self.assertFalse(v.postable)
+        self.assertNotEqual(v.outcome, gates.REFUSE)
+        self.assertIn("not a rejection", " ".join(v.reasons))
+
+    def test_vocabulary_in_the_crop_is_REFUSE(self):
+        """The image itself is indefensible with no words attached, which is
+        the project's own editorial test."""
+        v = gates.check("nameplate", "sn00000001", "1898-01-06",
+                        crop_hits={"lynch"})
+        self.assertEqual(v.outcome, gates.REFUSE)
+
+    def test_a_crop_hit_outranks_a_page_hit(self):
+        v = gates.check("nameplate", "sn00000001", "1898-01-06",
+                        crop_hits={"lynch"}, page_hits={"negro"})
+        self.assertEqual(v.outcome, gates.REFUSE)
+
+    def test_era_gate_bites_the_ad_lane_only(self):
+        for lane, want in (("ad", gates.REFUSE), ("headline", gates.PASS),
+                           ("nameplate", gates.PASS)):
+            v = gates.check(lane, "sn00000001", "1860-04-12")
+            self.assertEqual(v.outcome, want, f"{lane} on an 1860 issue")
+
+    def test_era_gate_boundary_is_1867_not_1865(self):
+        """⚠️ MEASURED, not reasoned from emancipation. The slave-sale shape
+        ran 70-85% through 1865 and was still 42.9% in 1866: publishers carried
+        the standing legal-notice type for a year after the war."""
+        self.assertEqual(gates.earliest("ad"), "1867-01-01")
+        self.assertEqual(
+            gates.check("ad", "sn00000001", "1866-12-31").outcome, gates.REFUSE)
+        self.assertEqual(
+            gates.check("ad", "sn00000001", "1867-01-01").outcome, gates.PASS)
+
+    def test_cutoff_still_applies_to_every_lane(self):
+        for lane in gates.POLICIES:
+            self.assertEqual(
+                gates.check(lane, "sn00000001", "1931-01-01").outcome,
+                gates.REFUSE, lane)
+
+    def test_unpostable_and_unknown_titles_refuse(self):
+        self.assertEqual(
+            gates.check("nameplate", "sn00000002", "1898-01-06").outcome,
+            gates.REFUSE)
+        self.assertEqual(
+            gates.check("nameplate", "sn99999999", "1898-01-06").outcome,
+            gates.REFUSE)
+
+    def test_missing_geometry_refuses(self):
+        v = gates.check("nameplate", "sn00000001", "1898-01-06",
+                        have_geometry=False)
+        self.assertEqual(v.outcome, gates.REFUSE)
+
+    def test_every_failing_reason_is_collected(self):
+        """Fixing one of three problems should not look like progress."""
+        v = gates.check("ad", "sn00000002", "1860-01-01",
+                        crop_hits={"slave"}, have_geometry=False)
+        self.assertEqual(v.outcome, gates.REFUSE)
+        self.assertGreaterEqual(len(v.reasons), 4, v.reasons)
+
+    def test_unknown_lane_raises(self):
+        with self.assertRaises(ValueError):
+            gates.check("sports-page", "sn00000001", "1898-01-06")
+
+
+class BlackPressIsNotErased(unittest.TestCase):
+    """⚠️ A DATA TEST, against the real roster, not a synthetic one. The README
+    records that a keyword blocklist rejected the front pages of "The Colored
+    American" and "The Colored Tribune" because they share vocabulary with
+    slave-sale advertisements. The Colored Tribune has THREE postable issues in
+    the entire corpus. If this ever returns REFUSE, the gate has become the
+    thing the project set out not to build."""
+
+    def test_the_colored_tribune_is_reviewed_never_refused(self):
+        if "sn82016225" not in gates.roster():
+            self.skipTest("rights csv not built")
+        for hits in ({"negro"}, {"slave"}, {"negro", "slave", "lynch"}):
+            v = gates.check("nameplate", "sn82016225", "1876-03-25",
+                            page_hits=hits)
+            self.assertEqual(v.outcome, gates.REVIEW, f"page_hits={hits}")
+
+    def test_the_atlanta_independent_is_reviewed_never_refused(self):
+        if "sn91099155" not in gates.roster():
+            self.skipTest("rights csv not built")
+        v = gates.check("nameplate", "sn91099155", "1872-05-09",
+                        page_hits={"negro"})
+        self.assertEqual(v.outcome, gates.REVIEW)
+
+    def test_but_a_loaded_crop_is_still_refused_on_those_titles(self):
+        """⚠️ REVIEW is not an exemption. A crop that itself carries the
+        vocabulary is refused whoever printed it: the rule is about the image,
+        not about the publisher."""
+        if "sn82016225" not in gates.roster():
+            self.skipTest("rights csv not built")
+        v = gates.check("nameplate", "sn82016225", "1876-03-25",
+                        crop_hits={"lynch"})
+        self.assertEqual(v.outcome, gates.REFUSE)
 
 
 if __name__ == "__main__":

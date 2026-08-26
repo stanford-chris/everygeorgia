@@ -50,6 +50,7 @@ import re
 import sys
 from collections import Counter
 
+import gates
 import ghn_api
 import lanes
 import nameplate
@@ -127,6 +128,81 @@ def slave_ad_blocks(words, cw, ch):
         if score(inside, PERSON_PREFIXES) and score(inside, SALE_PREFIXES):
             hits.append(b)
     return hits
+
+
+def gate_pass(n, seed, lane):
+    """What the gates actually cost: the outcome distribution over a sample,
+    and which titles are sent to REVIEW most.
+
+    ⚠️ REVIEW IS REPORTED SEPARATELY FROM REFUSE AND MUST STAY THAT WAY. They
+    mean different things, and folding them together would hide exactly the
+    effect this report exists to make visible."""
+    issues, _ = noc_issues()
+    rng = random.Random(seed)
+    draw = rng.sample(issues, min(n, len(issues)))
+    ros = gates.roster()
+    counts = Counter()
+    review_titles = Counter()
+    seen_titles = Counter()
+    era_lost = Counter()
+    for i, (lccn, date, ed) in enumerate(draw, 1):
+        title = (ros.get(lccn) or {}).get("title", lccn)
+        seen_titles[title] += 1
+        # the era and rights gates need no page at all, so check them first and
+        # skip the fetch when they already decide it
+        pre = gates.check(lane, lccn, date, have_geometry=True)
+        if pre.outcome == gates.REFUSE:
+            counts["REFUSE"] += 1
+            if any("era gate" in r for r in pre.reasons):
+                era_lost[date[:3] + "0s"] += 1
+            continue
+        try:
+            page = ghn_api.front_page(lccn, date, ed)
+            c = page.coords()
+        except (ghn_api.FetchError, ValueError):
+            counts["NOT CHECKED"] += 1
+            continue
+        words = c["words"]
+        boxes = crops_for(lane, words, c["width"], c["height"])
+        page_hits = set(score(words, SUBJECT_PREFIXES)) | set(score(words, NEGRO_PREFIXES))
+        if not boxes:
+            counts["REFUSE"] += 1
+            continue
+        best = None
+        for box in boxes:
+            inside = nameplate.words_in(words, box)
+            ch = set(score(inside, SUBJECT_PREFIXES)) | set(score(inside, NEGRO_PREFIXES))
+            v = gates.check(lane, lccn, date, crop_hits=ch, page_hits=page_hits)
+            if best is None or (best.outcome, v.outcome) == (gates.REVIEW, gates.PASS) \
+               or (best.outcome == gates.REFUSE and v.outcome != gates.REFUSE):
+                best = v
+        counts[best.outcome] += 1
+        if best.outcome == gates.REVIEW:
+            review_titles[title] += 1
+        if i % 25 == 0:
+            print(f"  [{i}/{len(draw)}] ...", file=sys.stderr)
+
+    tot = sum(counts.values())
+    print()
+    print(f"gate impact, lane {lane}, {tot} issues, seed {seed}")
+    print(f"  {gates.describe_policies()}")
+    print()
+    for k in ("PASS", "REVIEW", "REFUSE", "NOT CHECKED"):
+        if counts[k]:
+            print(f"  {k:<12} {counts[k]:4d}  {counts[k]/tot*100:5.1f}%")
+    if era_lost:
+        print("\n  refused by the era gate, by decade:")
+        for d in sorted(era_lost):
+            print(f"    {d}  {era_lost[d]}")
+    if review_titles:
+        print("\n  ⚠️ titles most often sent to REVIEW (a person decides; this is")
+        print("     NOT a rejection, and it is printed so the effect is visible")
+        print("     rather than silent):")
+        for t, c_ in review_titles.most_common(8):
+            print(f"    {c_:3d} of {seen_titles[t]:3d}  {t}")
+    print("\n⚠️ A PASS share is not a supply figure. There are 218,505 postable")
+    print("   pre-1931 issues, so even a low share leaves five figures of material.")
+    return counts
 
 
 def noc_issues():
@@ -329,6 +405,7 @@ def main():
     args = sys.argv[1:]
     n, seed = 120, SEED
     since = until = None
+    gate_report = False
     lane = "nameplate"
     by_decade = slave_scan = False
     titles = calibrate = False
@@ -355,6 +432,8 @@ def main():
             by_decade = True
         elif a == "--slave-ads":
             slave_scan = True
+        elif a == "--gates":
+            gate_report = True
         elif a == "--since" and i + 1 < len(args):
             i += 1; since = args[i]
         elif a.startswith("--since="):
@@ -373,6 +452,9 @@ def main():
         print()
     if lane not in LANES:
         sys.exit(f"unknown lane: {lane} (one of {', '.join(LANES)})")
+    if gate_report:
+        gate_pass(n, seed, lane)
+        return
     sample_pass(n, seed, calibrate, lane, by_decade, slave_scan, since, until)
 
 
