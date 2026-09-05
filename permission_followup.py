@@ -26,6 +26,12 @@ cannot afford.
 never happened. After the first date it nags every REPEAT_DAYS until resolved,
 and the mail says how long the silence has run.
 
+⚠️ `--snooze-until YYYY-MM-DD` is quiet, not resolved: it stays unresolved and
+picks the normal nagging back up automatically once that date passes. Use it
+when he already knows he's following up himself on a specific date and the
+default 14-day cadence would nag before then. Unlike `--resolved` this never
+needs a note saying what happened, because nothing has happened yet.
+
 ⚠️ launchd has no year field, so the plist's date fires ANNUALLY. That is
 harmless here only because of the state file: once resolved, the run is a
 no-op. Do not replace the state file with a one-shot job that deletes itself --
@@ -35,6 +41,7 @@ Usage:
     python3 permission_followup.py --stdout        # print, mail nothing
     python3 permission_followup.py                 # mail if still unresolved
     python3 permission_followup.py --resolved "UGA said yes, with conditions"
+    python3 permission_followup.py --snooze-until 2026-09-30
     python3 permission_followup.py --status
 """
 import json
@@ -136,6 +143,7 @@ def main():
     stdout = "--stdout" in args
     status = "--status" in args
     resolved = None
+    snooze_until = None
     i = 0
     while i < len(args):
         a = args[i]
@@ -143,6 +151,10 @@ def main():
             i += 1; resolved = args[i]
         elif a.startswith("--resolved="):
             resolved = a.split("=", 1)[1]
+        elif a == "--snooze-until" and i + 1 < len(args):
+            i += 1; snooze_until = args[i]
+        elif a.startswith("--snooze-until="):
+            snooze_until = a.split("=", 1)[1]
         elif a not in ("--stdout", "--status"):
             sys.exit(f"unknown argument: {a}")
         i += 1
@@ -158,16 +170,40 @@ def main():
         print("this reminder is now silent.")
         return 0
 
+    if snooze_until is not None:
+        try:
+            datetime.strptime(snooze_until, "%Y-%m-%d")
+        except ValueError:
+            sys.exit("--snooze-until needs a YYYY-MM-DD date")
+        st["snoozed_until"] = snooze_until
+        save(st)
+        print(f"snoozed: quiet until {snooze_until}, still unresolved")
+        return 0
+
     days = (date.today() - SENT_ON).days
     if st.get("resolved_on"):
         if status:
             print(f"resolved {st['resolved_on']}: {st.get('resolution','')}")
         return 0
+
+    snoozed_until = st.get("snoozed_until")
+    snoozed_date = None
+    if snoozed_until:
+        try:
+            snoozed_date = datetime.strptime(snoozed_until, "%Y-%m-%d").date()
+        except ValueError:
+            snoozed_date = None  # unparseable snooze is not a snooze
+
     if status:
+        snooze_note = (f"; snoozed until {snoozed_until}"
+                        if snoozed_date and date.today() < snoozed_date else "")
         print(f"unresolved, {days} days since {SENT_ON.isoformat()}; "
               f"first reminder due {NOT_BEFORE.isoformat()}; "
-              f"last reminded {st.get('last_reminded','never')}")
+              f"last reminded {st.get('last_reminded','never')}{snooze_note}")
         return 0
+
+    if not stdout and snoozed_date and date.today() < snoozed_date:
+        return 0                          # snoozed; stay silent until the date
 
     if not stdout and date.today() < NOT_BEFORE:
         return 0                          # too soon to nag; stay silent
