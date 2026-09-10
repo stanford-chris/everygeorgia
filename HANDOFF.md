@@ -67,7 +67,9 @@ morning.
    date of the same title. For a nameplate a REVIEW costs a change of date,
    not a picture. Nothing REVIEW is posted by the script; the file is Chris's
    to read. REFUSE is skipped and named in the log.
-4. **Bounded**: `TITLES_PER_RUN` 4 × `TRIES_PER_TITLE` 5. A candidate page costs
+4. **Bounded**: `TITLES_PER_RUN` 8 × `TRIES_PER_TITLE` 5 (8 was 4 until the
+   dozen-post sample: three runs in twelve came up empty, because failures
+   correlate within a title and many titles hold one or two issues). A candidate page costs
    manifest + coordinates + one image (the probe of the top 22% is cut locally
    into the crop, so there is no second image call). A normal run is about 10
    calls, a bad one about 60, all cached.
@@ -117,11 +119,15 @@ from a cut box). Then, in order:
 - **After extending, one tall body again.** A light-face headline the walk
   crossed without meeting large ink would otherwise arrive as furniture.
 
-Measured on the eleven: Argus, Calhoun, Augusta 1915, Augusta 1921, Chronicle &
-Sentinel, Standard & Express, Savannah Daily Republican and Crawfordville pass
-and every crop was read by eye and is whole; the Banner-Herald, the Georgian
-and the Sunny South are refused, the first two for an unread headline and the
-third because its engraved title runs past 22% of the page. **No page in the
+Measured on twenty-three pages (the eleven, plus the dozen sample posts drawn
+for Chris the same day): twenty pass or REVIEW and every crop was read by eye
+and is whole; the Banner-Herald, the Georgian and the Sunny South are refused,
+the first two for an unread headline and the third because its engraved title
+runs past 22% of the page. Two more rules came out of the dozen: **the ink
+threshold is relative to the page's own contrast** (the washed-out Pembroke
+Journal of 1928 had its whole title read as paper at a fixed step below the
+paper median, and shipped cut), and **the dark top of a torn frame is stripped
+whole after a true film edge**, or it counts as a body of its own. **No page in the
 sample that should have been refused now passes, and no crop that passes is
 cut.** The cost is the dateline under some titles, which the walk stops above
 when the gap between them is narrow.

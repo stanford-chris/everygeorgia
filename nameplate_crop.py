@@ -88,8 +88,12 @@ WIDTH_SLACK = 3           # gate 6: the IIIF server rounds. 1599 and 1597 were
 
 # Gate 4, the ink edge. All relative to the page, never absolute pixels.
 INK_EDGE_COLUMN = 0.55    # a column this dark down the whole probe is film edge
-INK_BELOW_PAPER = 70      # a pixel this much darker than the paper median
-                          # (0-255) is ink; texture and foxing are not
+INK_BELOW_PAPER = 25      # a pixel at least this much darker than the paper
+                          # median (0-255) is ink, and at least...
+INK_SHARE = 0.40          # ...this share of the way from paper to the page's
+                          # own 5th-percentile pixel: 45 on a washed-out
+                          # 1928 scan, 72 on a crisp one, so texture and
+                          # foxing stay paper on both
 CROSS_FRAC = 0.004        # "the ink continues downward" is measured this
                           # fraction of PAGE height below each row (about 9
                           # rows on a 1600px-wide probe, 30px on the page).
@@ -237,7 +241,16 @@ def row_crossing(im, page_rows, edge_col=INK_EDGE_COLUMN,
     # Paper level: the median pixel over the kept columns is paper on any page
     # that is mostly paper, which a top-of-page probe always is.
     sample = sorted(px[x, y] for y in range(0, h, 3) for x in cols[::4])
-    thresh = sample[len(sample) // 2] - below
+    paper, ink = sample[len(sample) // 2], sample[len(sample) // 20]
+    # ⚠️ Relative to THIS page's contrast, not a fixed step below paper. The
+    # Pembroke Journal of 3 February 1928 is a washed-out scan whose letters
+    # sit at 124-135 on paper at 184: a fixed 70 below paper called every one
+    # of them paper, the whole title read as clear rows, and the crop cut
+    # through its lettering with the gate looking straight at it. The
+    # threshold is now a share of the distance from paper to the page's own
+    # dark end (its 5th-percentile pixel), which on a normal page lands where
+    # the fixed step did.
+    thresh = paper - max(below, int(INK_SHARE * (paper - ink)))
     n = float(len(cols))
     stride = max(4, int(round(page_rows * cross_frac)))
     out = []
@@ -304,13 +317,26 @@ def large_objects(rows, upto, page_rows, gap_frac=GAP_FRAC, margin=CLEAR_MARGIN,
     # was being counted as a title in its own right. The tail is bounded at
     # two gaps so a real title touching the film edge is not stripped with
     # it -- a title is far taller than a gradient.
+    # ⚠️ ...whether or not a row reads as film at all. On the Macon Telegraph
+    # of 15 January 1897 and the Chronicle & Sentinel of 5 November 1856 the
+    # frame's top is dark across part of the width only, so no row clears
+    # the film threshold, and the large-ink rows at row 0 plus the mottled
+    # gradient under them read as a tall body with big rows in it: a second
+    # object, and a clean page refused. Large ink at the very first row is
+    # never a title (a title has paper above it), so the leading large-ink
+    # run is stripped too, bounded at three gaps so a title flush against a
+    # dark frame keeps most of itself.
+    # ⚠️ And after a TRUE film edge the strip is unbounded: the Pembroke
+    # Journal of 3 February 1928 and the Schley County Enterprise of
+    # 3 November 1887 carry a torn, dark top edge 35-45 rows deep under the
+    # black frame, and a bound of three gaps left a third of it standing as
+    # a body. Nothing that begins with black across the page is a title.
     y0 = 0
     while y0 < n and rows[y0] > film:
         y0 += 1
-    if y0:
-        stop = min(n, y0 + 2 * gap)
-        while y0 < stop and rows[y0] > BIG_INK:
-            y0 += 1
+    stop = n if y0 else min(n, 3 * gap)
+    while y0 < stop and rows[y0] > BIG_INK:
+        y0 += 1
     count, run, seg, in_seg = 0, 0, [], False
     for y in range(y0, n):
         r = rows[y]

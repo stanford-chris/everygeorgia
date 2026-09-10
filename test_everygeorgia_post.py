@@ -260,7 +260,7 @@ class Promises(unittest.TestCase):
         self.assertIn(ep.CREDIT, ep.text_of(ep.compose(fake_result())))
 
     def test_run_is_bounded(self):
-        self.assertLessEqual(ep.TITLES_PER_RUN * ep.TRIES_PER_TITLE, 20)
+        self.assertLessEqual(ep.TITLES_PER_RUN * ep.TRIES_PER_TITLE, 40)
 
 
 if __name__ == "__main__":

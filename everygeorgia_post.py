@@ -30,7 +30,7 @@ the masthead is the same picture next week. Nothing REVIEW is ever posted
 by this script, and nothing REFUSED is ever posted by anyone.
 
 ⚠️ BOUNDED. At most TITLES_PER_RUN titles and TRIES_PER_TITLE dates each, so
-a bad morning costs about 60 API calls and a normal one about 10. A title
+a bad morning costs about 120 API calls and a normal one about 15. A title
 that yields nothing in a pass is skipped for that pass, never for good.
 
 ⚠️ THE LAUNCH THREAD GATES THE DAILY POSTS. Before `--launch` has run, a
@@ -89,7 +89,11 @@ KEYCHAIN_SERVICE = "everygeorgia-bluesky"
 TAGS = ("Georgia", "History")       # two, broad, as everylibrary's; a tag
                                     # facet is what puts a post in a feed
 TRIES_PER_TITLE = 5
-TITLES_PER_RUN = 4
+TITLES_PER_RUN = 8              # was 4: three runs in twelve came up empty on
+                                    # 11 September, because failures correlate
+                                    # within a title (an unreadable masthead
+                                    # fails on every date) and many titles hold
+                                    # one or two issues
 SHUFFLE_SEED = 20260911             # the day the poster was built; fixed so
                                     # the order is reproducible
 MAX_IMAGE_BYTES = 950_000           # under Bluesky's ~1 MB blob limit
