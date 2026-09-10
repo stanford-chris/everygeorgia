@@ -337,8 +337,8 @@ class Captions(unittest.TestCase):
                 "county": "Wilcox"}
         page = ghn_api.Page("sn89053135", "1898-01-06", 1, 1, 1, 1, "s")
         caption, alt, credit = npc.describe(meta, "1898-01-06", page)
-        self.assertIn("“The Abbeville chronicle,”", caption)
-        self.assertNotIn("chronicle.,", caption)
+        self.assertIn("“The Abbeville Chronicle,”", caption)
+        self.assertNotIn("hronicle.,", caption)
         self.assertIn("6 January 1898", caption)
         self.assertIn("Wilcox County", alt)
         self.assertIn("gahistoricnewspapers", credit)
@@ -569,6 +569,89 @@ class BlackPressIsNotErased(unittest.TestCase):
         v = gates.check("nameplate", "sn82016225", "1876-03-25",
                         crop_hits={"lynch"})
         self.assertEqual(v.outcome, gates.REFUSE)
+
+
+class InkEdge(unittest.TestCase):
+    """Gate 4, on synthetic crossing profiles. `page_rows` 2200 gives gap 9,
+    edge 4 and tall 20, the values the real 1600px probes produce."""
+    PAGE = 2200
+
+    def profile(self, spec):
+        """spec: list of (rows, value)."""
+        out = []
+        for n, v in spec:
+            out += [v] * n
+        return out
+
+    def test_edge_in_paper_is_left_alone(self):
+        rows = self.profile([(40, 0.3), (60, 0.0)])
+        self.assertEqual(npc.ink_bottom(rows, 60, self.PAGE, cluster_rows=40), 60)
+
+    def test_edge_in_small_ink_walks_to_the_next_gap(self):
+        rows = self.profile([(40, 0.3), (5, 0.0), (12, 0.03), (30, 0.0)])
+        # the gap starts at 57; plus the stride (9), where the ink really ends
+        self.assertEqual(npc.ink_bottom(rows, 50, self.PAGE, cluster_rows=40), 66)
+
+    def test_small_edge_then_large_ink_is_refused(self):
+        """The Georgian: dateline, no wide gap, then an unread headline."""
+        rows = self.profile([(40, 0.3), (5, 0.0), (12, 0.03), (3, 0.0), (40, 0.25), (30, 0.0)])
+        self.assertEqual(npc.ink_bottom(rows, 50, self.PAGE, cluster_rows=40), npc.BIG)
+
+    def test_large_edge_contiguous_with_cluster_walks_through(self):
+        """The Savannah Daily Republican: blackletter the OCR read the top of."""
+        rows = self.profile([(60, 0.3), (30, 0.0)])
+        self.assertEqual(npc.ink_bottom(rows, 40, self.PAGE, cluster_rows=30), 69)
+
+    def test_large_edge_not_contiguous_is_refused(self):
+        rows = self.profile([(30, 0.3), (10, 0.0), (40, 0.3), (30, 0.0)])
+        self.assertEqual(npc.ink_bottom(rows, 60, self.PAGE, cluster_rows=30), npc.BIG)
+
+    def test_no_gap_before_the_probe_ends_is_none(self):
+        rows = self.profile([(20, 0.0), (40, 0.3), (60, 0.05)])
+        self.assertIsNone(npc.ink_bottom(rows, 70, self.PAGE, cluster_rows=60))
+
+    def test_two_tall_bodies_count_two(self):
+        """The Banner-Herald: title, furniture, unread headline, all in band."""
+        rows = self.profile([(2, 0.0), (60, 0.3), (10, 0.0), (10, 0.03), (10, 0.0), (40, 0.25)])
+        self.assertEqual(npc.large_objects(rows, len(rows), self.PAGE), 2)
+
+    def test_film_edge_and_its_tail_are_not_a_body(self):
+        rows = self.profile([(12, 0.95), (12, 0.2), (20, 0.0), (60, 0.3), (10, 0.0)])
+        self.assertEqual(npc.large_objects(rows, len(rows), self.PAGE), 1)
+
+    def test_a_tall_faint_smear_is_not_a_body(self):
+        rows = self.profile([(30, 0.02), (20, 0.0), (60, 0.3), (10, 0.0)])
+        self.assertEqual(npc.large_objects(rows, len(rows), self.PAGE), 1)
+
+    def test_a_short_dateline_is_not_a_body(self):
+        rows = self.profile([(60, 0.3), (10, 0.0), (12, 0.2), (10, 0.0)])
+        self.assertEqual(npc.large_objects(rows, len(rows), self.PAGE), 1)
+
+    def test_row_crossing_sees_a_box_side_and_ignores_film_columns(self):
+        from PIL import Image
+        im = Image.new("L", (400, 200), 220)
+        px = im.load()
+        for y in range(200):                 # black film edge down the left
+            for x in range(0, 20):
+                px[x, y] = 0
+        for y in range(50, 90):              # a box side, 3px wide, 40 rows
+            for x in range(300, 303):
+                px[x, y] = 0
+        rows = npc.row_crossing(im, 2200)
+        self.assertEqual(len(rows), 200)
+        self.assertGreater(rows[60], 0.0)
+        self.assertEqual(rows[10], 0.0)      # film columns excluded, nothing else there
+        self.assertLess(rows[60], 0.02)      # a box side is small ink, not large
+
+    def test_width_slack_accepts_the_servers_rounding(self):
+        from PIL import Image
+        buf = __import__("io").BytesIO()
+        Image.new("RGB", (1598, 200), "white").save(buf, format="JPEG")
+        self.assertEqual(npc.check_image(buf.getvalue(), 1600), (1598, 200))
+        buf2 = __import__("io").BytesIO()
+        Image.new("RGB", (1500, 200), "white").save(buf2, format="JPEG")
+        with self.assertRaises(npc.Refused):
+            npc.check_image(buf2.getvalue(), 1600)
 
 
 if __name__ == "__main__":

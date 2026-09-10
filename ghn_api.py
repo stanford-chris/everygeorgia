@@ -51,7 +51,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 CACHE = os.path.join(HERE, "data", "cache")
 BASE = "https://gahistoricnewspapers.galileo.usg.edu"
 IIIF_HOST = "iiif-ha.galib.uga.edu"
-UA = ("everygeorgia/0.1 (crop research, unpublished; "
+UA = ("everygeorgia/1.0 (Bluesky @georgianewspapers.bsky.social; "
       "contact stanfordc+claude@mac.com)")
 PAUSE = 0.4
 TIMEOUT = 60

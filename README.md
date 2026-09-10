@@ -3,13 +3,11 @@
 A proposed Bluesky account posting clippings from **Georgia Historic Newspapers**,
 run by the Digital Library of Georgia at UGA.
 
-> ⛔ **NOTHING IS PUBLISHED, AND NOTHING SHOULD BE.**
-> A permission email went to `dlgnwp@uga.edu` and `gnp@uga.edu` on 21 August 2026.
-> No reply yet. The ask is specifically *permission to publish*, which is DLG's own
-> term of art: their [Using DLG Materials](https://dlg.usg.edu/teach/using-materials)
-> page grants educational and scholarly use freely but requires written permission
-> from the institution holding the physical item for publication. A public account
-> is publication. Do not post until they answer.
+> ✅ **Permission to publish arrived on 10 September 2026** from Donnie Summerlin,
+> Digital Projects Archivist, UGA Libraries, with one condition: credit the
+> Digital Library of Georgia. Every post ends "Presented online by the Digital
+> Library of Georgia." The poster was built on 11 September; the account itself
+> is created by hand. See `HANDOFF.md`.
 
 ## Why this project exists
 
@@ -51,10 +49,17 @@ this kind of clipping and stopped in December 2024.
 - `lanes.py` — provisional crop geometries for the headline and advertisement
   lanes, plus the text-block bound. ⚠️ Neither lane is designed, so these
   measure an assumption; they are drawn generously on purpose.
-- `nameplate_crop.py` — one clipping: image, caption and alt text, four gates.
+- `nameplate_crop.py` — one clipping: image, caption and alt text, six gates.
+  ⚠️ **Gate 4 reads the pixels**, because the OCR band ends where the OCR words
+  end and display type is what the OCR reads worst: two unread headlines shipped
+  as furniture and three crops were cut before it existed. See HANDOFF.md.
+- `everygeorgia_post.py` — the poster. One issue per title in a fixed shuffled
+  order; the GHN FAQ citation as the post; REVIEW logged to `data/review.jsonl`
+  and skipped; `--launch` for the pinned thread; `--setup-profile`.
+- `profile.py` — the bio and the six-post thread as data.
 - `crop_frequency.py` — the crop-level measurement above, plus `--titles`.
 - `permission_followup.py` — the UGA reminder. ⛔ Mails Chris, never UGA.
-- `test_nameplate.py` — 37 tests, stdlib only, verified by mutation.
+- `test_nameplate.py` — 67 tests, stdlib only. `test_everygeorgia_post.py` — 25.
 - `avatar/avatar_G_dark_72.png` — a blackletter G from the *Georgia Weekly Telegraph
   and Georgia Journal & Messenger*, Macon, 23 February 1875. Source image kept
   alongside it so the provenance travels with the asset.

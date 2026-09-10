@@ -2,8 +2,9 @@
 
 Everything needed to set the account up.
 
-> ⛔ **The account does not exist and must not be created yet.** A permission
-> email went to UGA on 21 August 2026 and has not been answered. See `README.md`.
+> ✅ **Permission arrived 10 September 2026.** The account is created by hand;
+> `profile.py` holds this text as data and `everygeorgia_post.py --setup-profile`
+> writes it. Change this file and `profile.py` together.
 
 ## Handle and name
 
@@ -233,13 +234,18 @@ denominator matters here more than anywhere else.
 Alt text: It carries the actual words of the clip, not a description, so a screen reader gets what the page says.
 ```
 
-**5 — the avatar (288, link as a facet)**
+**5 — the avatar (290, link as a facet)**
 ```
-This account's avatar is a clipping too: An ornate blackletter capital G from the nameplate of the Georgia Weekly Telegraph and Georgia Journal & Messenger, Macon, Feb. 23, 1875. The white pitting in the strokes is the microfilm, not a filter.
+This account's avatar is a clipping too: An ornate blackletter capital G from the nameplate of the Georgia Weekly Telegraph and Georgia Journal & Messenger, Macon, 23 February 1875. The white pitting in the strokes is the microfilm, not a filter.
 
 gahistoricnewspapers.galileo.usg.edu/lccn/…
 ```
 → facet target: `https://gahistoricnewspapers.galileo.usg.edu/lccn/sn85034222/1875-02-23/ed-1/seq-1/`
+
+⚠️ **The date moved from "Feb. 23, 1875" to "23 February 1875" on 11 September
+2026.** Every daily post carries its date in UK order (house style), so the one
+pinned post with a date in it would otherwise have read as an error beside
+them. Two characters; 290.
 
 ⚠️ **This post needs the link as a facet.** With the URL written out it is 309
 characters. A facet stores the URI outside the text, so the visible form costs

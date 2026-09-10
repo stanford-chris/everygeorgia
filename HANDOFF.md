@@ -1,34 +1,137 @@
-# everygeorgia — where things stand, 26 August 2026
+# everygeorgia — where things stand, 11 September 2026
 
 A Bluesky account posting clippings from **Georgia Historic Newspapers**, run by
 the Digital Library of Georgia at UGA. Read `README.md` for the technical
 findings and `PROFILE.md` for the account text and the reasoning behind every
 line of it.
 
-## ⛔ The one rule
+## ✅ Permission arrived on 10 September 2026, and the poster is built
 
-**Nothing is published, the account does not exist, and neither should change
-until UGA replies.** A permission email went to `dlgnwp@uga.edu` and
-`gnp@uga.edu` on 21 August 2026. DLG's terms grant educational use freely but
-require written permission from the holding institution to *publish*, and a
-public account is publication. Silence is not permission; set a date to follow
-up rather than letting it drift into a tacit yes.
+Donnie Summerlin, Digital Projects Archivist at UGA Libraries, replied to the
+21 August request on 10 September (T. Rashaun Ellis copied): "Yes, please do.
+We only ask that you credit the Digital Library of Georgia." On the rights
+question: "You can feel free to use the materials that are no longer under
+copyright however you choose. Permission from us is not necessary." On the
+citation form: "Feel free to cite in whatever form you prefer. Those are
+merely suggestions." On traffic: he forwarded the rate-limit question to their
+developers weeks ago, they never replied, and he is chasing it, so **no rate
+limit or User-Agent has been asked for**; ours identifies the account anyway
+(`ghn_api.UA`). On content: "It is up to your discretion to select what you
+post, but a cautious approach is certainly warranted." The mail is in the
+Inbox; `permission_followup.py --resolved` was run the same day and the
+reminder is silent.
 
-✅ **That follow-up date now exists, and until 26 August 2026 it did not.** The
-instruction above was written on the 21st and never carried out: a grep of this
-repo, the memory file and the observation log found no date, no reminder and no
-job anywhere. The only thing standing between the project and death by drift was
-somebody happening to ask. `permission_followup.py` now mails Chris if UGA has
-not replied, first on **4 September 2026** (two weeks after the email) and every
-14 days after that, under `com.chrisstanford.everygeorgiafollowup` (weekly
-check, Fridays 09:30, `~/Library/LaunchAgents`).
+**What was built on 11 September 2026:**
 
-⛔ **It sends nothing to UGA and must never learn how.** It prompts Chris; the
-decision to write again is his. Silence it with
-`permission_followup.py --resolved "what happened"` once they reply.
+| | |
+| --- | --- |
+| `everygeorgia_post.py` | the poster: selection, the citation post, the six-post launch thread, `--setup-profile` |
+| `profile.py` | the bio and thread as data, curled once, tested against the limits |
+| gate 4, the ink edge | in `nameplate_crop.py`; see below, it is most of the day |
+| `test_everygeorgia_post.py` | 25 tests; `test_nameplate.py` is now 67 |
+| `com.chrisstanford.everygeorgia` | loaded from `~/Library/LaunchAgents`, 09:10 and 23:10 KST, exits 0 in one line until the thread is posted (verified by `kickstart`) |
 
-⛔ **Do not send a second email yet.** Decided 21 August: wait to hear back
-before writing again, including about the API trouble below.
+⛔ **What is NOT done, and cannot be done by a script: the account does not
+exist.** Chris creates `georgianewspapers.bsky.social` and puts an app password
+in this Mac's Keychain, in a GUI session:
+
+```bash
+security add-generic-password -a "georgianewspapers.bsky.social" -s "everygeorgia-bluesky" -w
+```
+
+Then, in order: `everygeorgia_post.py --setup-profile` (name, bio, avatar),
+`--launch` (the thread, post 1 pinned), and the daily job takes over by itself.
+After launch, add the bot to `bot_health_check.py`, `bot_alt_check.py`,
+`bot_variety_check.py` and `bot_scout_collect.py`, which was deliberately not
+done ahead: a health check on an account that does not exist alerts every
+morning.
+
+## The poster, in five decisions
+
+1. **One issue per title, titles in a fixed shuffled order** (`SHUFFLE_SEED`,
+   appended never reshuffled), so all 836 titles with a pre-1931 NoC-US issue
+   post once before any posts twice. Without it the Atlanta Georgian's 14,185
+   issues would be one post in fifteen. Within a title the date is a seeded
+   shuffle keyed on the pass number, so pass 2 shows a different year.
+2. **The post is the GHN FAQ citation**, as promised on 21 August, with a
+   bracketed description in the article slot and the sequence number as the
+   page: `[Nameplate], “The Independent Press,” Eatonton, 13 January 1855,
+   p. 1, gahistoricnewspapers.galileo.usg.edu/lccn/…/seq-1. Presented online
+   by the Digital Library of Georgia.` then `#Georgia #History` as tag facets.
+   The URL is a link facet; a title so long the post would pass 300 shortens
+   the visible URL, never the credit. Dates are UK order, house style, and
+   **post 5 of the thread moved from "Feb. 23, 1875" to "23 February 1875"**
+   to match. Titles come through `display_title()`: the roster's catalogue
+   case ("The Abbeville chronicle.") becomes "The Abbeville Chronicle".
+3. **REVIEW is logged to `data/review.jsonl` and the run moves on** to the next
+   date of the same title. For a nameplate a REVIEW costs a change of date,
+   not a picture. Nothing REVIEW is posted by the script; the file is Chris's
+   to read. REFUSE is skipped and named in the log.
+4. **Bounded**: `TITLES_PER_RUN` 4 × `TRIES_PER_TITLE` 5. A candidate page costs
+   manifest + coordinates + one image (the probe of the top 22% is cut locally
+   into the crop, so there is no second image call). A normal run is about 10
+   calls, a bad one about 60, all cached.
+5. **Two a day, 09:10 and 23:10 KST** (8:10 p.m. and 10:10 a.m. US Eastern),
+   the everycarnegie reasoning: the audience is American. Ten minutes off
+   everycarnegie's slots so two bots are not logging in at once. Not decided
+   by Chris; change the plist if he wants otherwise.
+
+⚠️ **The alt text lost a sentence.** It ended "Scanned from microfilm; the page
+is worn and the ink uneven", which was true of the one crop it was written
+beside and unverified for every other. It now says only what the archive holds
+exactly, plus what the detector guarantees (display type at the top of the
+front page).
+
+## Gate 4, the ink edge: the crops were read, and a fifth of them were wrong
+
+HANDOFF said "read the crops; do not read only the summary line". Done, on
+11 September, on eleven pages: **two shipped a headline as furniture, one cut
+an engraved title in half, one cut a corner box, one cut its own letters'
+feet.** Every one passed every gate. The cause is one thing: the band is built
+from OCR word boxes, and display type is what the OCR reads worst, so the band
+ends where the OCR words end rather than where the ink ends.
+
+`refine_band()` now reads the pixels. It fetches the top 22% of the page once
+at the final width, and for every row measures **continuing ink**: the share
+of columns dark at that row and again nine rows down. A rule reads near zero
+(it stops); a glyph or a box side reads high (it continues); a torn, taped,
+foxed page reads near zero too, which a plain darkness count did not (the
+Middle Georgia Argus read 5-7% dark at a perfectly clean edge, indistinguishable
+from a cut box). Then, in order:
+
+- **One tall body of ink in the band, or refuse.** Bodies are runs of non-clear
+  rows parted by a gap of paper; tall is 0.9% of the page; a body must hold
+  some rows of large ink or it is a smear (the Crawfordville Democrat's torn
+  top edge is 23 rows of faint ink). The film edge and its soft tail are
+  stripped from the front. **This is the rule that catches the Banner-Herald**:
+  the OCR read the "LARRY GANTT'S COLUMN" box beside the banner headline and
+  nothing of the headline, so the geometry took the headline row as a sparse
+  dateline and, worse, called the box the masthead cluster, so no rule
+  anchored on the cluster could see it.
+- **If the band's edge cuts ink, walk down to the first gap** (0.4% of the page
+  of clear rows) and end there plus the measure's nine-row blind zone (without
+  that the Independent Press came back with its letters' feet cut). The walk
+  refuses rather than cross large ink unless the edge is already in large ink
+  that is contiguous with the cluster (a blackletter the OCR read the top of),
+  and it may not reach display type the OCR did read, nor body text, nor 22%.
+- **After extending, one tall body again.** A light-face headline the walk
+  crossed without meeting large ink would otherwise arrive as furniture.
+
+Measured on the eleven: Argus, Calhoun, Augusta 1915, Augusta 1921, Chronicle &
+Sentinel, Standard & Express, Savannah Daily Republican and Crawfordville pass
+and every crop was read by eye and is whole; the Banner-Herald, the Georgian
+and the Sunny South are refused, the first two for an unread headline and the
+third because its engraved title runs past 22% of the page. **No page in the
+sample that should have been refused now passes, and no crop that passes is
+cut.** The cost is the dateline under some titles, which the walk stops above
+when the gap between them is narrow.
+
+⚠️ **Every threshold in that gate was set against these eleven pages and no
+others.** `InkEdge` in `test_nameplate.py` pins each rule on a synthetic
+profile, and the pages are named in the code beside the constant they set.
+Re-run `nameplate_crop.py <lccn> <date> --out x.jpg` and LOOK before moving
+one. `crop_frequency.py` has not been re-run under the new gate, so its PASS
+rates are the old gate's.
 
 ## Done
 
@@ -39,11 +142,12 @@ before writing again, including about the API trouble below.
 | Profile text | **Settled.** Bio at 233/256 and six pinned posts, all verified |
 | Corpus measurement | Frequency table in `README.md`, measured not estimated |
 | Picture detector | Works; see README. Finds pictures, not specifically cartoons |
-| Permission email | Sent |
+| Permission email | Sent; **answered yes, 10 September 2026** |
 | Rights join | **Completed 22 August**, 1,159 rows. 843 titles postable |
 | Nameplate lane | **Built 26 August**: detector, crop pipeline, 37 tests |
 | Crop-level measure | **Done 26 August.** Step 5 below is discharged |
-| Follow-up reminder | **Set 26 August**, first fires 4 September |
+| Follow-up reminder | Fired 4 September; **resolved 11 September** |
+| Poster, profile, launch thread, launchd job | **Built 11 September** |
 
 The thread runs 264, 272, 204, 113, 288, 252 characters. Post 1 is pinned; 2–6
 thread beneath. Only post 5 needs a link facet. Both handles in post 6 resolved
@@ -377,10 +481,12 @@ route.
    **advertisement** and **headline** lanes before either opens: the figures
    above are the nameplate band's, and say nothing about a crop taken from the
    middle of a page.
-6. **Wait for UGA**, and answer the reminder when it arrives on 4 September.
-7. When permission lands, read the reply for conditions before building
-   anything else. A yes with conditions changes which lanes ship, which is what
-   open question 2 turns on.
+6. ~~Wait for UGA.~~ **Answered 10 September: yes, credit DLG.**
+7. ~~Read the reply for conditions.~~ **One condition, the credit line, and
+   every post carries it.** Open question 2 is settled for the nameplate lane,
+   which is the only lane shipping: nothing is generated, nothing to disclose.
+8. **Chris creates the account and stores the app password**, then
+   `--setup-profile`, `--launch`, and the audits gain a bot each.
 
 `rights_join_tick.sh` is spent but kept: it documents how the join was gated,
 and it exits 0 in silence the moment the csv exists.
