@@ -21,7 +21,7 @@ import os
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 HANDLE = "georgianewspapers.bsky.social"
-DISPLAY_NAME = "Georgia Newspaper Clippings"
+DISPLAY_NAME = "Georgia in Print"
 AVATAR = os.path.join(HERE, "avatar", "avatar_G_dark_72.png")
 GHN = "https://gahistoricnewspapers.galileo.usg.edu"
 

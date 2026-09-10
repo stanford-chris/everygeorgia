@@ -11,7 +11,7 @@ Everything needed to set the account up.
 | | |
 | --- | --- |
 | Handle | `georgianewspapers.bsky.social` |
-| Display name | **Georgia Newspaper Clippings** (27 of 64) |
+| Display name | **Georgia in Print** (16 of 64). ✅ Chris's choice at launch, 11 September 2026, over "Georgia Newspaper Clippings", which he found flat once the bio carried the explanation. Rejected the same minute: "The Georgia Clipper" (reads as a real title), "Georgia Clippings" (coupons), "Georgia Front Pages" (the ad lane won't all be). |
 | Avatar | `avatar/avatar_G_dark_72.png` (1024×1024, 248 KB) |
 
 All four candidates were free when checked on 21 August 2026:
