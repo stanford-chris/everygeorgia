@@ -252,10 +252,15 @@ characters. A facet stores the URI outside the text, so the visible form costs
 45 characters rather than 75. Verified against live posts: the full URL does not
 appear in `record.text` at all.
 
-**6 — who runs it (252)**
+**6 — who runs it (233)**
 ```
-Run by @stanfordc.bsky.social, not the Digital Library of Georgia: Born in Atlanta, I'm a graduate of the journalism school at UGA (@ugagrady.bsky.social). I've had a 30-year career in newspapers, starting at The Augusta Chronicle. Corrections welcome.
+Run by @stanfordc.bsky.social, not the Digital Library of Georgia. Born in Atlanta, I'm a graduate of the journalism school at UGA (@ugagrady.bsky.social) and started my newspaper career at The Augusta Chronicle. Corrections welcome.
 ```
+✅ **Rewritten by Chris on 11 September 2026, minutes before launch**: the
+"30-year career" sentence went, the two facts became one sentence, and the
+colon after "Georgia" became a full stop, so this is the one card in the
+thread that does not open with a label and a colon. His wording; do not
+"restore" the colon for consistency with the note at the head of this section.
 ✅ **Both handles were verified to resolve on 21 August 2026** via
 `app.bsky.actor.getProfile`: `stanfordc.bsky.social` ("Chris Stanford") and
 `ugagrady.bsky.social` ("UGA Grady College of Journalism and Mass

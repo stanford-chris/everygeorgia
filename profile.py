@@ -91,10 +91,10 @@ THREAD = [
     },
     {
         "text": (
-            "Run by @stanfordc.bsky.social, not the Digital Library of Georgia: "
+            "Run by @stanfordc.bsky.social, not the Digital Library of Georgia. "
             "Born in Atlanta, I'm a graduate of the journalism school at UGA "
-            "(@ugagrady.bsky.social). I've had a 30-year career in newspapers, "
-            "starting at The Augusta Chronicle. Corrections welcome."
+            "(@ugagrady.bsky.social) and started my newspaper career at The Augusta "
+            "Chronicle. Corrections welcome."
         ),
         "links": [],
         "mentions": ["stanfordc.bsky.social", "ugagrady.bsky.social"],
