@@ -39,6 +39,12 @@ read non-zero exits as faults, and a job loaded ahead of its opening must not
 raise them). After it, a missing thread is a fault: the account would open
 with a masthead from Abbeville and no explanation of what any of it is.
 
+⚠️ A dry run still APPENDS TO data/review.jsonl. It writes no post and no
+state, but a REVIEW it meets is a page a person should see whether or not the
+run was real, and a preview that discarded it would show a clean feed drawn
+from a queue nobody was told about. Named here because this estate has one
+documented case of a "writes nothing" flag that wrote something.
+
 ⚠️ Bare run posts live; --dry-run previews. That is this estate's convention
 for scheduled bots (the reverse of nameplate_crop.py, which is a research
 tool and fails closed). Unknown flags are rejected rather than ignored, so a
@@ -545,7 +551,9 @@ def main():
             time.sleep(2)
 
     if args.dry_run:
-        print("\nDry run: nothing posted, no state written.")
+        print("\nDry run: nothing posted, no state written"
+              + (f"; REVIEW lines were appended to {os.path.relpath(REVIEW_FILE, HERE)}."
+                 if os.path.exists(REVIEW_FILE) else "."))
 
 
 if __name__ == "__main__":
