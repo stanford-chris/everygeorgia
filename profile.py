@@ -26,8 +26,10 @@ AVATAR = os.path.join(HERE, "avatar", "avatar_G_dark_72.png")
 GHN = "https://gahistoricnewspapers.galileo.usg.edu"
 
 BIO = (
-    "Clippings from Georgia's newspapers before 1931: Nameplates, "
-    "advertisements, headlines, market reports.\n\n"
+    # ⚠️ Chris's wording, set live on Bluesky on 11 September 2026 and read
+    # back from the API here, so --setup-profile re-writes what he wrote.
+    "A 🤖 posting clippings from Georgia's newspapers before 1931: Nameplates, "
+    "advertisements, headlines, market reports. 🗞️\n\n"
     "From Georgia Historic Newspapers, presented online by the Digital Library "
     "of Georgia. Unofficial. Run by @stanfordc.bsky.social."
 )

@@ -34,7 +34,17 @@ running a URL detector over the text, and a hyphen in the domain kills it.
 
 ## Description
 
-233 of 256 characters.
+248 of 256 characters. ✅ **Chris's wording, set live on 11 September 2026**
+at launch, replacing the 233-character draft below it; `profile.py` carries it
+verbatim, read back from the API.
+
+```
+A 🤖 posting clippings from Georgia's newspapers before 1931: Nameplates, advertisements, headlines, market reports. 🗞️
+
+From Georgia Historic Newspapers, presented online by the Digital Library of Georgia. Unofficial. Run by @stanfordc.bsky.social.
+```
+
+The 21 August draft, for the record (233):
 
 ```
 Clippings from Georgia's newspapers before 1931: Nameplates, advertisements, headlines, market reports.
