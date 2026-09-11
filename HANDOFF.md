@@ -239,6 +239,30 @@ Tests: `test_clips.py` (12, synthetic page with columns, gutters and a
 rule), `test_everygeorgia_post.py` (30, lanes and rotation), `test_nameplate.py`
 (69). All stdlib plus Pillow, no network, no model.
 
+## ⏳ Next lane to build: notice, from weeklies' front pages (his call, 11 September 2026)
+
+"I'm not opposed to featuring clips of ads and notices." The headline lane finds the
+topmost display item below the nameplate and, on a weekly, throws it away as not a
+headline: the attorneys' card, the county directory, the paper's own rate card, a
+sheriff's sale. Those are the clip. The ad lane reaches weeklies only by search on a
+phrase, which finds shape and never genre, so this is a sixth lane, not a widening
+of that one.
+
+**Build it after a week or two of real posts**, once the five lanes' real balance is
+visible, and not before: the launch was scheduled and verified as it stood.
+- The headline lane's machinery (`items.snapped`, `_headline_item`) with its
+  advertisement REFUSAL inverted: a transcription reading as an ad or a notice is
+  the pass, a news headline the refusal. Draw from the non-dailies.
+- Transcribed by the model, gated on the vocabulary prefixes like every lane, alt
+  prefixed `A.I.-transcribed`, label `[Notice]` or `[Advertisement]` by what the
+  transcription reads as.
+- ⚠️ **The era floor is the ad lane's, 1867, and is not negotiable**: before 1865 the
+  standing legal-notice block on a weekly's front page is a slave-sale rate card,
+  measured at 68.8 percent of front pages (README, "The advertisement lane before
+  1865"). The notice lane starts where the ad lane does.
+- Measure on twenty weekly front pages by eye before it ships, as every lane was,
+  and add it to `LANES` last.
+
 ## ⏳ Inside pages for headlines and articles: wanted, not yet possible
 
 Chris, 11 September 2026: "I'd eventually like to include inside pages."
