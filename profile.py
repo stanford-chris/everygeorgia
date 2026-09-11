@@ -47,10 +47,12 @@ THREAD = [
             "What this is: Clippings from Georgia's newspapers, 1763 to the 1970s — "
             "nameplates, headlines, articles, ads, market reports — with the name of "
             "the paper, the date and a link to the full page.\n\n"
-            "Everything comes from Georgia Historic Newspapers: "
-            "gahistoricnewspapers.galileo.usg.edu"
+            "Everything comes from Georgia Historic Newspapers."
         ),
-        "links": [("gahistoricnewspapers.galileo.usg.edu", GHN + "/")],
+        # The archive's link rides on its name, his call on launch evening
+        # (11 September 2026), as in posts 5 and 6: no printed URL anywhere
+        # in the thread.
+        "links": [("Georgia Historic Newspapers", GHN + "/")],
         "mentions": [],
     },
     {
