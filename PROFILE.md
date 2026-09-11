@@ -244,18 +244,20 @@ denominator matters here more than anywhere else.
 Alt text: It carries the actual words of the clip, not a description, so a screen reader gets what the page says.
 ```
 
-**5 — the avatar (290, link as a facet)**
+**5 — the avatar (292, link as a facet)**
 ```
-This account's avatar is a clipping too: An ornate blackletter capital G from the nameplate of the Georgia Weekly Telegraph and Georgia Journal & Messenger, Macon, 23 February 1875. The white pitting in the strokes is the microfilm, not a filter.
+This account's avatar is a clipping too: An ornate blackletter capital G from the nameplate of the Georgia Weekly Telegraph and Georgia Journal & Messenger, Macon, February 23, 1875. The white pitting in the strokes is the microfilm, not a filter.
 
 gahistoricnewspapers.galileo.usg.edu/lccn/…
 ```
 → facet target: `https://gahistoricnewspapers.galileo.usg.edu/lccn/sn85034222/1875-02-23/ed-1/seq-1/`
 
-⚠️ **The date moved from "Feb. 23, 1875" to "23 February 1875" on 11 September
-2026.** Every daily post carries its date in UK order (house style), so the one
-pinned post with a date in it would otherwise have read as an error beside
-them. Two characters; 290.
+⚠️ **The date is U.S. order, full month: "February 23, 1875".** It was "Feb. 23,
+1875" in the 21 August draft, moved to "23 February 1875" for a few hours on
+11 September 2026 to match the daily posts, and then he asked for U.S. dates
+across the whole account ("Render the dates U.S. style"), which the daily posts
+now follow too (`nameplate_crop.post_date()`). This is the one account where
+the house rule on dates does not apply. 292 characters.
 
 ⚠️ **This post needs the link as a facet.** With the URL written out it is 309
 characters. A facet stores the URI outside the text, so the visible form costs

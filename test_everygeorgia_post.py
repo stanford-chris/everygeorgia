@@ -42,7 +42,7 @@ def fake_result(lccn="sn89053135", date="1898-01-06", outcome=gates.PASS,
 class Compose(unittest.TestCase):
     def test_citation_form_with_credit_and_tags(self):
         text = ep.text_of(ep.compose(fake_result()))
-        self.assertTrue(text.startswith("[Nameplate], “The Abbeville Chronicle,” Abbeville, 6 January 1898, p. 1, "))
+        self.assertTrue(text.startswith("[Nameplate], “The Abbeville Chronicle,” Abbeville, January 6, 1898, p. 1, "))
         self.assertIn("gahistoricnewspapers.galileo.usg.edu/lccn/sn89053135/1898-01-06/ed-1/seq-1. "
                       "Presented online by the Digital Library of Georgia.", text)
         self.assertTrue(text.endswith("\n\n#Georgia #History"))
@@ -60,7 +60,7 @@ class Compose(unittest.TestCase):
 
     def test_city_is_omitted_when_the_roster_has_none(self):
         text = ep.text_of(ep.compose(fake_result(title="The Gwinnett herald.", city="")))
-        self.assertIn("“The Gwinnett Herald,” 6 January 1898", text)
+        self.assertIn("“The Gwinnett Herald,” January 6, 1898", text)
 
     def test_a_long_title_shortens_the_visible_url_not_the_credit(self):
         long = "The bulletin of the Catholic Laymen's Association of Georgia and its friends everywhere."
@@ -276,8 +276,8 @@ class LaunchThread(unittest.TestCase):
         link = next(s for s in fifth if s[0] == "link")
         self.assertEqual(link[2], "https://gahistoricnewspapers.galileo.usg.edu/lccn/sn85034222/1875-02-23/ed-1/seq-1/")
 
-    def test_post_five_date_is_uk_order(self):
-        self.assertIn("23 February 1875", prof.thread()[4]["text"])
+    def test_post_five_date_is_us_order_full_month(self):
+        self.assertIn("February 23, 1875", prof.thread()[4]["text"])
         self.assertNotIn("Feb.", prof.thread()[4]["text"])
 
     def test_nothing_straight_reaches_the_feed(self):

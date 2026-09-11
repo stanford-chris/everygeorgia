@@ -10,11 +10,10 @@ why; this is the record of what. They were one thing until 11 September 2026,
 when the account went from proposed to being built and the text needed a
 form a script could post.
 
-⚠️ Post 5's date reads "23 February 1875" here and read "Feb. 23, 1875" in
-PROFILE.md until 11 September 2026. Every daily post carries its date in UK
-order (house style, and nameplate_crop.uk_date()), so an AP-style date in the
-one pinned post that carries one would read as an error beside them. Changed
-here and in PROFILE.md the same day; 290 characters.
+⚠️ Post 5's date reads "February 23, 1875": U.S. order, full month, matching
+every daily post (nameplate_crop.post_date()). It was "Feb. 23, 1875" in the
+21 August draft and "23 February 1875" for a few hours on 11 September 2026,
+until he asked for U.S. dates across the account. 292 characters.
 """
 import os
 
@@ -83,7 +82,7 @@ THREAD = [
         "text": (
             "This account's avatar is a clipping too: An ornate blackletter "
             "capital G from the nameplate of the Georgia Weekly Telegraph and "
-            "Georgia Journal & Messenger, Macon, 23 February 1875. The white "
+            "Georgia Journal & Messenger, Macon, February 23, 1875. The white "
             "pitting in the strokes is the microfilm, not a filter.\n\n"
             "gahistoricnewspapers.galileo.usg.edu/lccn/…"
         ),

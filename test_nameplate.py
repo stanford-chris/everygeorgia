@@ -327,9 +327,9 @@ class Gates(unittest.TestCase):
 
 
 class Captions(unittest.TestCase):
-    def test_uk_date_order_no_ordinal(self):
-        self.assertEqual(npc.uk_date("1898-01-06"), "6 January 1898")
-        self.assertEqual(npc.uk_date("1845-03-08"), "8 March 1845")
+    def test_us_date_order_full_month_no_ordinal(self):
+        self.assertEqual(npc.post_date("1898-01-06"), "January 6, 1898")
+        self.assertEqual(npc.post_date("1845-03-08"), "March 8, 1845")
 
     def test_caption_uses_curly_quotes_for_the_work_title(self):
         """House style: titles of works take quotation marks, not italics."""
@@ -339,7 +339,7 @@ class Captions(unittest.TestCase):
         caption, alt, credit = npc.describe(meta, "1898-01-06", page)
         self.assertIn("“The Abbeville Chronicle,”", caption)
         self.assertNotIn("hronicle.,", caption)
-        self.assertIn("6 January 1898", caption)
+        self.assertIn("January 6, 1898", caption)
         self.assertIn("Wilcox County", alt)
         self.assertIn("gahistoricnewspapers", credit)
 

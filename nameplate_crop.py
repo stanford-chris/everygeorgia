@@ -124,10 +124,17 @@ def roster():
         return {r["lccn"]: r for r in csv.DictReader(f)}
 
 
-def uk_date(iso):
-    """1898-01-06 -> 6 January 1898. UK order, no ordinal suffix."""
+def post_date(iso):
+    """1898-01-06 -> January 6, 1898. ⚠️ U.S. order, his instruction of
+    11 September 2026, reversing the house rule for this account alone: the
+    audience is American, the archive's own citation form is American
+    ("March 9, 1939"), and every date in the feed reads as the paper's
+    readers would have written it. Full month, no ordinal suffix."""
     y, m, d = iso.split("-")
-    return f"{int(d)} {MONTHS[int(m) - 1]} {y}"
+    return f"{MONTHS[int(m) - 1]} {int(d)}, {y}"
+
+
+uk_date = post_date     # the old name, kept so nothing else breaks
 
 
 SMALL_WORDS = {"a", "an", "and", "the", "of", "for", "on", "in", "at", "to",
@@ -159,12 +166,12 @@ def describe(meta, date, page):
     """Caption and alt text, assembled from archive metadata only.
 
     ⚠️ House style: work titles take quotation marks, not italics, and the
-    newspaper's own name is the work here. Dates are UK order."""
+    newspaper's own name is the work here. Dates are U.S. order."""
     title = display_title(meta.get("title"))
     city = (meta.get("city") or "").strip()
     county = (meta.get("county") or "").strip()
     where = f"{city}, Georgia" if city else "Georgia"
-    caption = (f"“{title},” {where}, {uk_date(date)}.")
+    caption = (f"“{title},” {where}, {post_date(date)}.")
     # ⚠️ Nothing here is asserted that the archive does not hold exactly. An
     # earlier version ended "Scanned from microfilm; the page is worn and the
     # ink uneven", which was true of the one crop it was written beside and
@@ -172,7 +179,7 @@ def describe(meta, date, page):
     # which is what post 4 of the pinned thread promises the alt carries.
     alt = (f"The nameplate of “{title},” a newspaper published in {where}"
            + (f" ({county} County)" if county else "")
-           + f", as printed on {uk_date(date)}: the paper’s name in large "
+           + f", as printed on {post_date(date)}: the paper’s name in large "
            "display type, cropped from the top of the front page.")
     return caption, alt, f"{page.url}  (Georgia Historic Newspapers, Digital Library of Georgia)"
 

@@ -303,7 +303,7 @@ def compose(r):
     article title, and the image sequence number as the page, as the FAQ's own
     example does. The city is added after the title (post 5 of the pinned
     thread does the same) because half the roster's titles do not name their
-    town. Dates are UK order, house style. Their reply said the form is ours
+    town. Dates are U.S. order, his instruction, for this account alone. Their reply said the form is ours
     to choose; the credit sentence is the one thing they asked for."""
     meta = r["meta"]
     title = npc.display_title(meta.get("title"))
@@ -312,7 +312,7 @@ def compose(r):
     url = r["url"]
     where = f" {city}," if city else ""
     label = LANE_LABEL[r.get("lane", "nameplate")]
-    head = f"[{label}], “{title},”{where} {npc.uk_date(r['date'])}, p. {seq}, "
+    head = f"[{label}], “{title},”{where} {npc.post_date(r['date'])}, p. {seq}, "
     tail = f". {CREDIT}\n\n"
     visible = url.replace("https://", "").rstrip("/")
     tags = [("tag", f"#{t}", t) for t in TAGS]
@@ -364,7 +364,7 @@ def alt_text(r):
     what = {"headline": "headline", "article": "article", "ad": "advertisement",
             "market": "market report"}[lane]
     lead = f"{transcribe.PREFIX} {what}" if r.get("generated") else what.capitalize()
-    alt = (f"{lead} from “{title},” {where}, {npc.uk_date(r['date'])}, page {seq}, "
+    alt = (f"{lead} from “{title},” {where}, {npc.post_date(r['date'])}, page {seq}, "
            f"reading: “{r['words']}”")
     if len(alt) > ALT_MAX:
         alt = alt[:ALT_MAX - 2].rstrip() + "…”"
