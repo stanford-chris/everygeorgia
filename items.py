@@ -113,6 +113,34 @@ def candidates(lane, words, page_width, page_height, nameplate_bottom=0):
     return out
 
 
+def split_at_gutters(cands, words, cw, ch, pi):
+    """Split a display segment wherever a page gutter or column rule lies
+    between two of its words. The gap test misses column headlines set
+    close either side of a rule: "FRENCH DESTROY | MEMORIAL DAY | TWO"
+    on the Cordele Dispatch of 26 April 1918 was one row to the OCR and
+    three headlines to a reader."""
+    per = pi.page.scale * pi.scale                 # small px per OCR unit
+    bounds = sorted(g[0] for g in pi.gutters())
+    out = []
+    for b, seg in cands:
+        seg = sorted(seg, key=lambda w: w[0])
+        pieces, cur = [], [seg[0]]
+        for w in seg[1:]:
+            prev = cur[-1]
+            a, z = (prev[0] + prev[2]) * per, w[0] * per
+            if any(a < gx < z for gx in bounds):
+                pieces.append(cur); cur = [w]
+            else:
+                cur.append(w)
+        pieces.append(cur)
+        for p in pieces:
+            nb = box_with_deck(p, words, cw, ch)
+            if nb:
+                out.append((nb, p))
+    out.sort(key=lambda t: (t[0][1], t[0][0]))
+    return out
+
+
 def snapped(lane, page, coords, pi=None):
     """Candidates snapped to the grid: [(snapped_box, raw_box, seg)]."""
     pi = pi or rules.PageInk(page)
@@ -120,7 +148,10 @@ def snapped(lane, page, coords, pi=None):
     nb = nameplate.nameplate_box(coords["words"], cw, ch)
     mode = "paper" if lane == "headline" else "column"
     out = []
-    for b, seg in candidates(lane, coords["words"], cw, ch, nb[3] if nb else 0):
+    cands = candidates(lane, coords["words"], cw, ch, nb[3] if nb else 0)
+    if lane == "headline":
+        cands = split_at_gutters(cands, coords["words"], cw, ch, pi)
+    for b, seg in cands:
         if lane == "ad":
             # ⚠️ An advertisement is an item the page has CLOSED with rules on
             # all four sides, walked to those rules and never to white space.

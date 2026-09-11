@@ -57,6 +57,7 @@ MIN_CELL_W = 0.05        # narrower than this of the page is a sliver, not a
 MIN_SPAN = 0.06          # column gutters are measured over at least this of
                          # the page height, so word spaces cannot line up
 EDGE_DARK = 0.55         # a column dark down most of the page is film edge
+PAPER_RUN = 0.006        # paper mode: an edge ends at this much clear paper
 GUTTER_CROSSED = 0.08    # a gutter is crossed on an item's rows when even its
                          # clearest column is this dark there
 RULE_DARK = 0.45         # an interior column at least this dark down the whole
@@ -257,6 +258,12 @@ class PageInk:
                 return min(cols[a:b]) > GUTTER_CROSSED
             left = [g for g in self.gutters() if g[1] <= x and not crossed(g)]
             right = [g for g in self.gutters() if g[0] >= x + w and not crossed(g)]
+            if not left and not right:
+                # ⚠️ No boundary on either side is a page whose grid could not
+                # be read, not an item the width of the page: the Savannah
+                # Morning News of 13 January 1871 came back as a strip across
+                # all of its advertisements.
+                return None
             page_l, page_r = self.film_edges()
             x0 = left[-1][1] if left else page_l
             x1 = right[0][0] if right else page_r
@@ -280,12 +287,27 @@ class PageInk:
                 i += step
             return None
 
+        # ⚠️ Always walk, never keep the OCR edge: a display word's OCR box
+        # is narrower than its glyphs, and "MANY MINERS ARE ENTOMBE[D]" and
+        # "[S]PEAKS APRIL 27" shipped with a letter cut off each side when a
+        # clear-looking edge was kept. From the first clear column the walk
+        # continues to a run of PAPER_RUN clear columns, then pads.
         el, er = x - lx, x + w - 1 - lx
-        l = el if (0 <= el < n and clear[el]) else walk(el, -1)
-        r_ = er if (0 <= er < n and clear[er]) else walk(er, 1)
+        need = max(2, int(self.w * PAPER_RUN))
+        def walk_out(start, step):
+            i, run = start, 0
+            while 0 <= i < n:
+                run = run + 1 if clear[i] else 0
+                if run >= need:
+                    return i - step * (need - 1)
+                i += step
+            return None
+        l = walk_out(el, -1)
+        r_ = walk_out(er, 1)
         if l is None or r_ is None:
             return None
-        return lx + l, lx + r_ + 1
+        pad = max(2, int(self.w * 0.004))
+        return max(0, lx + l - pad), min(self.w, lx + r_ + 1 + pad)
 
     # ---- vertical extent ----------------------------------------------------
     def vertical_bounds(self, sbox, x0, x1, rules_only=False, keep_clear=False):

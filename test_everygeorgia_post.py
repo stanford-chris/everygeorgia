@@ -233,7 +233,7 @@ class Lanes(unittest.TestCase):
         s = {"order": [], "pass": 1, "tried": {}, "posted": [{"lane": "ad", "lccn": "sn00000003"}]}
         lccn, r = ep.choose_search(s, cands, "ad", log=lambda *a: None)
         self.assertIsNone(r)
-        self.assertEqual(len(calls), ep.SEARCH_TRIES)
+        self.assertEqual(len(calls), ep.SEARCH_TRIES["ad"])
         self.assertNotIn("sn00000003", [c[0] for c in calls])
         again = []
         ep.CLIP = lambda lane, l, d, e, seq=1, phrase=None: again.append(l) or (_ for _ in ()).throw(npc.Refused("x"))
@@ -320,6 +320,7 @@ class Promises(unittest.TestCase):
 
     def test_run_is_bounded(self):
         self.assertLessEqual(ep.TITLES_PER_RUN * ep.TRIES_PER_TITLE, 40)
+        self.assertLessEqual(max(ep.SEARCH_TRIES.values()), 20)
 
 
 if __name__ == "__main__":

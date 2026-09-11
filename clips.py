@@ -69,7 +69,15 @@ AD_WORDS = ("sale", "sold", "sell", "sells", "selling", "buy", "price", "prices"
             "clothing", "hardware", "furniture", "pills", "liver", "tonic",
             "offerings", "merchant", "merchants", "advertisement", "advertisements",
             "customers", "trade", "shoes", "hats", "dry", "orders", "terms")
-PRICE_RE = re.compile(r"\$\d|\b\d+\s?c(?:ts|ents)?\b|¢")
+# ⚠️ One of these alone makes a headline or an article an advertisement:
+# "GROVER GRAHAM DYSPEPSIA REMEDY" and "A MERRY CHRISTMAS WITHOUT A BOX OF
+# Huyler's CANDIES" both reached the feed preview on 11 September 2026 with
+# fewer than the general markers a story could carry innocently.
+STRONG_AD = ("remedy", "remedies", "cure", "cures", "druggist", "druggists", "pills",
+             "tonic", "dyspepsia", "candies", "candy", "cigars", "tobacco", "whiskey",
+             "whiskies", "sarsaparilla", "bargain", "bargains", "millinery", "castoria",
+             "liniment", "bitters", "ointment", "cordial", "dealers", "wholesale")
+PRICE_RE = re.compile(r"\$\d|\b\d+[\s-]?c(?:ts|ents?)?\b|¢")   # "25-cent", "cents", "cts"
 MARKET_PHRASES = ("cotton market", "market report", "prices current",
                   "produce market", "local market", "wholesale prices")
 # ⚠️ Genre-specific, as reference_ghn_lane_findings requires: "sarsaparilla"
@@ -80,6 +88,7 @@ AD_PHRASES = ("sarsaparilla", "for sale by all druggists", "dry goods and notion
               "wholesale and retail dealers", "buggies and wagons", "pianos and organs",
               "clothing and hats", "boots and shoes", "millinery goods")
 MAX_BLOCK_FRAC = 0.25
+MAX_BLOCK_W = 0.45       # a block wider than this of the page is not one item
 MARKET_MAX_FRAC = 0.15   # a market column deeper than this is unreadable as a post
 MIN_BLOCK_ROWS = 4
 PARA_GAP = 1.3           # a row gap this many body heights is a paragraph break
@@ -201,12 +210,15 @@ def _result(lane, page, meta, date, ed, box, image_box, data, verdict,
     return r
 
 
-def _meta(lccn, date):
+def _meta(lccn, date, lane=None):
     meta = npc.roster().get(lccn)
     if meta is None or meta.get("postable") != "yes":
         raise npc.Refused(f"{lccn} has no NoC-US issue recorded")
     if gates.CUTOFF and date >= gates.CUTOFF:
         raise npc.Refused(f"{date} is on or after the cutoff")
+    floor = gates.earliest(lane) if lane else None
+    if floor and date < floor:
+        raise npc.Refused(f"era gate: {lane} starts at {floor}")
     return meta
 
 
@@ -221,6 +233,10 @@ def _headline_item(c, page):
     return None
 
 
+def strong_ad_markers(text):
+    return {t for t in set(tokens(text)) if t in STRONG_AD}
+
+
 def _check_transcription(words, what, ad_limit=2):
     hits = vocabulary_hits(words)
     if hits:
@@ -230,12 +246,12 @@ def _check_transcription(words, what, ad_limit=2):
         raise npc.Refused(f"transcription too short or too broken to be a {what}: {words!r}")
     if words.count("[illegible]") > len(plain) // 2:
         raise npc.Refused(f"transcription mostly illegible: {words!r}")
-    if len(ad_markers(words)) >= ad_limit:
+    if len(ad_markers(words)) >= ad_limit or strong_ad_markers(words):
         raise npc.Refused(f"transcription reads as an advertisement: {words!r}")
 
 
 def clip_headline(lccn, date, ed=1, log=print):
-    meta = _meta(lccn, date)
+    meta = _meta(lccn, date, "headline")
     page = ghn_api.front_page(lccn, date, ed)
     c = page.coords()
     chosen = _headline_item(c, page)
@@ -290,7 +306,7 @@ def clip_article(lccn, date, ed=1, log=print):
     is kept; the run is the paragraph; it ends at the next indented line
     (a new paragraph), a wider gap, or ARTICLE_LINES. Transcribed whole by
     the model."""
-    meta = _meta(lccn, date)
+    meta = _meta(lccn, date, "article")
     page = ghn_api.front_page(lccn, date, ed)
     c = page.coords()
     chosen = _headline_item(c, page)
@@ -429,7 +445,7 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None):
     x0 = min(w[0] for w in seed); x1 = max(w[0] + w[2] for w in seed)
     y0 = min(w[1] for w in seed); y1 = max(w[1] + w[3] for w in seed)
     cb = pi.column_bounds(pi.from_ocr((x0, y0, x1 - x0, y1 - y0)), mode="column")
-    if cb is None:
+    if cb is None or (cb[1] - cb[0]) > MAX_BLOCK_W * pi.w:
         return None
     per = pi.page.scale * pi.scale                    # small px per OCR unit
     cx0, cx1 = int(cb[0] / per), int(cb[1] / per)

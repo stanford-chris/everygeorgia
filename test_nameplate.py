@@ -490,11 +490,18 @@ class Gates(unittest.TestCase):
                         crop_hits={"lynch"}, page_hits={"negro"})
         self.assertEqual(v.outcome, gates.REFUSE)
 
-    def test_era_gate_bites_the_ad_lane_only(self):
-        for lane, want in (("ad", gates.REFUSE), ("headline", gates.PASS),
+    def test_era_gates_by_lane(self):
+        """The nameplate lane has no floor (a paper's name cannot be about
+        a lynching). ad and market start at 1867, headline and article at
+        1880; both floors measured, both recorded in gates.py."""
+        for lane, want in (("ad", gates.REFUSE), ("market", gates.REFUSE),
+                           ("headline", gates.REFUSE), ("article", gates.REFUSE),
                            ("nameplate", gates.PASS)):
             v = gates.check(lane, "sn00000001", "1860-04-12")
             self.assertEqual(v.outcome, want, f"{lane} on an 1860 issue")
+        self.assertEqual(gates.check("headline", "sn00000001", "1879-12-31").outcome, gates.REFUSE)
+        self.assertEqual(gates.check("headline", "sn00000001", "1880-01-01").outcome, gates.PASS)
+        self.assertEqual(gates.check("ad", "sn00000001", "1870-01-01").outcome, gates.PASS)
 
     def test_era_gate_boundary_is_1867_not_1865(self):
         """⚠️ MEASURED, not reasoned from emancipation. The slave-sale shape

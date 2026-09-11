@@ -75,11 +75,17 @@ POLICIES = {
         min_date=None, page_gate=True,
         why="measured 0.0% at crop level over 180 issues; the page gate is "
             "for the credit link, and costs only a change of date"),
+    # ⚠️ 1880 for headline and article, MEASURED on the dailies: the Savannah
+    # Daily Herald of 1865 and the Atlanta Daily New Era of 1870 gave a hotel
+    # advertisement and a table of oats as their "headline", because a daily
+    # of that era led its front page with advertising; the decks the lane
+    # exists for arrive in the 1880s and every good crop was 1897 or later.
     "headline": Policy(
-        min_date=None, page_gate=True,
-        why="the crop is blind to its page: 16.3% on already-flagged pages"),
+        min_date="1880-01-01", page_gate=True,
+        why="the crop is blind to its page: 16.3% on already-flagged pages; "
+            "front pages before the 1880s lead with advertising"),
     "article": Policy(
-        min_date=None, page_gate=True,
+        min_date="1880-01-01", page_gate=True,
         why="a headline with its first paragraph; same blindness, same gate"),
     "ad": Policy(
         min_date="1867-01-01", page_gate=True,

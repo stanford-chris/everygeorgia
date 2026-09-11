@@ -116,7 +116,9 @@ LANES = ("nameplate", "headline", "article", "ad", "market")
 LANE_LABEL = {"nameplate": "Nameplate", "headline": "Headline", "article": "Article",
               "ad": "Advertisement", "market": "Market report"}
 SEARCH_LANES = ("ad", "market")
-SEARCH_TRIES = 8                    # candidates a search lane looks at per run
+SEARCH_TRIES = {"ad": 8, "market": 16}   # candidates a search lane looks at per
+                                    # run: the market lane passes one in fifteen
+                                    # and handed off twelve times in twelve at 8
 RECENT_TITLE_WINDOW = 30            # a search lane skips a title posted in its
                                     # last N posts, for variety
 
@@ -236,10 +238,11 @@ def title_order(state, titles):
     return order
 
 
-def dates_for(lccn, issues, pass_no):
+def dates_for(lccn, issues, pass_no, lane="nameplate"):
     """This title's issues in the order this pass tries them: seeded by the
-    title and the pass, so a pass shows each title on a different date."""
-    rng = random.Random(f"{lccn}:{pass_no}")
+    title, the pass and the lane, so a pass shows each title on a different
+    date and two lanes do not land on the same issue of it."""
+    rng = random.Random(f"{lccn}:{pass_no}:{lane}")
     out = list(issues)
     rng.shuffle(out)
     return out
@@ -256,6 +259,13 @@ def next_titles(state, issues, lane="nameplate"):
     every title has either posted or been exhausted. The pass counter is
     shared; each title-order lane keeps its own tried map."""
     order = title_order(state, issues)
+    # ⚠️ Each lane starts the shared order at its own point, or the lanes
+    # march through the same titles together: the first dozen posts carried
+    # the Cordele Dispatch three times in three lanes. The offset is the
+    # lane's place in LANES, so it is fixed and needs no state.
+    if order:
+        off = (LANES.index(lane) * len(order)) // len(LANES)
+        order = order[off:] + order[:off]
     for _ in range(2):
         tried = lane_tried(state, lane)
         owed = []
@@ -410,8 +420,9 @@ def choose(state, issues, log=print, lane="nameplate"):
     tried = lane_tried(state, lane)
     for lccn in next_titles(state, issues, lane)[:TITLES_PER_RUN]:
         seen = set(tried.get(lccn, []))
-        for date, ed in dates_for(lccn, issues[lccn], state["pass"]):
-            if date in seen:
+        used = {(q["lccn"], q["date"]) for q in state.get("posted", []) if q.get("pass") == state["pass"]}
+        for date, ed in dates_for(lccn, issues[lccn], state["pass"], lane):
+            if date in seen or (lccn, date) in used:
                 continue
             if len(seen) >= TRIES_PER_TITLE:
                 break
@@ -452,7 +463,7 @@ def choose_search(state, cands, lane, log=print):
             continue
         if lccn in recent:
             continue
-        if looked >= SEARCH_TRIES:
+        if looked >= SEARCH_TRIES.get(lane, 8):
             break
         looked += 1
         tried[key] = phrase

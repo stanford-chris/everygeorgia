@@ -73,6 +73,13 @@ class Lines(unittest.TestCase):
         self.assertEqual([w[4] for w in lines[0][3]], ["The", "judge", "and"])
         self.assertEqual(lines[0][1], 116)
 
+    def test_one_strong_marker_refuses_a_headline_or_article(self):
+        for text in ("GROVER GRAHAM DYSPEPSIA REMEDY will instantly remove all distress. A 25-cent trial bottle convinces.",
+                     "A MERRY CHRISTMAS WITHOUT A BOX OF Huyler's CANDIES"):
+            with self.assertRaises(clips.npc.Refused):
+                clips._check_transcription(text, "article", ad_limit=4)
+        self.assertIn("$", clips.ad_markers("A 25-cent trial bottle"))
+
     def test_article_transcription_allows_news_vocabulary(self):
         """"trade" and "orders" in a story about the Order in Council are
         not an advertisement; the article lane asks for four markers."""
