@@ -34,7 +34,7 @@ running a URL detector over the text, and a hyphen in the domain kills it.
 
 ## Description
 
-240 of 256 characters. ✅ **His choice "A" of 11 September 2026**, after the
+239 of 256 characters. ✅ **His choice "A" of 11 September 2026**, after the
 lanes and the cutoff changed: "articles" in, "before 1931" out, and **no
 disclosure line**, because 256 characters will not hold one beside the DLG
 credit and the alt text carries "A.I.-transcribed" on every image, which is
@@ -46,7 +46,7 @@ A 🤖 posting clippings from Georgia's old newspapers: Nameplates, headlines, a
 From Georgia Historic Newspapers, presented online by the Digital Library of Georgia. Unofficial. Run by @stanfordc.bsky.social.
 ```
 
-The 🍑 and the closed-up space before the emoji are his, same day. 240.
+The 🍑 and the closed-up space before the emoji are his, same day. 239.
 
 The bio he set live at launch, for the record (248):
 
