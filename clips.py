@@ -342,6 +342,12 @@ def _check_transcription(words, what, ad_limit=2):
         raise npc.Refused(f"transcription too short or too broken to be a {what}: {words!r}")
     if words.count("[illegible]") > len(plain) // 2:
         raise npc.Refused(f"transcription mostly illegible: {words!r}")
+    # ⚠️ A headline with ONE unread word is not a headline a reader can
+    # read: "U. S. TO [illegible] COMM[illegible] CAPITAL WOULD" passed the
+    # half rule and reached the feed preview on 11 September 2026. An
+    # article is a paragraph and keeps the half rule.
+    if what == "headline" and "[illegible]" in words:
+        raise npc.Refused(f"headline transcription has an unread word: {words!r}")
     if len(ad_markers(words)) >= ad_limit or strong_ad_markers(words):
         raise npc.Refused(f"transcription reads as an advertisement: {words!r}")
 

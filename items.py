@@ -48,7 +48,53 @@ def display_rows(words, page_height):
             if any(sum(ch.isalpha() for ch in w[4]) >= MIN_REAL_TOKEN for w in s)]
 
 
-def box_with_deck(seg, words, page_width, page_height):
+def _pieces(row):
+    """A row of words split at gaps wider than SPLIT_GAP times their height,
+    keeping only pieces with a real token: one piece is one line, more is a
+    tier of separate items side by side."""
+    row = sorted(row, key=lambda w: w[0])
+    out, seg = [], [row[0]]
+    for w in row[1:]:
+        prev = seg[-1]
+        if w[0] - (prev[0] + prev[2]) > SPLIT_GAP * max(prev[3], w[3]):
+            out.append(seg); seg = [w]
+        else:
+            seg.append(w)
+    out.append(seg)
+    return [s for s in out
+            if any(sum(ch.isalpha() for ch in w[4]) >= MIN_REAL_TOKEN for w in s)]
+
+
+def gutter_counts(row, pi):
+    """(gutters inside the row's span, of them straddled by ink) measured on
+    the row's own band. A banner's letters straddle the gutters between its
+    word spaces; column headlines set side by side clear them. On the
+    Cordele Dispatch pages of 10 October 1919 and 26 April 1918 the banners
+    measured 9, 10 and 21 straddled against 5, 4 and 8 clear; the tier of
+    column headlines 3 against 6."""
+    per = pi.page.scale * pi.scale
+    row = sorted(row, key=lambda w: w[0])
+    y0 = pi.y_small(min(w[1] for w in row))
+    y1 = pi.y_small(max(w[1] + w[3] for w in row))
+    cols = pi.col_dark_in(y0, max(y0 + 1, y1))
+    xa, xz = row[0][0] * per, (row[-1][0] + row[-1][2]) * per
+    inside = [g for g in pi.gutters() if xa < g[0] < xz]
+    straddled = [g for g in inside if min(cols[g[0]:g[1]] or [0]) > rules.GUTTER_CROSSED]
+    return inside, straddled, cols
+
+
+def is_tier(line, pi):
+    """Several items side by side, not one line: split by word gaps, or
+    clearing at least as many gutters as it straddles."""
+    if len(_pieces(line)) > 1:
+        return True
+    if pi is None:
+        return False
+    inside, straddled, _ = gutter_counts(line, pi)
+    return bool(inside) and len(straddled) <= len(inside) - len(straddled)
+
+
+def box_with_deck(seg, words, page_width, page_height, pi=None):
     """The segment's box plus the smaller-but-not-body lines directly under
     it in the same horizontal span (lanes._box_of, minus its padding: the
     snap supplies the real edges)."""
@@ -60,6 +106,7 @@ def box_with_deck(seg, words, page_width, page_height):
     med = nameplate.page_median_height(words) or 1
     span = float(x1 - x0)
     cur = y1
+    top_prev, h_prev = y0, h
     # ⚠️ Three kinds of line sit under a headline's first row, and each is
     # told apart by size and alignment, measured on the Augusta Herald of
     # 16 March 1915 and the Banner-Herald of 20 November 1921:
@@ -73,21 +120,43 @@ def box_with_deck(seg, words, page_width, page_height):
     #     the page deep into its story;
     #   body text: never.
     for _ in range(8):
+        # ⚠️ The next line's tops can sit a little ABOVE this line's measured
+        # bottom (a descender, a speck): on the Cordele Dispatch of
+        # 10 October 1919 the second banner's words start 10 units above the
+        # first's bottom, and "cur < w[1]" kept every word of it but the
+        # last, so the crop stopped at one banner. A word is below the line
+        # if its top is under the line's top by half the line's height.
         cands = [w for w in words
-                 if cur < w[1] <= cur + DECK_GAP * h
+                 if top_prev + 0.5 * h_prev < w[1] <= cur + DECK_GAP * h
                  and w[0] + w[2] > x0 and w[0] < x1]
-        same = [w for w in cands if w[3] >= 0.85 * h]
-        deck = [w for w in cands if max(DECK_MIN * h, 1.6 * med) <= w[3] < 0.85 * h]
+        if not cands:
+            break
+        # ⚠️ ONE LINE AT A TIME, judged by its tallest word. Judged per word,
+        # the second banner on the 1919 Cordele page came out seven deck
+        # words and one same-size word ("PROBLEMS", the only one over 0.85
+        # of the head), and the window took the column tier beneath along
+        # with it. The line is the unit a reader sees.
+        line = nameplate.rows_of(sorted(cands, key=lambda w: (w[1], w[0])))[0]
+        hl = max(w[3] for w in line)
         take = []
-        if same:
-            lo = min(w[0] for w in same); hi = max(w[0] + w[2] for w in same)
+        if hl >= 0.85 * h:
+            lo = min(w[0] for w in line); hi = max(w[0] + w[2] for w in line)
             if (min(hi, x1) - max(lo, x0)) / span >= 0.6:
-                take = same
-        if not take:
-            take = deck
+                take = line
+        elif max(DECK_MIN * h, 1.6 * med) <= hl:
+            take = line
         if not take:
             break
+        # ⚠️ A tier of SEVERAL items under a banner is the next row of column
+        # headlines, not the banner's deck. Under "U. S. TO ADD 15 MILLIONS
+        # FOR GREAT WORLD AIR ROUTES" (Cordele Dispatch, 10 October 1919)
+        # sit five column headlines of deck size, and taking them ran the
+        # crop into the columns and their words into the alt. A deck is one
+        # line: gap-split as display_rows does, and two real pieces end it.
+        if is_tier(take, pi):
+            break
         cur = max(w[1] + w[3] for w in take)
+        top_prev, h_prev = min(w[1] for w in take), max(w[3] for w in take)
         if cur - y0 > 6 * h:
             break
     y1 = cur
@@ -96,7 +165,7 @@ def box_with_deck(seg, words, page_width, page_height):
     return (x0, y0, x1 - x0, y1 - y0)
 
 
-def candidates(lane, words, page_width, page_height, nameplate_bottom=0):
+def candidates(lane, words, page_width, page_height, nameplate_bottom=0, pi=None):
     """(box_ocr, seg) for each candidate, in reading order (top first)."""
     lo, hi = (HEAD_LO, HEAD_HI) if lane == "headline" else (AD_LO, AD_HI)
     out = []
@@ -106,7 +175,7 @@ def candidates(lane, words, page_width, page_height, nameplate_bottom=0):
             continue
         if lane == "headline" and top <= nameplate_bottom:
             continue
-        b = box_with_deck(seg, words, page_width, page_height)
+        b = box_with_deck(seg, words, page_width, page_height, pi)
         if b:
             out.append((b, seg))
     out.sort(key=lambda t: (t[0][1], t[0][0]))
@@ -126,8 +195,30 @@ def split_at_gutters(cands, words, cw, ch, pi):
         # ⚠️ Only a gutter that is clear on THIS segment's rows splits it. A
         # page-level gutter can run under a headline from a table lower
         # down the column, and it cut "REESE IS ON THE RACK" in two.
-        y0, y1 = pi.y_small(b[1]), pi.y_small(b[1] + b[3])
-        cols = pi.col_dark_in(y0, max(y0 + 1, y1))
+        # ⚠️ ...and "this segment's rows" means the display row itself, NOT
+        # the box with its deck. The box reaches down into the tier beneath,
+        # where every gutter is clear, and judged there a banner is cut at
+        # the first gutter: the Cordele Dispatch of 10 October 1919 shipped
+        # "U. S. TO" out of "U. S. TO ADD 15 MILLIONS FOR GREAT WORLD AIR
+        # ROUTES" that way (found 11 September 2026).
+        inside, straddled, cols = gutter_counts(seg, pi)
+        # ⚠️ And a word space is white top to bottom, so on the row itself a
+        # gutter under a word space reads as clear whether the row is one
+        # banner or two column headlines: "TO ADD" and "FRENCH DESTROY |
+        # MEMORIAL" both measure 0.000 dark there, at gaps of 0.35h and
+        # 0.55h. What tells them apart is INK ACROSS A GUTTER: a banner's
+        # letters straddle the gutters between its word spaces, and column
+        # headlines straddle one only by accident of the grid ("MEMORIAL
+        # DAY" on the 1918 page sits over a gutter the columns below it do
+        # not share). So it is a count: banners measured 9, 10 and 21
+        # straddled against 5, 4 and 8 clear; the column tier 3 against 6.
+        # A row that straddles more gutters than it clears spans columns
+        # and is not split at all.
+        if len(straddled) > len(inside) - len(straddled):
+            nb = box_with_deck(seg, words, cw, ch, pi)
+            if nb:
+                out.append((nb, seg))
+            continue
         bounds = sorted(g[0] for g in pi.gutters()
                         if min(cols[g[0]:g[1]] or [1]) <= rules.GUTTER_CROSSED)
         pieces, cur = [], [seg[0]]
@@ -140,7 +231,7 @@ def split_at_gutters(cands, words, cw, ch, pi):
                 cur.append(w)
         pieces.append(cur)
         for p in pieces:
-            nb = box_with_deck(p, words, cw, ch)
+            nb = box_with_deck(p, words, cw, ch, pi)
             if nb:
                 out.append((nb, p))
     out.sort(key=lambda t: (t[0][1], t[0][0]))
@@ -154,7 +245,7 @@ def snapped(lane, page, coords, pi=None):
     nb = nameplate.nameplate_box(coords["words"], cw, ch) if page.seq == 1 else None
     mode = "paper" if lane == "headline" else "column"
     out = []
-    cands = candidates(lane, coords["words"], cw, ch, nb[3] if nb else 0)
+    cands = candidates(lane, coords["words"], cw, ch, nb[3] if nb else 0, pi)
     if lane == "headline":
         cands = split_at_gutters(cands, coords["words"], cw, ch, pi)
     for b, seg in cands:

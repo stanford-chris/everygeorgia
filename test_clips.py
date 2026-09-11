@@ -121,6 +121,61 @@ class DisplayRows(unittest.TestCase):
         self.assertLess(b2[1] + b2[3], 140)
 
 
+class Banners(unittest.TestCase):
+    """The Cordele Dispatch of 10 October 1919 shipped "U. S. TO" out of a
+    banner across eight columns, and its second banner was left behind."""
+
+    def test_headline_with_an_unread_word_is_refused(self):
+        with self.assertRaises(clips.npc.Refused):
+            clips._check_transcription("U. S. TO [illegible] COMM[illegible] CAPITAL WOULD", "headline")
+        clips._check_transcription("U. S. TO ADD 15 MILLIONS FOR GREAT WORLD AIR ROUTES", "headline")
+        # an article is a paragraph and keeps the half rule
+        clips._check_transcription("The council met [illegible] night and voted the bonds through.", "article", ad_limit=4)
+
+    def head(self):
+        return [(20, 100, 60, 30, "FIRE"), (85, 100, 70, 30, "DOWNTOWN"), (160, 100, 90, 30, "TONIGHT")]
+
+    def test_a_second_line_is_judged_by_its_tallest_word_not_word_by_word(self):
+        """Seven of the second banner's eight words were under 0.85 of the
+        head and one was over: judged per word the line fell in two."""
+        body = DisplayRows.body(self)
+        second = [(20, 140, 60, 24, "MILLS"), (85, 140, 70, 24, "CLOSE"), (160, 140, 90, 28, "TODAY")]
+        words = body + self.head() + second
+        b = items.box_with_deck(items.display_rows(words, 1000)[0], words, 700, 1000)
+        self.assertGreaterEqual(b[1] + b[3], 168)
+
+    def test_a_tier_of_several_items_is_not_a_deck(self):
+        body = DisplayRows.body(self)
+        tier = [(20, 140, 60, 18, "CAPITAL"), (85, 140, 60, 18, "WOULD"),
+                (200, 140, 60, 18, "MEXICO"), (265, 140, 60, 18, "SENDS")]   # two heads, a wide gap
+        words = body + self.head() + tier
+        b = items.box_with_deck(items.display_rows(words, 1000)[0], words, 700, 1000)
+        self.assertLess(b[1] + b[3], 140)
+        deck = [(20, 140, 60, 18, "Blaze"), (85, 140, 60, 18, "spreads")]     # one line
+        words = body + self.head() + deck
+        b = items.box_with_deck(items.display_rows(words, 1000)[0], words, 700, 1000)
+        self.assertGreaterEqual(b[1] + b[3], 158)
+
+    def test_a_row_straddling_the_gutters_is_a_banner_and_is_not_split(self):
+        """Ink across a gutter is what tells a banner from column headlines
+        set a word space apart; a word space over a gutter is white either
+        way."""
+        pi = rules.PageInk(BannerPage())
+        # the banner's words, one word space over each gutter (430-500, 900-970)
+        banner = [(30, 100, 380, 30, "FRENCH"), (440, 100, 440, 30, "COUNTER"), (910, 100, 300, 30, "FOR"), (1220, 100, 150, 30, "KEMMEL")]
+        inside, straddled, _ = items.gutter_counts(banner, pi)
+        self.assertGreater(len(straddled), len(inside) - len(straddled))
+        cands = [(items.box_with_deck(banner, banner, 1400, 2000), banner)]
+        out = items.split_at_gutters(cands, banner, 1400, 2000, pi)
+        self.assertEqual(len(out), 1)
+        # column headlines on a clear row split at the gutters as before
+        tier = [(30, 300, 180, 30, "FRENCH"), (215, 300, 200, 30, "DESTROY"), (510, 300, 180, 30, "MEMORIAL"), (700, 300, 100, 30, "DAY")]
+        inside, straddled, _ = items.gutter_counts(tier, pi)
+        self.assertLessEqual(len(straddled), len(inside) - len(straddled))
+        out = items.split_at_gutters([(items.box_with_deck(tier, tier, 1400, 2000), tier)], tier, 1400, 2000, pi)
+        self.assertEqual([" ".join(w[4] for w in seg) for _, seg in out], ["FRENCH DESTROY", "MEMORIAL DAY"])
+
+
 class FakePage:
     """A page whose image is a synthetic newspaper: three columns of grey
     text blocks separated by paper gutters, a rule under one block."""
@@ -159,6 +214,17 @@ class FakePage:
             crop = crop.resize((width, max(1, int(crop.height * width / crop.width))))
         buf = io.BytesIO(); crop.save(buf, format="JPEG", quality=92)
         return buf.getvalue()
+
+
+class BannerPage(FakePage):
+    """FakePage with a banner across all three columns at y 100-130: ink
+    across both gutters on that band, paper on every other."""
+    def __init__(self):
+        super().__init__()
+        d = ImageDraw.Draw(self._im)
+        d.rectangle([30, 100, 1370, 130], fill=40)   # display type across the page, gutters included
+        for x in (200, 700, 1100):                   # word spaces, none over a gutter
+            d.rectangle([x, 100, x + 15, 130], fill=210)
 
 
 class Grid(unittest.TestCase):

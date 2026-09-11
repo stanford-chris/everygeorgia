@@ -113,6 +113,31 @@ citation with its label in the bracketed slot: `[Headline]`,
   tokens carrying a digit, and the block ends at the paragraph after the
   heading, or ten rows.
 
+- **A banner headline is cut at the first gutter, and its second line is
+  left behind (found 11 September 2026, afternoon, in the twelve-sample dry
+  run before launch).** The Cordele Dispatch of 10 October 1919 shipped
+  "U. S. TO" out of "U. S. TO ADD 15 MILLIONS FOR GREAT WORLD AIR ROUTES",
+  three faults deep. The gutter split judged clearance over the item box
+  with its deck, which reaches into the column tier beneath where every
+  gutter is clear; judged on the row itself, a word space over a gutter is
+  white top to bottom too ("TO ADD" and "FRENCH DESTROY | MEMORIAL" both
+  measure 0.000 dark). What separates them is **ink across a gutter**:
+  banners measured 9, 10 and 21 gutters straddled against 5, 4 and 8 clear,
+  the column tier 3 against 6, so a row straddling more than it clears is
+  one banner (`items.gutter_counts`). Then the deck loop judged same-size
+  per WORD, and seven of the second banner's eight words fell under 0.85 of
+  the head; it steps one line at a time now, judged by the line's tallest
+  word, and a line that is a tier (gap-split, or clearing at least as many
+  gutters as it straddles) ends the item. And `_check_transcription` refuses
+  a headline with any `[illegible]`; the half rule stays for articles.
+  Measured before and after on all 129 cached front pages: 109 unchanged,
+  20 changed, 10 of them dailies and every one 1860-1877, where the deck now
+  stops earlier on standing heads and ads (a letter-spaced "Noon Telegrams"
+  line reads as a tier). ⚠️ The article lane REFUSES a banner page ("no
+  paragraph of body text under the headline"), since its paragraph search
+  runs under the whole span; that is the right failure, and inner pages are
+  where a banner's story would be found.
+
 ### Yields, measured on the samples that set every constant
 
 | lane | tries | passed or REVIEW | what the refusals were |
