@@ -151,7 +151,7 @@ def snapped(lane, page, coords, pi=None):
     """Candidates snapped to the grid: [(snapped_box, raw_box, seg)]."""
     pi = pi or rules.PageInk(page)
     cw, ch = coords["width"], coords["height"]
-    nb = nameplate.nameplate_box(coords["words"], cw, ch)
+    nb = nameplate.nameplate_box(coords["words"], cw, ch) if page.seq == 1 else None
     mode = "paper" if lane == "headline" else "column"
     out = []
     cands = candidates(lane, coords["words"], cw, ch, nb[3] if nb else 0)

@@ -281,10 +281,47 @@ def clip_nameplate(lccn, date, ed=1, log=print):
     return r
 
 
+INNER_SHARE = 0.0        # share of headline and article draws that go to an
+                         # inner page. His ask, 11 September 2026: "pull heds/
+                         # articles from inside pages, too." ⚠️ MEASURED THE
+                         # SAME DAY AND SET TO ZERO: 25 tries on pages 2, 3
+                         # and 5 of six dailies, 1895-1926, gave five passes,
+                         # of which one was news (Dr. Crippen's hanging, the
+                         # Augusta Herald, 1910), one a poem, two soap and
+                         # stove-wood advertisements the marker test could
+                         # not see, and one a masthead. Inner pages in this
+                         # corpus are advertising. The capability stays for a
+                         # hand-picked page (`--seq` through clip()); raise
+                         # this only with a better test for an ad than words.
+INNER_MAX_SEQ = 8        # no deeper than this: past it a daily is classifieds
+RUNNING_HEAD = 0.05      # the top of an inner page is the running head, skipped
+
+
+def choose_page(lccn, date, ed, seq=None):
+    """The page a headline or article is taken from. seq given: that page.
+    Otherwise a seeded draw: the front page INNER_SHARE of the time less,
+    else a random inner page up to INNER_MAX_SEQ. Seeded by the issue, so
+    a dry run and the live run that follows it agree."""
+    import random
+    pages = ghn_api.issue_pages(lccn, date, ed)
+    if seq:
+        if seq < 1 or seq > len(pages):
+            raise npc.Refused(f"no seq-{seq} in this issue")
+        return pages[seq - 1]
+    rng = random.Random(f"{lccn}:{date}:page")
+    if len(pages) < 2 or rng.random() >= INNER_SHARE:
+        return pages[0]
+    return pages[rng.randint(2, min(len(pages), INNER_MAX_SEQ)) - 1]
+
+
 def _headline_item(c, page):
     """(box, words inside) of the topmost display item below the nameplate
-    that is not itself an advertisement, or None."""
+    that is not itself an advertisement, or None. On an inner page there is
+    no nameplate, and the running head at the top is skipped instead."""
+    floor = RUNNING_HEAD * c["height"] if page.seq > 1 else 0
     for s, raw, seg in items.snapped("headline", page, c):
+        if s[1] < floor:
+            continue
         inside = nameplate.words_in(c["words"], s)
         if len(ad_markers(ocr_text(inside))) >= AD_MARKERS:
             continue
@@ -309,9 +346,9 @@ def _check_transcription(words, what, ad_limit=2):
         raise npc.Refused(f"transcription reads as an advertisement: {words!r}")
 
 
-def clip_headline(lccn, date, ed=1, log=print):
+def clip_headline(lccn, date, ed=1, seq=None, log=print):
     meta = _meta(lccn, date, "headline")
-    page = ghn_api.front_page(lccn, date, ed)
+    page = choose_page(lccn, date, ed, seq)
     c = page.coords()
     chosen = _headline_item(c, page)
     if chosen is None:
@@ -357,7 +394,7 @@ def _lines(rows, med):
     return out
 
 
-def clip_article(lccn, date, ed=1, log=print):
+def clip_article(lccn, date, ed=1, seq=None, log=print):
     """The headline item plus its first paragraph. His ask, 11 September
     2026: "a headline and first graf."
 
@@ -370,7 +407,7 @@ def clip_article(lccn, date, ed=1, log=print):
     (a new paragraph), a wider gap, or ARTICLE_LINES. Transcribed whole by
     the model."""
     meta = _meta(lccn, date, "article")
-    page = ghn_api.front_page(lccn, date, ed)
+    page = choose_page(lccn, date, ed, seq)
     c = page.coords()
     chosen = _headline_item(c, page)
     if chosen is None:
@@ -639,9 +676,9 @@ def clip(lane, lccn, date, ed=1, seq=1, phrase=None, log=print):
     if lane == "nameplate":
         return clip_nameplate(lccn, date, ed, log=log)
     if lane == "headline":
-        return clip_headline(lccn, date, ed, log=log)
+        return clip_headline(lccn, date, ed, seq if seq and seq > 1 else None, log=log)
     if lane == "article":
-        return clip_article(lccn, date, ed, log=log)
+        return clip_article(lccn, date, ed, seq if seq and seq > 1 else None, log=log)
     if lane == "ad":
         return clip_ad(lccn, date, ed, seq, phrase, log=log)
     if lane == "market":
