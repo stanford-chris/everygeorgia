@@ -34,9 +34,19 @@ running a URL detector over the text, and a hyphen in the domain kills it.
 
 ## Description
 
-248 of 256 characters. ✅ **Chris's wording, set live on 11 September 2026**
-at launch, replacing the 233-character draft below it; `profile.py` carries it
-verbatim, read back from the API.
+239 of 256 characters. ✅ **His choice "A" of 11 September 2026**, after the
+lanes and the cutoff changed: "articles" in, "before 1931" out, and **no
+disclosure line**, because 256 characters will not hold one beside the DLG
+credit and the alt text carries "A.I.-transcribed" on every image, which is
+where it is read; post 4 says it in words. `profile.py` carries it verbatim.
+
+```
+A 🤖 posting clippings from Georgia's old newspapers: Nameplates, headlines, articles, ads, market reports. 🗞️
+
+From Georgia Historic Newspapers, presented online by the Digital Library of Georgia. Unofficial. Run by @stanfordc.bsky.social.
+```
+
+The bio he set live at launch, for the record (248):
 
 ```
 A 🤖 posting clippings from Georgia's newspapers before 1931: Nameplates, advertisements, headlines, market reports. 🗞️
@@ -127,12 +137,16 @@ knowingly.
 ⚠️ **The exception is post 1's second colon**, which introduces a URL. That one
 stays as it is; capitalising a domain breaks it.
 
-**1 — what this is (264)**
+**1 — what this is (280)**
 ```
-What this is: Clippings from Georgia's newspapers before 1931 — nameplates, headlines, ads, market reports — with the name of the paper, the date and a link to the full issue.
+What this is: Clippings from Georgia's newspapers, 1763 to the 1970s — nameplates, headlines, articles, ads, market reports — with the name of the paper, the date and a link to the full page.
 
 Everything comes from Georgia Historic Newspapers: gahistoricnewspapers.galileo.usg.edu
 ```
+✅ **Rewritten 11 September 2026, his call**: the span replaces "before 1931"
+(the cutoff is gone; the eligible material runs from 1763 into the 1970s, with
+one title to 2021), "articles" joins the lanes, and "full page" replaces
+"full issue" because ads and market reports link to inner pages.
 Two edits on 21 August 2026. "a clipping a few times a day" became "clippings",
 dropping a cadence claim that has not been decided. "with the paper" became "with
 the name of the paper", because the first could be read as the paper itself.
@@ -239,10 +253,12 @@ difficult one, and a caption does not travel with a screenshot. It has to be tru
 standing alone, with no thread around it — which is the whole reason the
 denominator matters here more than anywhere else.
 
-**4 — alt text (113)**
+**4 — alt text (213)**
 ```
-Alt text: It carries the actual words of the clip, not a description, so a screen reader gets what the page says.
+Alt text: It carries the actual words of the clip, not a description, so a screen reader gets what the page says. Old display type defeats OCR, so those words are transcribed by an A.I. model, and the alt says so.
 ```
+✅ **The disclosure lives here, 11 September 2026**, and on every image's alt
+(`transcribe.PREFIX`), not in the bio: see the Description section.
 
 **5 — the avatar (292, link as a facet)**
 ```

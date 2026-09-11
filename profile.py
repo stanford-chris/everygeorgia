@@ -25,10 +25,13 @@ AVATAR = os.path.join(HERE, "avatar", "avatar_G_dark_72.png")
 GHN = "https://gahistoricnewspapers.galileo.usg.edu"
 
 BIO = (
-    # ⚠️ Chris's wording, set live on Bluesky on 11 September 2026 and read
-    # back from the API here, so --setup-profile re-writes what he wrote.
-    "A 🤖 posting clippings from Georgia's newspapers before 1931: Nameplates, "
-    "advertisements, headlines, market reports. 🗞️\n\n"
+    # ⚠️ His wording (11 September 2026, "A"): the 🤖 opener kept, "articles"
+    # added, "before 1931" gone with the cutoff, and NO disclosure line here:
+    # 256 characters will not hold both it and the DLG credit, and the alt
+    # text carries "A.I.-transcribed" on every image, which is where it is
+    # read. Post 4 says it in words. 239 characters.
+    "A 🤖 posting clippings from Georgia's old newspapers: Nameplates, headlines, "
+    "articles, ads, market reports. 🗞️\n\n"
     "From Georgia Historic Newspapers, presented online by the Digital Library "
     "of Georgia. Unofficial. Run by @stanfordc.bsky.social."
 )
@@ -40,9 +43,9 @@ BIO = (
 THREAD = [
     {
         "text": (
-            "What this is: Clippings from Georgia's newspapers before 1931 — "
-            "nameplates, headlines, ads, market reports — with the name of the "
-            "paper, the date and a link to the full issue.\n\n"
+            "What this is: Clippings from Georgia's newspapers, 1763 to the 1970s — "
+            "nameplates, headlines, articles, ads, market reports — with the name of "
+            "the paper, the date and a link to the full page.\n\n"
             "Everything comes from Georgia Historic Newspapers: "
             "gahistoricnewspapers.galileo.usg.edu"
         ),
@@ -73,7 +76,9 @@ THREAD = [
     {
         "text": (
             "Alt text: It carries the actual words of the clip, not a "
-            "description, so a screen reader gets what the page says."
+            "description, so a screen reader gets what the page says. Old display "
+            "type defeats OCR, so those words are transcribed by an A.I. model, and "
+            "the alt says so."
         ),
         "links": [],
         "mentions": [],
