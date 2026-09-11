@@ -264,15 +264,20 @@ def clip_nameplate(lccn, date, ed=1, log=print):
     ext = (0, 0, cw, min(ch, band_h + int(NAMEPLATE_CONTEXT * ch)))
     below = (0, band_h, cw, ext[3] - band_h)
     _, strip = _fetch(page, below, width=1600)
-    words = transcribe.transcribe(strip, date[:4], log=log, max_chars=6000, timeout=240)
-    if not words:
+    # ⚠️ Display type only (transcribe.BAND_PROMPT): the body text in the
+    # strip is the OCR's to read and the page gate's to screen. An empty
+    # string is a band with no display type, which is a pass; None is a
+    # call that failed.
+    words = transcribe.transcribe(strip, date[:4], log=log, max_chars=2000,
+                                  prompt=transcribe.BAND_PROMPT)
+    if words is None:
         raise npc.Refused("the band under the nameplate could not be transcribed")
     hits = vocabulary_hits(words)
     if hits:
         raise npc.Refused(f"the band under the nameplate carries {sorted(hits)}")
     image_box, data = _fetch(page, ext, width=1600)
-    r.update({"seq": 1, "words": _curl(words[:300].rsplit(" ", 1)[0] + ("…" if len(words) > 300 else "")),
-              "generated": True,
+    r.update({"seq": 1, "words": _curl(words[:300].rsplit(" ", 1)[0] + ("…" if len(words) > 300 else "")) if words else "",
+              "generated": bool(words),
               "bytes": data, "image_box": image_box,
               "band_fraction": ext[3] / float(ch), "context": True})
     from PIL import Image

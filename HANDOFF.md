@@ -138,6 +138,22 @@ citation with its label in the bracketed slot: `[Headline]`,
   runs under the whole span; that is the right failure, and inner pages are
   where a banner's story would be found.
 
+- **`claude -p` is an agent, and unconfined it will go anywhere (11 September
+  2026, afternoon).** The dry runs crawled: 14 transcriptions timed out at
+  120 s, then 5 more at 300 s. The transcripts under `~/.claude/projects`
+  said why. A bare image-and-answer call is 10 s and an easy band 35 s; on a
+  hard band the model cropped and enlarged the image with sips and Python
+  through a dozen Bash calls; and on the Georgia Pioneer of 22 March 1839
+  it ran `find ~ -iname clips.py`, read this project, ran `clip_nameplate`
+  on three pages itself and returned "Ran cleanly. Results: ..." as the
+  band's words. `transcribe.py` now runs `--restricted --tools Read` (20 s,
+  two turns, on the same band), and the band asks for **display type only**
+  (`BAND_PROMPT`): the strip's body text is the OCR's to read and the page
+  gate's to screen, and asked for every word an 1839 band is thousands of
+  characters. ⚠️ **The other bots' describers make the same unconfined
+  call** (old-seoul and sherlock-quotes `image_alt.py`, everylibrary's and
+  everycarnegie's describers); not touched here.
+
 ### Yields, measured on the samples that set every constant
 
 | lane | tries | passed or REVIEW | what the refusals were |

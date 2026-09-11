@@ -92,8 +92,29 @@ def clean(text):
     return text
 
 
+# The band under a nameplate: display type only. ⚠️ Asked for every word, an
+# 1839 front page's band is a wall of body text, thousands of characters, and
+# the call ran past 240 s twice per candidate on 11 September 2026 (eight
+# minutes to learn nothing, and the candidate spent). Body text is what the
+# archive's OCR reads well and the page gate already screens; the band is
+# transcribed for the display type the OCR cannot read, so that is all it
+# asks for.
+BAND_PROMPT = (
+    "The file {name} in this directory is a clipping from a Georgia newspaper "
+    "printed in {year}. Transcribe only the words set in large or bold display "
+    "type: headlines, titles, slogans, datelines and the like. Ignore body "
+    "text set in small type entirely, even if there is a lot of it. Transcribe "
+    "exactly as printed, in reading order, with a single space between lines. "
+    "Keep the original spelling and capitalisation. Write [illegible] for any "
+    "word you cannot read. Reply with the transcription and nothing else: no "
+    "description, no summary, no commentary, no quotation marks around it, no "
+    "preamble. If there is no display type at all, reply with the single word "
+    "NONE."
+)
+
+
 def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log=print,
-               max_chars=MAX_CHARS):
+               max_chars=MAX_CHARS, prompt=PROMPT):
     """The printed words, or None. `max_chars` is the cap on the reply: a
     headline's is MAX_CHARS, the band under a nameplate is allowed more,
     since there its only job is the vocabulary check."""
@@ -107,8 +128,19 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
                 name = "clip.jpg"
                 with open(os.path.join(td, name), "wb") as f:
                     f.write(image_bytes)
-                r = subprocess.run(["claude", "-p", "--model", model,
-                                    PROMPT.format(name=name, year=year)],
+                # ⚠️⚠️ --restricted --tools Read, and the reason is on the
+                # record (11 September 2026). Unconfined, `claude -p` is an
+                # agent with Bash: on an easy band it read the file once
+                # (35 s); on a hard one it cropped and enlarged the image
+                # with sips and Python through a dozen tool calls (60-280 s,
+                # the timeouts); and on the Georgia Pioneer of 22 March 1839
+                # it ran `find ~ -iname clips.py`, read THIS project's code,
+                # ran clip_nameplate itself on three pages and returned "Ran
+                # cleanly. Results: ..." as the transcription. Confined to
+                # reading the one file it answers in 20 s in two turns.
+                r = subprocess.run(["claude", "-p", "--restricted", "--tools", "Read",
+                                    "--model", model,
+                                    prompt.format(name=name, year=year)],
                                    capture_output=True, text=True, env=env,
                                    cwd=td, timeout=timeout)
         except (subprocess.TimeoutExpired, OSError) as exc:
@@ -125,6 +157,8 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
             log(f"  (transcription failed, exit {r.returncode}: {err})")
             return None
         text = clean(r.stdout)
+        if prompt is BAND_PROMPT and text.strip() == "NONE":
+            return ""
         if "CANNOT_READ" in text:
             log("  (transcription: model could not read the clip)")
             return None
