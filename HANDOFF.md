@@ -49,7 +49,8 @@ morning.
 ## The four lanes, built the evening of 11 September 2026
 
 Chris: "I want everything. The profile can wait." So the advertisement,
-headline and market-report lanes were built the same day, on top of the
+headline, article (his follow-up: "a headline and first graf") and market-report
+lanes were built the same day, on top of the
 nameplate lane, and the poster cycles the four (`LANES` in
 `everygeorgia_post.py`, one lane per run, a lane that comes up empty handing
 its slot to the next). ⚠️ **The launch still waits**, and two profile edits
@@ -67,6 +68,7 @@ their determination would be used, not ours.
 | --- | --- | --- | --- |
 | nameplate | title order, front pages | `nameplate_crop.py` | the title, from the roster |
 | headline | title order, **dailies only** (38 titles, 78,766 issues; `DAILY_PER_YEAR`) | topmost display item below the nameplate with its deck, `items.py` + `rules.py` | **model transcription**, `transcribe.py`, alt prefixed `A.I.-transcribed` |
+| article | as headline | the headline item plus its first paragraph: everything down to the first run of three tight lines, then that run to the next indented line or ten lines (`clip_article`) | model transcription, whole |
 | ad | search on genre phrases (`AD_PHRASES`: sarsaparilla, castoria, "for sale by all druggists"…), any page | the column block of set text around the phrase, `clips.block_around()` | OCR when legible, else the model |
 | market | search on `MARKET_PHRASES`, any page | the block under the phrase, capped at ten rows and 15% of the page | OCR only; refused when illegible |
 
@@ -92,6 +94,11 @@ citation with its label in the bracketed slot: `[Headline]`,
   returned one word, so every ad had no advertising words and a headline
   transcription carrying "negro" reached REVIEW instead of REFUSE. Pinned
   in `test_clips.py`.
+- **Decks and paragraphs are told apart by spacing, not size.** On the Macon
+  Telegraph the decks are bold body-height lines two ems apart and the
+  paragraph is the same height set tight; a height rule ended the article
+  crop inside the decks. And `rows_of()` puts a wrapped word in a row of
+  its own, so `_lines()` folds those back before spacing is read.
 - **Weeklies have no headlines.** The topmost display item on a small-town
   front page came back "COUNTY DIRECTORY", an office address, a brand name.
   The headline lane draws from dailies only, and refuses a transcription

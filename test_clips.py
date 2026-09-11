@@ -60,6 +60,28 @@ class Tokens(unittest.TestCase):
         self.assertIsNone(clips.find_phrase(words, "cotton market"))
 
 
+class Lines(unittest.TestCase):
+    def test_wrapped_word_subrows_merge_into_one_line(self):
+        """rows_of() puts a wrapped word ("and", sitting low) in a row of its
+        own; _lines() folds it back, which is what lets line SPACING tell a
+        deck from a paragraph on the Macon Telegraph of 15 January 1897."""
+        rows = [[(10, 100, 40, 12, "The"), (60, 100, 40, 12, "judge")],
+                [(110, 106, 20, 10, "and")],
+                [(10, 130, 40, 12, "denies")]]
+        lines = clips._lines(rows, 12)
+        self.assertEqual(len(lines), 2)
+        self.assertEqual([w[4] for w in lines[0][3]], ["The", "judge", "and"])
+        self.assertEqual(lines[0][1], 116)
+
+    def test_article_transcription_allows_news_vocabulary(self):
+        """"trade" and "orders" in a story about the Order in Council are
+        not an advertisement; the article lane asks for four markers."""
+        text = "VIGOROUS PROTEST Washington.—The British Order in Council, shutting off German trade, orders"
+        clips._check_transcription(text, "article", ad_limit=4)     # no raise
+        with self.assertRaises(clips.npc.Refused):
+            clips._check_transcription(text, "headline")
+
+
 class DisplayRows(unittest.TestCase):
     def body(self):
         return [(20 + (i * 31) % 600, 400 + (i // 20) * 14, 25, 10, "the") for i in range(200)]

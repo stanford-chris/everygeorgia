@@ -221,7 +221,7 @@ def _headline_item(c, page):
     return None
 
 
-def _check_transcription(words, what):
+def _check_transcription(words, what, ad_limit=2):
     hits = vocabulary_hits(words)
     if hits:
         raise npc.Refused(f"the transcribed {what} carries {sorted(hits)}")
@@ -230,7 +230,7 @@ def _check_transcription(words, what):
         raise npc.Refused(f"transcription too short or too broken to be a {what}: {words!r}")
     if words.count("[illegible]") > len(plain) // 2:
         raise npc.Refused(f"transcription mostly illegible: {words!r}")
-    if len(ad_markers(words)) >= 2:
+    if len(ad_markers(words)) >= ad_limit:
         raise npc.Refused(f"transcription reads as an advertisement: {words!r}")
 
 
@@ -256,15 +256,40 @@ def clip_headline(lccn, date, ed=1, log=print):
                    verdict, page_hits, _curl(words), True)
 
 
-ARTICLE_ROWS = 14        # body rows under the deck, at most
+ARTICLE_LINES = 10       # lines of the paragraph, at most (14 ran a fifth of the page)
 ARTICLE_MAX_FRAC = 0.22
+TIGHT_GAP = 0.6          # lines closer than this (in body heights) are one paragraph
+INDENT = 1.2             # a line starting this far right of the others begins a new one
+
+
+def _lines(rows, med):
+    """Merge the sub-rows rows_of() makes of one printed line (a wrapped
+    word's box sits lower than its neighbours' and becomes a row of one)
+    into lines: a row whose top is above the previous line's bottom joins
+    it. Returns [(top, bottom, left, words)]."""
+    out = []
+    for rw in rows:
+        top = min(w[1] for w in rw); bot = max(w[1] + w[3] for w in rw); left = min(w[0] for w in rw)
+        if out and top < out[-1][1] - 0.2 * med:
+            t, b, l, ws = out[-1]
+            out[-1] = (min(t, top), max(b, bot), min(l, left), ws + list(rw))
+        else:
+            out.append((top, bot, left, list(rw)))
+    return out
 
 
 def clip_article(lccn, date, ed=1, log=print):
-    """The headline item plus the first paragraph beneath it: body-size rows
-    in the item's own column, until a paragraph break after four rows, or
-    ARTICLE_ROWS. His ask, 11 September 2026: "a headline and first graf."
-    Transcribed whole by the model, headline and paragraph together."""
+    """The headline item plus its first paragraph. His ask, 11 September
+    2026: "a headline and first graf."
+
+    ⚠️ Decks and body are told apart by SPACING, not size. On the Macon
+    Telegraph of 15 January 1897 the decks are bold body-height lines set
+    two ems apart, and the paragraph is lines of the same height set tight;
+    a height rule ended the crop inside the decks. So: everything under the
+    headline down to the first run of three tight lines is furniture and
+    is kept; the run is the paragraph; it ends at the next indented line
+    (a new paragraph), a wider gap, or ARTICLE_LINES. Transcribed whole by
+    the model."""
     meta = _meta(lccn, date)
     page = ghn_api.front_page(lccn, date, ed)
     c = page.coords()
@@ -272,44 +297,55 @@ def clip_article(lccn, date, ed=1, log=print):
     if chosen is None:
         raise npc.Refused("no headline item below the nameplate")
     hbox, inside = chosen
-    if hbox[3] > HEADLINE_MAX_FRAC * c["height"]:
-        raise npc.Refused("headline item too deep")
     ch = c["height"]
+    if hbox[3] > HEADLINE_MAX_FRAC * ch:
+        raise npc.Refused("headline item too deep")
     med = nameplate.page_median_height(c["words"]) or 1
     x0, x1 = hbox[0], hbox[0] + hbox[2]
-    below = [w for w in c["words"] if x0 <= w[0] + w[2] / 2.0 < x1 and w[1] >= hbox[1] + hbox[3] - med]
-    rows = _rows(below)
-    bottom = hbox[1] + hbox[3]
-    taken = 0
-    prev_bot = bottom
-    for rw in rows:
-        top = min(w[1] for w in rw); bot = max(w[1] + w[3] for w in rw)
-        if top < bottom - med:
-            continue
-        h = max(w[3] for w in rw)
-        if h >= 1.6 * med:                       # display type: the next item
-            break
-        gap = top - prev_bot
-        if taken and gap > PARA_GAP * med and taken >= 4:
-            break
-        if gap > 2.2 * med:
-            break
-        if bot - hbox[1] > ARTICLE_MAX_FRAC * ch:
-            break
-        prev_bot = bot
-        taken += 1
-        if taken >= ARTICLE_ROWS:
-            break
-    if taken < 3:
+    hbot = hbox[1] + hbox[3]
+    below = [w for w in c["words"] if x0 <= w[0] + w[2] / 2.0 < x1 and w[1] >= hbot - med]
+    lines = [ln for ln in _lines(_rows(below), med) if ln[0] >= hbot - med]
+    if len(lines) < 4:
         raise npc.Refused("no paragraph of body text under the headline")
-    box = (hbox[0], hbox[1], hbox[2], int(prev_bot + 0.8 * med) - hbox[1])
+    gaps = [lines[0][0] - hbot] + [lines[i][0] - lines[i - 1][1] for i in range(1, len(lines))]
+    tight = lambda i: gaps[i] < TIGHT_GAP * med
+    # the paragraph starts at the first line followed by two tight lines
+    start = None
+    for i in range(len(lines) - 2):
+        if tight(i + 1) and tight(i + 2) and max(w[3] for w in lines[i][3]) < 1.6 * med:
+            start = i
+            break
+        if lines[i][0] - hbot > ARTICLE_MAX_FRAC * ch:
+            break
+    if start is None:
+        raise npc.Refused("no paragraph of body text under the headline")
+    lefts = sorted(ln[2] for ln in lines[start:start + 12])
+    left_mode = lefts[len(lefts) // 2]
+    end = start
+    for i in range(start + 1, len(lines)):
+        if not tight(i):
+            break
+        if i - start >= 2 and lines[i][2] > left_mode + INDENT * med:
+            break                               # an indented line: the next paragraph
+        if lines[i][1] - hbox[1] > ARTICLE_MAX_FRAC * ch:
+            break
+        end = i
+        if end - start + 1 >= ARTICLE_LINES:
+            break
+    if end - start + 1 < 3:
+        raise npc.Refused("paragraph under the headline is under three lines")
+    bottom = lines[end][1]
+    box = (hbox[0], hbox[1], hbox[2], int(bottom + 0.6 * med) - hbox[1])
     words_in = nameplate.words_in(c["words"], box)
     verdict, page_hits = _verdict("article", lccn, date, words_in, c["words"], True)
     image_box, data = _fetch(page, box)
     words = transcribe.transcribe(data, date[:4], log=log)
     if not words:
         raise npc.Refused("article could not be transcribed")
-    _check_transcription(words, "article")
+    # ⚠️ Four markers for an article, not two: a news paragraph on the British
+    # Order in Council "shutting off German trade" carried "trade" and
+    # "orders" and was refused as an advertisement at two.
+    _check_transcription(words, "article", ad_limit=4)
     return _result("article", page, meta, date, ed, box, image_box, data,
                    verdict, page_hits, _curl(words), True)
 
