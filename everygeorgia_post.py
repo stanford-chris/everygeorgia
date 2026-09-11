@@ -321,8 +321,14 @@ def compose(r):
     seq = r["url"].rstrip("/").rsplit("-", 1)[-1]
     url = r["url"]
     where = f" {city}," if city else ""
-    label = LANE_LABEL[r.get("lane", "nameplate")]
-    head = f"[{label}], “{title},”{where} {npc.post_date(r['date'])}, p. {seq}, "
+    # ⚠️ No "[Nameplate]," on a nameplate post, his call on the first post
+    # (11 September 2026, "We don't need [nameplate] here"): the picture says
+    # what it is. A headline, an advertisement or a market report keeps its
+    # bracketed label in the citation's title slot, since the crop alone does
+    # not say which it is.
+    lane = r.get("lane", "nameplate")
+    label = "" if lane == "nameplate" else f"[{LANE_LABEL[lane]}], "
+    head = f"{label}“{title},”{where} {npc.post_date(r['date'])}, p. {seq}, "
     tail = f". {CREDIT}\n\n"
     visible = url.replace("https://", "").rstrip("/")
     tags = [("tag", f"#{t}", t) for t in TAGS]
