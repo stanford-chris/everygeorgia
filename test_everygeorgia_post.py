@@ -44,10 +44,17 @@ class Compose(unittest.TestCase):
         text = ep.text_of(ep.compose(fake_result()))
         # No "[Nameplate]," on a nameplate post, his call on the first post, 11 September 2026.
         # Title, date, link: no city, no page number, his instruction on the first post.
-        self.assertTrue(text.startswith("“The Abbeville Chronicle,” January 6, 1898. "))
+        # And no quotation marks round the title, his instruction the same evening.
+        self.assertTrue(text.startswith("The Abbeville Chronicle, January 6, 1898. "))
         self.assertNotIn("p. 1", text)
-        self.assertIn("gahistoricnewspapers.galileo.usg.edu/lccn/sn89053135/1898-01-06/ed-1/seq-1. "
-                      "Presented online by the Digital Library of Georgia.", text)
+        # The URL is not printed: it is a link facet on "Presented online".
+        self.assertNotIn("gahistoricnewspapers", text)
+        self.assertIn("January 6, 1898. Presented online by the Digital Library of Georgia.", text)
+        links = [s for s in ep.compose(fake_result()) if s[0] == "link"]
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0][1], "Presented online")
+        self.assertEqual(links[0][2],
+                         "https://gahistoricnewspapers.galileo.usg.edu/lccn/sn89053135/1898-01-06/ed-1/seq-1/")
         self.assertTrue(text.endswith("\n\n#Georgia #History"))
         self.assertLessEqual(len(text), 300)
 
@@ -65,11 +72,16 @@ class Compose(unittest.TestCase):
         text = ep.text_of(ep.compose(fake_result(title="The Gwinnett herald.", city="")))
         self.assertIn("“The Gwinnett Herald,” January 6, 1898", text)
 
-    def test_a_long_title_shortens_the_visible_url_not_the_credit(self):
+    def test_a_long_title_still_fits_with_the_whole_credit(self):
         long = "The bulletin of the Catholic Laymen's Association of Georgia and its friends everywhere."
         text = ep.text_of(ep.compose(fake_result(title=long, city="Augusta")))
         self.assertLessEqual(len(text), 300)
         self.assertIn(ep.CREDIT, text)
+
+    def test_the_link_words_are_the_credit_s_own_opening(self):
+        # If CREDIT is ever reworded, the facet must move with it or the
+        # assert in compose() fires before a post is built.
+        self.assertTrue(ep.CREDIT.startswith(ep.LINK_TEXT + " "))
 
     def test_no_straight_marks_or_em_dash_reach_a_reader(self):
         for r in (fake_result(), fake_result(title="Burke's weekly for boys and girls.")):
@@ -225,7 +237,7 @@ class Lanes(unittest.TestCase):
             r = fake_result(); r["lane"] = lane; r["words"] = "COTTON 8 1/2"; r["generated"] = False
             text = ep.text_of(ep.compose(r))
             if lane == "nameplate":
-                self.assertTrue(text.startswith("“"), text[:30])
+                self.assertTrue(text.startswith("The Abbeville Chronicle, "), text[:30])
                 self.assertNotIn("[", text)
             else:
                 self.assertTrue(text.startswith(f"[{label}], "))

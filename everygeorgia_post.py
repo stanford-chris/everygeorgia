@@ -105,6 +105,7 @@ SHUFFLE_SEED = 20260911             # the day the poster was built; fixed so
 MAX_IMAGE_BYTES = 950_000           # under Bluesky's ~1 MB blob limit
 ALT_MAX = 1900
 CREDIT = "Presented online by the Digital Library of Georgia."
+LINK_TEXT = "Presented online"     # the words that carry the link to the page
 
 CLIP = clips.clip                   # swapped by the tests; never call clips.clip
                                     # directly below this line
@@ -310,10 +311,12 @@ def compose(r):
       "[article title]", [newspaper title], [issue date], p.[page number],
       [url]. Presented online by the Digital Library of Georgia.
     with a bracketed description in the title slot, since a nameplate has no
-    article title. ⚠️ Cut to the title, the date and the link on the first
-    post, his instruction (11 September 2026: "The Dawson Journal, June 14,
-    1867. {link} is sufficient"): no city and no page number in the text. The
-    city and page live on in the alt text and in the link itself. Dates are
+    article title. ⚠️ Cut to the title, the date and the credit on the first
+    post, his instructions (11 September 2026: "The Dawson Journal, June 14,
+    1867. {link} is sufficient", then "move the link to 'Presented online'
+    rather than printing it in full"): no city, no page number and no URL in
+    the text; the page link is a facet on "Presented online". The city and
+    page live on in the alt text and in the link itself. Dates are
     U.S. order, his instruction, for this account alone. Their reply said the
     form is ours to choose; the credit sentence is the one thing they asked
     for, and it stays."""
@@ -327,14 +330,21 @@ def compose(r):
     # not say which it is.
     lane = r.get("lane", "nameplate")
     label = "" if lane == "nameplate" else f"[{LANE_LABEL[lane]}], "
-    head = f"{label}“{title},” {npc.post_date(r['date'])}. "
-    tail = f". {CREDIT}\n\n"
-    visible = url.replace("https://", "").rstrip("/")
+    # ⚠️ No quotation marks round the title, his instruction on the first post
+    # (11 September 2026: "The Dawson Journal, no quotes around it"), over the
+    # house rule that a title of a work is quoted: in a one-line citation the
+    # name IS the line. This account only; the alt text keeps its quotes.
+    head = f"{label}{title}, {npc.post_date(r['date'])}. "
+    # ⚠️ The link to the page rides on "Presented online", his instruction on
+    # the first post (11 September 2026: "move the link to 'Presented online'
+    # rather than printing it in full"). The credit sentence is UGA's one
+    # condition and reads exactly as CREDIT; only its first two words carry
+    # the facet. LINK_TEXT is asserted to be CREDIT's own opening so the two
+    # cannot drift apart.
+    assert CREDIT.startswith(LINK_TEXT + " ")
+    segs = [("text", head), ("link", LINK_TEXT, url),
+            ("text", CREDIT[len(LINK_TEXT):] + "\n\n")]
     tags = [("tag", f"#{t}", t) for t in TAGS]
-    tag_len = sum(len(t[1]) for t in tags) + len(tags) - 1
-    if len(head) + len(visible) + len(tail) + tag_len > 300:
-        visible = "gahistoricnewspapers.galileo.usg.edu/lccn/…"
-    segs = [("text", head), ("link", visible, url), ("text", tail)]
     for i, t in enumerate(tags):
         if i:
             segs.append(("text", " "))
