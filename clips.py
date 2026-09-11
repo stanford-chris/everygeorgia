@@ -357,6 +357,22 @@ def _check_transcription(words, what, ad_limit=2):
         raise npc.Refused(f"transcription reads as an advertisement: {words!r}")
 
 
+def _fold(s):
+    return re.sub(r"[^a-z]", "", (s or "").lower())
+
+
+def _refuse_own_title(words, meta, what):
+    """A headline crop that carries the paper's own name has taken the
+    nameplate: on the Americus Times-Recorder of 9 June 1915 a skyline
+    headline above the masthead made the OCR band end above the real
+    nameplate, and the "headline" beneath it read AMERICUS TIMES-RECORDER
+    CITY EDITION. The geometry now stops at a taller line; this is the
+    belt, on the words a reader would be given."""
+    title = _fold(meta.get("title"))
+    if len(title) >= 6 and title in _fold(words):
+        raise npc.Refused(f"the {what} crop carries the paper's own name: {words[:80]!r}")
+
+
 def clip_headline(lccn, date, ed=1, seq=None, log=print):
     meta = _meta(lccn, date, "headline")
     page = choose_page(lccn, date, ed, seq)
@@ -379,6 +395,7 @@ def clip_headline(lccn, date, ed=1, seq=None, log=print):
         raise npc.Refused("headline could not be transcribed")
     image_box, data = _fetch(page, _loosen(box, c, LOOSE_W, LOOSE_H))
     _check_transcription(words, "headline")
+    _refuse_own_title(words, meta, "headline")
     return _result("headline", page, meta, date, ed, box, image_box, data,
                    verdict, page_hits, _curl(words), True)
 
@@ -474,6 +491,7 @@ def clip_article(lccn, date, ed=1, seq=None, log=print):
     # Order in Council "shutting off German trade" carried "trade" and
     # "orders" and was refused as an advertisement at two.
     _check_transcription(words, "article", ad_limit=4)
+    _refuse_own_title(words, meta, "article")
     return _result("article", page, meta, date, ed, box, image_box, data,
                    verdict, page_hits, _curl(words), True)
 

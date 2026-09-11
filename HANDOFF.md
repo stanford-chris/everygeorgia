@@ -154,6 +154,29 @@ citation with its label in the bracketed slot: `[Headline]`,
   call** (old-seoul and sherlock-quotes `image_alt.py`, everylibrary's and
   everycarnegie's describers); not touched here.
 
+- **A skyline headline above the masthead defeats the nameplate band, and
+  the headline lane then took the nameplate as a second line (11 September
+  2026, twelve-sample run, Americus Times-Recorder of 9 June 1915).** "BRYAN
+  QUITS CABINET" sits ABOVE the title on that page, so the OCR band (the top
+  12.5 percent) held the skyline and not the nameplate; the nameplate lane's
+  ink-edge gate refused it, correctly. But the headline lane's first
+  candidate beneath that band was "COUNTRY SOLID IN SUPPORT OF WILSON", and
+  the nameplate under it (973 units against a 699 head) passed the same-size
+  test, so the crop carried the paper's title and the alt read it out. A
+  continuation line is now at most `SAME_MAX` (1.25) times the head, taller
+  ends the item, and `_refuse_own_title` refuses a headline or article whose
+  words carry the roster title, the belt on the words a reader is given.
+- **A scan can cut the nameplate, and the crop is then right and the picture
+  wrong.** The Cordele Dispatch and Daily Sentinel of 24 September 1925 is
+  filmed with the top of its title off the frame; the crop begins at the
+  page's top edge as it should. Not gated: ink in the top rows is film edge
+  on many good scans (the Dawson Journal's black border), so "ink at row 0"
+  is not a test. Left as a known shape; a reader sees a title with its top
+  sliced.
+- **The Atlanta Daily New Era of 12 April 1871 has a tear through "NEW ERA"**
+  and reads "NEW  RA." in the crop. The crop is right. Same class as above:
+  the film, not the bot, and not gated.
+
 ### Yields, measured on the samples that set every constant
 
 | lane | tries | passed or REVIEW | what the refusals were |

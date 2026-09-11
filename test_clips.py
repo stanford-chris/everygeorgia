@@ -135,6 +135,22 @@ class Banners(unittest.TestCase):
     def head(self):
         return [(20, 100, 60, 30, "FIRE"), (85, 100, 70, 30, "DOWNTOWN"), (160, 100, 90, 30, "TONIGHT")]
 
+    def test_a_taller_line_beneath_is_another_item_not_a_continuation(self):
+        """The Americus Times-Recorder of 9 June 1915: a skyline headline
+        above the masthead, and the nameplate beneath it read as its
+        second line."""
+        body = DisplayRows.body(self)
+        nameplate = [(20, 140, 100, 42, "AMERICUS"), (130, 140, 120, 42, "TIMES")]
+        words = body + self.head() + nameplate
+        b = items.box_with_deck(items.display_rows(words, 1000)[0], words, 700, 1000)
+        self.assertLess(b[1] + b[3], 140)
+
+    def test_a_headline_carrying_the_papers_own_name_is_refused(self):
+        meta = {"title": "Americus Times-Recorder"}
+        with self.assertRaises(clips.npc.Refused):
+            clips._refuse_own_title("COUNTRY SOLID IN SUPPORT OF WILSON CITY EDITION AMERICUS TIMES-RECORDER", meta, "headline")
+        clips._refuse_own_title("COUNTRY SOLID IN SUPPORT OF WILSON", meta, "headline")   # no raise
+
     def test_a_second_line_is_judged_by_its_tallest_word_not_word_by_word(self):
         """Seven of the second banner's eight words were under 0.85 of the
         head and one was over: judged per word the line fell in two."""

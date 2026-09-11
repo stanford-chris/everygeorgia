@@ -22,6 +22,8 @@ MIN_REAL_TOKEN = lanes.MIN_REAL_TOKEN
 HEAD_LO, HEAD_HI = 0.0, 0.5
 AD_LO, AD_HI = 0.5, 1.0
 MAX_ITEM_FRAC = 0.30     # deeper than this of the page is a runaway, refused
+SAME_MAX = 1.25          # a continuation line is at most this much taller than
+                         # the head; taller is another item (a nameplate)
 
 
 def display_rows(words, page_height):
@@ -139,10 +141,16 @@ def box_with_deck(seg, words, page_width, page_height, pi=None):
         line = nameplate.rows_of(sorted(cands, key=lambda w: (w[1], w[0])))[0]
         hl = max(w[3] for w in line)
         take = []
-        if hl >= 0.85 * h:
+        # ⚠️ A continuation is the SAME size: at most SAME_MAX of the head.
+        # Taller is a different item, and on the Americus Times-Recorder of
+        # 9 June 1915 it was the nameplate itself (973 against a 699 skyline
+        # headline above it), which the crop then carried and the alt read.
+        if 0.85 * h <= hl <= SAME_MAX * h:
             lo = min(w[0] for w in line); hi = max(w[0] + w[2] for w in line)
             if (min(hi, x1) - max(lo, x0)) / span >= 0.6:
                 take = line
+        elif hl > SAME_MAX * h:
+            break
         elif max(DECK_MIN * h, 1.6 * med) <= hl:
             take = line
         if not take:
