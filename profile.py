@@ -33,7 +33,9 @@ BIO = (
     # space his own touch.
     "A 🤖 posting clippings from Georgia's old newspapers: Nameplates, headlines, "
     "articles, ads, market reports.🗞️🍑\n\n"
-    "From Georgia Historic Newspapers, presented online by the Digital Library "
+    # "courtesy of", his call on launch evening (11 September 2026), matching
+    # the posts' own credit line.
+    "From Georgia Historic Newspapers, courtesy of the Digital Library "
     "of Georgia. Unofficial. Run by @stanfordc.bsky.social."
 )
 
