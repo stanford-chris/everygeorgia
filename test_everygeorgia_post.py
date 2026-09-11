@@ -70,7 +70,7 @@ class Compose(unittest.TestCase):
 
     def test_city_is_omitted_when_the_roster_has_none(self):
         text = ep.text_of(ep.compose(fake_result(title="The Gwinnett herald.", city="")))
-        self.assertIn("“The Gwinnett Herald,” January 6, 1898", text)
+        self.assertIn("The Gwinnett Herald, January 6, 1898", text)
 
     def test_a_long_title_still_fits_with_the_whole_credit(self):
         long = "The bulletin of the Catholic Laymen's Association of Georgia and its friends everywhere."
