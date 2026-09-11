@@ -194,10 +194,16 @@ pre-1931 front page in five carries slavery, lynching or Klan vocabulary before
 cautions are in `README.md`. This is not a rare problem being dressed up as a
 common one.
 
-**3 — why (204)**
+**3 — why (299)**
 ```
-These posts are not representative of the archive: Roughly 160,000 of its pages mention lynching, and a bot drawing at random would eventually post something indefensible. This one doesn't draw at random.
+These posts are not representative of the archive: Roughly 160,000 of its pages mention lynching, and a bot drawing at random would eventually post something indefensible. This one doesn’t draw at random. Everything else is unattended: A script picks, crops and posts, and no one reads a post first.
 ```
+✅ **The last sentence is his, 11 September 2026**, added when he asked whether the
+thread should say the account is "mainly A.I. driven". It is not: selection, crops
+and gates are code, and the model's one job is reading display type (post 4). What
+the thread had not said was that no one looks at a clipping before it posts, and
+post 2's "I select and frame myself" invited the opposite reading. The capital A
+after the colon is house style: a full sentence follows.
 ⚠️ **"representative", not "neutral", and the claim is about the feed rather than
 the archive.** This post said "This archive is not a neutral record" until
 21 August 2026. Two problems, and the second is the substantive one.

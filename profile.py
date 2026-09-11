@@ -69,7 +69,8 @@ THREAD = [
             "These posts are not representative of the archive: Roughly 160,000 "
             "of its pages mention lynching, and a bot drawing at random would "
             "eventually post something indefensible. This one doesn't draw at "
-            "random."
+            "random. Everything else is unattended: A script picks, crops and "
+            "posts, and no one reads a post first."
         ),
         "links": [],
         "mentions": [],
