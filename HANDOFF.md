@@ -55,16 +55,17 @@ wrong." The daily job then posts the first clipping, the Dawson Journal of 14 Ju
 1867 (a dry run from the empty state picks it), at 09:10. Verified: `plutil -lint`
 clean, `bash everygeorgia_launch.sh --dry-run` prints the six posts and removes
 nothing, `launchctl print` shows the job loaded from `~/Library/LaunchAgents`.
-⚠️⚠️ **THE STORED APP PASSWORD STOPPED WORKING on the afternoon of 11 September 2026,
-found at 15:57 KST by a read-only login test.** `createSession` answers 401 "Invalid
+✅ **Resolved 16:03 KST: he created a new app password and stored it himself; `login_client()`
+logs in.** For the record, what happened: **the stored app password stopped working on the
+afternoon of 11 September 2026, found at 15:57 KST by a read-only login test.** `createSession` answers 401 "Invalid
 identifier or password" by handle and by DID, for the 19-character item in the Keychain
 (`-a georgianewspapers.bsky.social -s everygeorgia-bluesky`, created 08:25 KST, never
 modified). The same item logged in for `--setup-profile` at 08:25 and again at 11:38
 and 11:40 (api_calls.jsonl), so it was revoked or replaced server-side after that. Until
-a working app password is stored (his job, in a GUI session:
+a working app password was stored (his job, in a GUI session:
 `security add-generic-password -a georgianewspapers.bsky.social -s everygeorgia-bluesky -U -w`)
-the 08:40 launch FAILS at login, leaves its job loaded and notifies; the 09:10 run then
-prints "Not launched yet" and posts nothing. **Re-test before relying on the job**:
+the 08:40 launch would have failed at login, left its job loaded and notified. **The test
+that found it, to re-run before relying on the job**:
 `python3 -c 'import sys; sys.argv=["x"]; import everygeorgia_post as ep; print(ep.login_client(retries=1).me.handle)'`.
 ⚠️ **Also not verified: a Keychain read under launchd from this script**, which the daily
 job has never needed. If the log at `~/Library/Logs/everygeorgia-launch.log` shows a
