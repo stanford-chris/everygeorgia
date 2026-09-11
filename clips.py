@@ -253,17 +253,21 @@ def _meta(lccn, date, lane=None):
     return meta
 
 
-NAMEPLATE_CONTEXT = 0.32  # of the page's height below the masthead band. Was
-                          # 0.14 ("the lead headlines, not the fold": his
-                          # request of 11 September 2026, "include the top of
-                          # the page... maybe not the top fold, but some
-                          # headlines"); raised the same evening on seeing the
-                          # first post live, his call ("Can we make the clip
-                          # deeper?", then "Last one" of four rendered depths,
-                          # 0.14/0.20/0.26/0.32). On the Dawson Journal that is
-                          # 40 percent of the page, 1599x875, width to height
-                          # 1.8. The band the model transcribes for the
-                          # vocabulary check grows with it.
+NAMEPLATE_CONTEXT = 0.50  # of the page's height below the masthead band: the
+                          # fold. Was 0.14 ("the lead headlines, not the fold",
+                          # his request of 11 September 2026), then 0.32 that
+                          # evening ("Can we make the clip deeper?"), then 0.50
+                          # an hour later ("Want to go as deep as possible",
+                          # settled on the fold as the deepest setting that
+                          # costs no resolution). Measured on the Dawson
+                          # Journal (1867) and the Cordele Dispatch (1925):
+                          # 58 percent of the page, 1600 wide, under 700 KB.
+                          # At 0.70 the 1867 page already exceeds Bluesky's
+                          # ~1 MB and fit_image shrinks it to 1280 wide; at 1.00
+                          # both pages are whole and the Cordele one is 2048
+                          # tall, past the client's 2000 px cap. The band the
+                          # model transcribes for the vocabulary check grows
+                          # with it (about a minute at 0.32).
 
 
 def clip_nameplate(lccn, date, ed=1, log=print):
