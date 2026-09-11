@@ -89,6 +89,19 @@ _limit_waited = False
 # second such reply refuses the clip (None), which costs a candidate and not
 # a reader. The markers are tool talk and first-person apology, deliberately
 # NOT "let me" or "I'll", which an 1860s editorial can open with.
+# ⚠️⚠️ And the SECOND shape, which shipped on the FIRST POST at 18:23 KST on
+# 11 September 2026 with the first guard in place: not tool talk but
+# DESCRIPTION of the page's elements, "The masthead line ”DAWSON, GA., …” is
+# clearly the large display dateline, with ”Vol. II.” and ”No. 21.” flanking
+# it in bold. The advertisement ”HOYL & SIMMONS,” is in bold display type."
+# No first person, no tool, so the first markers slept through it. The
+# markers below name that register: a sentence ABOUT a line of type rather
+# than the line itself. And for BAND_PROMPT (display type only) there is a
+# second, structural test in `looks_described()`: a band transcription is
+# mostly capitals and Title Case, while a description is mostly lowercase
+# prose; the bad Dawson reply is 60 percent lowercase words against 17 for
+# the good one. That test is NOT applied to the full PROMPT, where a prose
+# advertisement is legitimately lowercase.
 COMMENTARY = re.compile(
     r"\bthis tool\b|\bzoom\b|\bas an ai\b"
     r"|\bi(?:'|’)?m (?:unable|not able|sorry)\b|\bi am (?:unable|not able|sorry)\b"
@@ -96,8 +109,25 @@ COMMENTARY = re.compile(
     r"(?:zoom|read|make out|see|access|open|view)\b"
     r"|\bthe (?:image|file|clipping|scan) (?:is|does|doesn(?:'|’)?t|appears|shows|contains)\b"
     r"|\bhere(?:'|’)?s? (?:is |are )?(?:the |my |a )?transcription\b|\btranscription:"
-    r"|\bvisible text\b",
+    r"|\bvisible text\b"
+    # description of type rather than the type itself
+    r"|\bis clearly\b|\bin bold(?: display)? type\b|\bin (?:large|small|bold) (?:display )?type\b"
+    r"|\bflanking\b|\bappears to (?:read|be|say)\b|\breads as follows\b"
+    r"|\bthe (?:masthead|dateline|nameplate|headline|banner) (?:line|text|reads|is|appears)\b"
+    r"|\bthe (?:large|small|main|bold) (?:display |body )?(?:text|type|headline|dateline)\b"
+    r"|\bset in (?:large|small|bold|display|body)\b",
     re.IGNORECASE)
+LOWERCASE_SHARE_MAX = 0.45
+
+
+def looks_described(text):
+    """For a display-type reply only: true when most words are lowercase,
+    which is prose about the page rather than the page's display type."""
+    words = [w for w in re.findall(r"[A-Za-z][A-Za-z'’]*", text) if len(w) > 1]
+    if len(words) < 6:
+        return False
+    lower = sum(1 for w in words if w[0].islower())
+    return lower / len(words) > LOWERCASE_SHARE_MAX
 COMMENTARY_REMINDER = (
     " Your previous reply began with commentary about the image or your tools "
     "rather than the printed words. Reply with the printed words only."
@@ -199,7 +229,7 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
             log(f"  (transcription failed, exit {r.returncode}: {err})")
             return None
         text = clean(r.stdout)
-        if is_commentary(text):
+        if is_commentary(text) or (prompt is BAND_PROMPT and looks_described(text)):
             log(f"  (transcription rejected: reads as the model's commentary, not the page: "
                 f"{text[:80]!r})")
             reminder = COMMENTARY_REMINDER
