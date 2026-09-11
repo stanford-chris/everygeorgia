@@ -50,7 +50,13 @@ sys.path.insert(0, os.path.join(os.path.expanduser("~"), "Scripts"))
 import limit_guard  # noqa: E402
 
 MODEL = "claude-sonnet-5"
-TIMEOUT = 120
+TIMEOUT = 300            # ⚠️ Not 120. Measured 11 September 2026, afternoon: the
+                         # harness reading the image and answering a trivial
+                         # prompt is 10 s, but a real transcription is 60-98 s
+                         # (98 s for the Dalton Argus band at 1600px, 71 s at
+                         # 1000px, so the size is not the cost). At 120 s the
+                         # twelve-sample dry run timed out 14 times, 28 minutes
+                         # of nothing, and each timeout also spends a candidate.
 LIMIT_BUDGET_S = 1800
 PREFIX = "A.I.-transcribed"
 CLAUDE_TOKEN_ACCOUNT = "seoulbot"
