@@ -232,15 +232,13 @@ class Lanes(unittest.TestCase):
         self.assertNotIn("article", ep.LANES)
         self.assertEqual(ep.LANES, ("nameplate", "headline", "ad", "market"))
 
-    def test_each_lane_but_the_nameplate_labels_its_citation(self):
-        for lane, label in ep.LANE_LABEL.items():
+    def test_no_lane_carries_a_bracketed_label(self):
+        # His call on the first headline post, 11 September 2026.
+        for lane in ep.LANE_LABEL:
             r = fake_result(); r["lane"] = lane; r["words"] = "COTTON 8 1/2"; r["generated"] = False
             text = ep.text_of(ep.compose(r))
-            if lane == "nameplate":
-                self.assertTrue(text.startswith("The Abbeville Chronicle, "), text[:30])
-                self.assertNotIn("[", text)
-            else:
-                self.assertTrue(text.startswith(f"[{label}], "))
+            self.assertTrue(text.startswith("The Abbeville Chronicle, "), (lane, text[:30]))
+            self.assertNotIn("[", text)
 
     def test_alt_carries_the_words_and_names_the_model_only_when_used(self):
         r = fake_result(); r["lane"] = "headline"; r["words"] = "REESE IS ON THE RACK"; r["generated"] = True

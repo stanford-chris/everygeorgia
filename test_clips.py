@@ -286,3 +286,23 @@ class Policies(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class OwnTitleFragments(unittest.TestCase):
+    """The Atlanta Georgian and News of 3 July 1907: the foot of the nameplate
+    posted as a headline on 11 September 2026. Pinned here."""
+    META = {"title": "Atlanta Georgian and news."}
+
+    def test_a_fragment_of_the_title_is_refused(self):
+        with self.assertRaises(npc.Refused):
+            clips._refuse_own_title("AND NEWS LANTA, GA., WEDNESDAY, JULY", self.META, "headline")
+
+    def test_a_dateline_alone_is_refused(self):
+        with self.assertRaises(npc.Refused):
+            clips._refuse_own_title("CITY EDITION. MACON, GA., THURSDAY MORNING", self.META, "headline")
+        with self.assertRaises(npc.Refused):
+            clips._refuse_own_title("WEDNESDAY, JULY 3, 1907", self.META, "headline")
+
+    def test_a_real_headline_with_one_title_word_passes(self):
+        clips._refuse_own_title("NEWS OF THE STRIKE REACHES ATLANTA", self.META, "headline")
+        clips._refuse_own_title("FRENCH COUNTER FOR KEMMEL HILL", {"title": "The Cordele dispatch."}, "headline")

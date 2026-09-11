@@ -346,6 +346,16 @@ def _headline_item(c, page):
     that is not itself an advertisement, or None. On an inner page there is
     no nameplate, and the running head at the top is skipped instead."""
     floor = RUNNING_HEAD * c["height"] if page.seq > 1 else 0
+    # ⚠️ "Below the nameplate" is now literal. On the Atlanta Georgian and
+    # News of 3 July 1907 the topmost display item was the nameplate's own
+    # lower half and dateline, and it POSTED at 18:41 KST on 11 September
+    # 2026 as a headline reading "AND NEWS LANTA, GA., WEDNESDAY, JULY"
+    # (deleted). A front page's floor is the bottom of the nameplate band the
+    # nameplate lane itself finds, when it finds one.
+    if page.seq == 1:
+        np_box = nameplate.nameplate_box(c["words"], c["width"], c["height"])
+        if np_box:
+            floor = max(floor, np_box[1] + np_box[3])
     for s, raw, seg in items.snapped("headline", page, c):
         if s[1] < floor:
             continue
@@ -383,6 +393,11 @@ def _fold(s):
     return re.sub(r"[^a-z]", "", (s or "").lower())
 
 
+DAYS = r"(?:MONDAY|TUESDAY|WEDNESDAY|THURSDAY|FRIDAY|SATURDAY|SUNDAY)"
+MONTHS = r"(?:JANUARY|FEBRUARY|MARCH|APRIL|MAY|JUNE|JULY|AUGUST|SEPTEMBER|OCTOBER|NOVEMBER|DECEMBER)"
+DATELINE = re.compile(rf"\bGA\.?,?\s+{DAYS}\b|\b{DAYS}\s*(?:MORNING|EVENING)?,?\s+{MONTHS}\b", re.IGNORECASE)
+
+
 def _refuse_own_title(words, meta, what):
     """A headline crop that carries the paper's own name has taken the
     nameplate: on the Americus Times-Recorder of 9 June 1915 a skyline
@@ -393,6 +408,20 @@ def _refuse_own_title(words, meta, what):
     title = _fold(meta.get("title"))
     if len(title) >= 6 and title in _fold(words):
         raise npc.Refused(f"the {what} crop carries the paper's own name: {words[:80]!r}")
+    # ⚠️ Whole-title containment slept through "AND NEWS LANTA, GA.,
+    # WEDNESDAY, JULY" on the Atlanta Georgian and News (11 September 2026):
+    # a crop that takes the FOOT of a nameplate carries a fragment of the
+    # name, never the whole. Two belts: any two consecutive words of the
+    # title appearing consecutively in the transcription, and a dateline
+    # (GA. before a weekday, or a weekday before a month), which no headline
+    # carries and every nameplate's underline does.
+    tt = [t for t in re.findall(r"[a-z]+", (meta.get("title") or "").lower()) if t != "the"]
+    wt = re.findall(r"[a-z]+", words.lower())
+    pairs = {(a, b) for a, b in zip(tt, tt[1:]) if len(a) + len(b) >= 6}
+    if any((a, b) in pairs for a, b in zip(wt, wt[1:])):
+        raise npc.Refused(f"the {what} crop carries part of the paper's own name: {words[:80]!r}")
+    if DATELINE.search(words):
+        raise npc.Refused(f"the {what} crop carries a dateline: {words[:80]!r}")
 
 
 def clip_headline(lccn, date, ed=1, seq=None, log=print):

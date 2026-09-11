@@ -323,13 +323,11 @@ def compose(r):
     meta = r["meta"]
     title = npc.display_title(meta.get("title"))
     url = r["url"]
-    # ⚠️ No "[Nameplate]," on a nameplate post, his call on the first post
-    # (11 September 2026, "We don't need [nameplate] here"): the picture says
-    # what it is. A headline, an advertisement or a market report keeps its
-    # bracketed label in the citation's title slot, since the crop alone does
-    # not say which it is.
-    lane = r.get("lane", "nameplate")
-    label = "" if lane == "nameplate" else f"[{LANE_LABEL[lane]}], "
+    # ⚠️ No bracketed lane label on any post, his calls on launch evening
+    # (11 September 2026: "We don't need [nameplate] here", then on the first
+    # headline "Delete the [x] at the start of the posts going forward"). The
+    # picture says what it is; the alt names the lane in words.
+    label = ""
     # ⚠️ No quotation marks round the title, his instruction on the first post
     # (11 September 2026: "The Dawson Journal, no quotes around it"), over the
     # house rule that a title of a work is quoted: in a one-line citation the
