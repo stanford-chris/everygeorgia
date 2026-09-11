@@ -116,7 +116,13 @@ CLIP = clips.clip                   # swapped by the tests; never call clips.cli
 # pages); ad and market draw from search hits on genre phrases, since their
 # material is on inner pages and the OCR of a display ad cannot say what it
 # is (see clips.py).
-LANES = ("nameplate", "headline", "article", "ad", "market")
+# ⏸ "article" is HELD since the evening of 11 September 2026, his call ("Hold
+# the article lane until the ad test exists"): in the twelve-sample dry run
+# that evening both article picks were grocers' advertisements passing as
+# prose (Americus Times-Recorder 1904, Griffin Daily News 1888). Restore it
+# between "headline" and "ad" once clips.py can tell an ad from an article
+# (HANDOFF.md names the dateline test as the one to try).
+LANES = ("nameplate", "headline", "ad", "market")
 LANE_LABEL = {"nameplate": "Nameplate", "headline": "Headline", "article": "Article",
               "ad": "Advertisement", "market": "Market report"}
 SEARCH_LANES = ("ad", "market")

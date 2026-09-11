@@ -205,9 +205,17 @@ class Lanes(unittest.TestCase):
         s = {"posted": []}
         self.assertEqual(ep.next_lane(s), "nameplate")
         s["posted"] = [{"lane": "nameplate"}, {"lane": "headline"}]
-        self.assertEqual(ep.next_lane(s), "article")
-        s["posted"].append({"lane": "article", "dry": True})  # dry posts count: previews rotate
         self.assertEqual(ep.next_lane(s), "ad")
+        s["posted"].append({"lane": "ad", "dry": True})  # dry posts count: previews rotate
+        self.assertEqual(ep.next_lane(s), "market")
+
+    def test_the_article_lane_is_held_on_his_instruction(self):
+        # 11 September 2026: "Hold the article lane until the ad test exists."
+        # Both article picks in that evening's twelve were grocers' ads. A hold
+        # is a decision pending, not a bug: restore it only when he says so, and
+        # move this test with it.
+        self.assertNotIn("article", ep.LANES)
+        self.assertEqual(ep.LANES, ("nameplate", "headline", "ad", "market"))
 
     def test_each_lane_labels_its_citation(self):
         for lane, label in ep.LANE_LABEL.items():

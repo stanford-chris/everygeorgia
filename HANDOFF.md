@@ -225,7 +225,13 @@ market run looks at `SEARCH_TRIES` (8) candidates and will often post
 nothing, handing the slot on. Ad crops are columns of set text, sometimes
 walls of it, occasionally a neighbour's heading at the foot. **Both lanes
 ship because he asked for everything; hold either by removing it from
-`LANES`.** The crops were read by eye, as this file requires: the good ones
+`LANES`.** ⏸ **The ARTICLE lane is held that way since the evening of
+11 September 2026, his call ("Hold the article lane until the ad test
+exists"): both article picks in the twelve-sample dry run were grocers'
+advertisements passing as prose (Americus Times-Recorder, 13 July 1904; Griffin
+Daily News, 9 March 1888). `LANES` is four; `test_the_article_lane_is_held_on_his_instruction`
+pins it. Restore it between headline and ad once `clips.py` can tell an ad
+from an article; the dateline test below is the one to try.** The crops were read by eye, as this file requires: the good ones
 are the J. D. & T. F. Smith card (Atlanta, 1884), the Marietta market report
 (1878) and "AIRPLANE RAID BY 20 OVER LONDON" (Augusta Herald, 1917).
 
