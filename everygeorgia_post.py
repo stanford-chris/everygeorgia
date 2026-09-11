@@ -67,6 +67,7 @@ import collections
 import io
 import json
 import os
+import re
 import random
 import subprocess
 import sys
@@ -109,8 +110,11 @@ ALT_MAX = 1900
 # just 'The Digital Library of Georgia.'"). UGA's one condition (10 September)
 # was to credit the Digital Library of Georgia, which this still does; the
 # longer sentence was our wording, not theirs.
-CREDIT = "The Digital Library of Georgia."
-LINK_TEXT = "The Digital Library of Georgia"     # the words that carry the link to the page
+# ⚠️ And "Courtesy of the Digital Library of Georgia." since 19:05 KST the same
+# evening, his wording ("Is this better ... Courtesy of the Digital"): the
+# standard credit form, and it says what the relationship is.
+CREDIT = "Courtesy of the Digital Library of Georgia."
+LINK_TEXT = "Digital Library of Georgia"     # the words that carry the link to the page
 
 CLIP = clips.clip                   # swapped by the tests; never call clips.clip
                                     # directly below this line
@@ -307,6 +311,15 @@ def page_url(r):
     return r["url"]
 
 
+def town_tag(city):
+    """The roster's city as one hashtag word, or None: "Fort Valley" ->
+    "FortValley", "Atlanta" -> "Atlanta"."""
+    parts = re.findall(r"[A-Za-z]+", city or "")
+    if not parts:
+        return None
+    return "".join(w[:1].upper() + w[1:] for w in parts)
+
+
 def compose(r):
     """The post as segments: ("text", s), ("link", s, url), ("tag", s, tag).
     Built without atproto so it can be tested anywhere; to_builder() turns it
@@ -338,15 +351,22 @@ def compose(r):
     # house rule that a title of a work is quoted: in a one-line citation the
     # name IS the line. This account only; the alt text keeps its quotes.
     head = f"{label}{title}, {npc.post_date(r['date'])}. "
-    # ⚠️ The link to the page rides on the credit's words, his instruction on
-    # the first post (11 September 2026: "move the link to 'Presented online'
-    # rather than printing it in full"; the credit was then cut to the
-    # library's name, so the whole name carries it). LINK_TEXT is asserted to
-    # be CREDIT's own opening so the two cannot drift apart.
-    assert CREDIT.startswith(LINK_TEXT)
-    segs = [("text", head), ("link", LINK_TEXT, url),
-            ("text", CREDIT[len(LINK_TEXT):] + "\n\n")]
+    # ⚠️ The link to the page rides on the library's name inside the credit,
+    # his instruction on the first post (11 September 2026: "move the link to
+    # 'Presented online' rather than printing it in full", then the credit
+    # itself was reworded twice). LINK_TEXT is asserted to occur exactly once
+    # in CREDIT so the two cannot drift apart.
+    assert CREDIT.count(LINK_TEXT) == 1
+    before, after = CREDIT.split(LINK_TEXT)
+    segs = [("text", head + before), ("link", LINK_TEXT, url), ("text", after + "\n\n")]
+    # ⚠️ A third tag for the town, his call (11 September 2026, "can we add a
+    # tag to the town?"): the roster's own city, folded to one word
+    # (#FortValley). No feed carries a town tag; it is for search. Absent
+    # when the roster has no city.
     tags = [("tag", f"#{t}", t) for t in TAGS]
+    town = town_tag(meta.get("city"))
+    if town:
+        tags.append(("tag", f"#{town}", town))
     for i, t in enumerate(tags):
         if i:
             segs.append(("text", " "))

@@ -293,7 +293,12 @@ def clip_nameplate(lccn, date, ed=1, log=print):
     # strip is the OCR's to read and the page gate's to screen. An empty
     # string is a band with no display type, which is a pass; None is a
     # call that failed.
-    words = transcribe.transcribe(strip, date[:4], log=log, max_chars=2000,
+    # ⚠️ max_chars 8000, not 2000: at the fold (NAMEPLATE_CONTEXT 0.50) the
+    # Dawson Journal's band came back at 2,701 and 2,118 characters and was
+    # refused for LENGTH on 11 September 2026, so the poster skipped the one
+    # page it was meant to repost. The band's words serve the vocabulary
+    # check and are cut to 300 for the alt; length is no reason to refuse.
+    words = transcribe.transcribe(strip, date[:4], log=log, max_chars=8000,
                                   prompt=transcribe.BAND_PROMPT)
     if words is None:
         raise npc.Refused("the band under the nameplate could not be transcribed")

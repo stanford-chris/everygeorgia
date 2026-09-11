@@ -49,24 +49,24 @@ class Compose(unittest.TestCase):
         self.assertNotIn("p. 1", text)
         # The URL is not printed: it is a link facet on "Presented online".
         self.assertNotIn("gahistoricnewspapers", text)
-        self.assertIn("January 6, 1898. The Digital Library of Georgia.", text)
+        self.assertIn("January 6, 1898. Courtesy of the Digital Library of Georgia.", text)
         links = [s for s in ep.compose(fake_result()) if s[0] == "link"]
         self.assertEqual(len(links), 1)
-        self.assertEqual(links[0][1], "The Digital Library of Georgia")
+        self.assertEqual(links[0][1], "Digital Library of Georgia")
         self.assertEqual(links[0][2],
                          "https://gahistoricnewspapers.galileo.usg.edu/lccn/sn89053135/1898-01-06/ed-1/seq-1/")
-        self.assertTrue(text.endswith("\n\n#Georgia #History"))
+        self.assertTrue(text.endswith("\n\n#Georgia #History #Abbeville"))
         self.assertLessEqual(len(text), 300)
 
     def test_link_and_tags_are_facets_not_plain_text(self):
         segs = ep.compose(fake_result())
         kinds = [s[0] for s in segs]
         self.assertIn("link", kinds)
-        self.assertEqual(kinds.count("tag"), 2)
+        self.assertEqual(kinds.count("tag"), 3)   # #Georgia #History and the town
         link = next(s for s in segs if s[0] == "link")
         self.assertTrue(link[2].startswith("https://gahistoricnewspapers.galileo.usg.edu/lccn/"))
         self.assertTrue(link[2].endswith("/"))
-        self.assertEqual([s[2] for s in segs if s[0] == "tag"], list(ep.TAGS))
+        self.assertEqual([s[2] for s in segs if s[0] == "tag"], list(ep.TAGS) + ["Abbeville"])
 
     def test_city_is_omitted_when_the_roster_has_none(self):
         text = ep.text_of(ep.compose(fake_result(title="The Gwinnett herald.", city="")))
@@ -81,7 +81,7 @@ class Compose(unittest.TestCase):
     def test_the_link_words_are_the_credit_s_own_opening(self):
         # If CREDIT is ever reworded, the facet must move with it or the
         # assert in compose() fires before a post is built.
-        self.assertTrue(ep.CREDIT.startswith(ep.LINK_TEXT))
+        self.assertEqual(ep.CREDIT.count(ep.LINK_TEXT), 1)
 
     def test_no_straight_marks_or_em_dash_reach_a_reader(self):
         for r in (fake_result(), fake_result(title="Burke's weekly for boys and girls.")):
@@ -347,7 +347,7 @@ class Promises(unittest.TestCase):
         self.assertIn("@", ghn_api.UA)
 
     def test_every_post_credits_dlg(self):
-        self.assertEqual(ep.CREDIT, "The Digital Library of Georgia.")
+        self.assertEqual(ep.CREDIT, "Courtesy of the Digital Library of Georgia.")
         self.assertIn(ep.CREDIT, ep.text_of(ep.compose(fake_result())))
 
     def test_run_is_bounded(self):
@@ -357,3 +357,16 @@ class Promises(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TownTag(unittest.TestCase):
+    def test_city_becomes_one_tag_word(self):
+        self.assertEqual(ep.town_tag("Fort Valley"), "FortValley")
+        self.assertEqual(ep.town_tag("Atlanta"), "Atlanta")
+        self.assertEqual(ep.town_tag("St. Marys"), "StMarys")
+        self.assertIsNone(ep.town_tag(""))
+        self.assertIsNone(ep.town_tag(None))
+
+    def test_no_city_means_no_third_tag(self):
+        text = ep.text_of(ep.compose(fake_result(city="")))
+        self.assertTrue(text.endswith("\n\n#Georgia #History"))
