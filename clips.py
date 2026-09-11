@@ -208,6 +208,19 @@ def _verdict(lane, lccn, date, crop_words, page_words, have):
     return v, sorted(page_hits)
 
 
+def _review(verdict, reason):
+    """The verdict downgraded to REVIEW with `reason` added: a hit in the
+    words a MODEL read out of the crop (the band under a nameplate, a
+    transcribed headline, article or advertisement), which gates.check()
+    never saw because the OCR could not read them. REVIEW is queued for a
+    person and never posted, exactly as the page gate's is. Until
+    11 September 2026 these raised Refused; his call: "I'd like to look at
+    them."
+    """
+    return gates.Verdict(gates.REVIEW, list(verdict.reasons)
+                         + [f"{reason}; a person decides, this is not a rejection"])
+
+
 def _result(lane, page, meta, date, ed, box, image_box, data, verdict,
             page_hits, words, generated, extra=None):
     from PIL import Image
@@ -254,7 +267,8 @@ def clip_nameplate(lccn, date, ed=1, log=print):
     it can, and the OCR cannot be trusted to say so (the Banner-Herald's
     unread headline). So the extension is transcribed by the model and
     scored against the vocabulary prefixes exactly as a headline is, and a
-    hit REFUSES the post outright. The alt keeps the nameplate description
+    hit sends the post to REVIEW (a refusal until 11 September 2026; his
+    call: "I'd like to look at them"). The alt keeps the nameplate description
     and adds the transcription, labelled."""
     r = npc.clip(lccn, date, ed)
     page = ghn_api.front_page(lccn, date, ed)
@@ -274,7 +288,8 @@ def clip_nameplate(lccn, date, ed=1, log=print):
         raise npc.Refused("the band under the nameplate could not be transcribed")
     hits = vocabulary_hits(words)
     if hits:
-        raise npc.Refused(f"the band under the nameplate carries {sorted(hits)}")
+        r["verdict"] = _review(r["verdict"], f"the band under the nameplate carries {sorted(hits)}")
+        r["postable"] = False
     image_box, data = _fetch(page, ext, width=1600)
     r.update({"seq": 1, "words": _curl(words[:300].rsplit(" ", 1)[0] + ("…" if len(words) > 300 else "")) if words else "",
               "generated": bool(words),
@@ -339,9 +354,8 @@ def strong_ad_markers(text):
 
 
 def _check_transcription(words, what, ad_limit=2):
-    hits = vocabulary_hits(words)
-    if hits:
-        raise npc.Refused(f"the transcribed {what} carries {sorted(hits)}")
+    """Refuses a transcription that is not a `what`; returns the sensitive
+    vocabulary it carries, for the caller to turn into a REVIEW."""
     plain = [t for t in tokens(words) if t != "illegible"]
     if len(plain) < 3 or sum(1 for t in plain if len(t) >= 4) < 3:
         raise npc.Refused(f"transcription too short or too broken to be a {what}: {words!r}")
@@ -355,6 +369,7 @@ def _check_transcription(words, what, ad_limit=2):
         raise npc.Refused(f"headline transcription has an unread word: {words!r}")
     if len(ad_markers(words)) >= ad_limit or strong_ad_markers(words):
         raise npc.Refused(f"transcription reads as an advertisement: {words!r}")
+    return vocabulary_hits(words)
 
 
 def _fold(s):
@@ -394,8 +409,10 @@ def clip_headline(lccn, date, ed=1, seq=None, log=print):
     if not words:
         raise npc.Refused("headline could not be transcribed")
     image_box, data = _fetch(page, _loosen(box, c, LOOSE_W, LOOSE_H))
-    _check_transcription(words, "headline")
+    hits = _check_transcription(words, "headline")
     _refuse_own_title(words, meta, "headline")
+    if hits:
+        verdict = _review(verdict, f"the transcribed headline carries {sorted(hits)}")
     return _result("headline", page, meta, date, ed, box, image_box, data,
                    verdict, page_hits, _curl(words), True)
 
@@ -490,8 +507,10 @@ def clip_article(lccn, date, ed=1, seq=None, log=print):
     # ⚠️ Four markers for an article, not two: a news paragraph on the British
     # Order in Council "shutting off German trade" carried "trade" and
     # "orders" and was refused as an advertisement at two.
-    _check_transcription(words, "article", ad_limit=4)
+    hits = _check_transcription(words, "article", ad_limit=4)
     _refuse_own_title(words, meta, "article")
+    if hits:
+        verdict = _review(verdict, f"the transcribed article carries {sorted(hits)}")
     return _result("article", page, meta, date, ed, box, image_box, data,
                    verdict, page_hits, _curl(words), True)
 
@@ -546,7 +565,7 @@ def clip_ad(lccn, date, ed=1, seq=1, phrase=None, log=print):
         generated = True
         hits = vocabulary_hits(words)
         if hits:
-            raise npc.Refused(f"the transcribed advertisement carries {sorted(hits)}")
+            verdict = _review(verdict, f"the transcribed advertisement carries {sorted(hits)}")
     return _result("ad", page, meta, date, ed, box, image_box, data, verdict,
                    page_hits, _curl(words), generated, {"phrase": phrase})
 

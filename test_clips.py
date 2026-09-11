@@ -80,6 +80,15 @@ class Lines(unittest.TestCase):
                 clips._check_transcription(text, "article", ad_limit=4)
         self.assertIn("$", clips.ad_markers("A 25-cent trial bottle"))
 
+    def test_a_transcription_carrying_the_vocabulary_is_returned_not_refused(self):
+        """Since 11 September 2026 the caller turns the hits into a REVIEW; the
+        check itself refuses only what is not a headline or article."""
+        self.assertEqual(clips._check_transcription("MOB LYNCHES TWO NEAR MACON", "headline"), {"lynch"})
+        self.assertEqual(clips._check_transcription("COUNTRY SOLID IN SUPPORT OF WILSON", "headline"), set())
+        v = clips._review(gates.Verdict(gates.PASS), "the transcribed headline carries ['lynch']")
+        self.assertEqual(v.outcome, gates.REVIEW)
+        self.assertFalse(v.postable)
+
     def test_article_transcription_allows_news_vocabulary(self):
         """"trade" and "orders" in a story about the Order in Council are
         not an advertisement; the article lane asks for four markers."""

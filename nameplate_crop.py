@@ -185,14 +185,15 @@ def describe(meta, date, page):
 
 
 def check_words(words, box):
-    """Gate 2. Raises Refused naming the term that stopped it."""
+    """Gate 2, as a measurement: (the words inside the band, {term: count}
+    of the sensitive vocabulary among them). It raised Refused until
+    11 September 2026; the decision is gates.check()'s now, and a hit in the
+    band is REVIEW there, his call."""
     inside = nameplate.words_in(words, box)
-    for prefixes, label in ((SUBJECT_PREFIXES, "slavery/lynching/Klan"),
-                            (NEGRO_PREFIXES, "negro")):
-        hits = score(inside, prefixes)
-        if hits:
-            raise Refused(f"vocabulary gate: {label} {dict(hits)} inside the band")
-    return inside
+    hits = {}
+    for prefixes in (SUBJECT_PREFIXES, NEGRO_PREFIXES):
+        hits.update(score(inside, prefixes))
+    return inside, hits
 
 
 def _open_image(data):

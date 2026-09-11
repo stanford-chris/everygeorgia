@@ -14,7 +14,7 @@ the whole corpus; a blanket deny erases it.
 
   PASS    may be posted automatically
   REVIEW  a person decides. NOT a refusal, and never counted as one.
-  REFUSE  out of bounds: no rights, wrong era, or the crop itself carries it
+  REFUSE  out of bounds: no rights, wrong era, no crop geometry
 
 The split follows the project's own editorial test. REFUSE is for when the
 IMAGE is indefensible with no words attached. REVIEW is for when the image is
@@ -154,8 +154,16 @@ def check(lane, lccn, issue_date, crop_hits=None, page_hits=None,
     if not have_geometry:
         reasons.append("no confident crop geometry"); outcome = REFUSE
     if crop_hits:
-        reasons.append(f"the crop itself carries {sorted(crop_hits)}")
-        outcome = REFUSE
+        # ⚠️ REVIEW, not REFUSE, since 11 September 2026, his call: "I don't
+        # think I want clippings refused outright. I'd like to look at them."
+        # Until then a hit in the crop's own words was the one vocabulary
+        # condition that refused without a person seeing it. Nothing REVIEW
+        # is ever posted, so the feed is unchanged; the queue gains the crops.
+        # The reason is collected even when rights or era already REFUSE.
+        reasons.append(f"the crop itself carries {sorted(crop_hits)}; "
+                       "a person decides, this is not a rejection")
+        if outcome != REFUSE:
+            outcome = REVIEW
     if pol.page_gate and page_hits and outcome != REFUSE:
         # ⚠️ REVIEW, never REFUSE. See the header: this is the condition that
         # would silence the Black press if it denied outright.

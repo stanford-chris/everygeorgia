@@ -275,17 +275,17 @@ class Vocabulary(unittest.TestCase):
 
 
 class Gates(unittest.TestCase):
-    def test_vocabulary_gate_refuses_and_names_the_term(self):
+    def test_vocabulary_gate_names_the_term_inside_the_band(self):
         box = (0, 0, 796, 200)
         words = [W(10, 10, 50, 60, "THE"), W(100, 120, 40, 12, "lynching")]
-        with self.assertRaises(npc.Refused) as cm:
-            npc.check_words(words, box)
-        self.assertIn("lynch", str(cm.exception))
+        inside, hits = npc.check_words(words, box)
+        self.assertIn("lynch", hits)
 
     def test_vocabulary_gate_ignores_words_below_the_band(self):
         box = (0, 0, 796, 200)
         words = [W(10, 10, 50, 60, "THE"), W(100, 900, 40, 12, "lynching")]
-        self.assertEqual(len(npc.check_words(words, box)), 1)
+        inside, hits = npc.check_words(words, box)
+        self.assertEqual((len(inside), hits), (1, {}))
 
     def test_shape_gate_refuses_a_squarish_crop(self):
         try:
@@ -478,16 +478,26 @@ class Gates(unittest.TestCase):
         self.assertNotEqual(v.outcome, gates.REFUSE)
         self.assertIn("not a rejection", " ".join(v.reasons))
 
-    def test_vocabulary_in_the_crop_is_REFUSE(self):
-        """The image itself is indefensible with no words attached, which is
-        the project's own editorial test."""
+    def test_vocabulary_in_the_crop_is_REVIEW_since_11_September_2026(self):
+        """His call: "I don't think I want clippings refused outright. I'd
+        like to look at them." It was REFUSE until that day. Never postable,
+        so the feed is unchanged; the queue gains the crop."""
         v = gates.check("nameplate", "sn00000001", "1898-01-06",
                         crop_hits={"lynch"})
-        self.assertEqual(v.outcome, gates.REFUSE)
+        self.assertEqual(v.outcome, gates.REVIEW)
+        self.assertFalse(v.postable)
+        self.assertIn("the crop itself carries", " ".join(v.reasons))
 
-    def test_a_crop_hit_outranks_a_page_hit(self):
+    def test_a_crop_hit_and_a_page_hit_are_both_named(self):
         v = gates.check("nameplate", "sn00000001", "1898-01-06",
                         crop_hits={"lynch"}, page_hits={"negro"})
+        self.assertEqual(v.outcome, gates.REVIEW)
+        self.assertEqual(len(v.reasons), 2)
+
+    def test_rights_and_era_still_refuse_outright(self):
+        """REVIEW is for the vocabulary alone: no rights and the wrong era are
+        not a person's call."""
+        v = gates.check("ad", "sn00000001", "1860-04-12", crop_hits={"slave"})
         self.assertEqual(v.outcome, gates.REFUSE)
 
     def test_era_gates_by_lane(self):
@@ -576,15 +586,17 @@ class BlackPressIsNotErased(unittest.TestCase):
                         page_hits={"negro"})
         self.assertEqual(v.outcome, gates.REVIEW)
 
-    def test_but_a_loaded_crop_is_still_refused_on_those_titles(self):
+    def test_but_a_loaded_crop_is_still_not_posted_on_those_titles(self):
         """⚠️ REVIEW is not an exemption. A crop that itself carries the
-        vocabulary is refused whoever printed it: the rule is about the image,
-        not about the publisher."""
+        vocabulary is held whoever printed it: the rule is about the image,
+        not about the publisher. Held means REVIEW since 11 September 2026
+        (it was REFUSE), so a person sees it; it is never postable."""
         if "sn82016225" not in gates.roster():
             self.skipTest("rights csv not built")
         v = gates.check("nameplate", "sn82016225", "1876-03-25",
                         crop_hits={"lynch"})
-        self.assertEqual(v.outcome, gates.REFUSE)
+        self.assertEqual(v.outcome, gates.REVIEW)
+        self.assertFalse(v.postable)
 
 
 class InkEdge(unittest.TestCase):

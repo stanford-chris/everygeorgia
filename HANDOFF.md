@@ -239,6 +239,31 @@ Tests: `test_clips.py` (12, synthetic page with columns, gutters and a
 rule), `test_everygeorgia_post.py` (30, lanes and rotation), `test_nameplate.py`
 (69). All stdlib plus Pillow, no network, no model.
 
+## ✅ Vocabulary in the crop is REVIEW, not REFUSE (his call, evening of 11 September 2026)
+
+"I don't think I want clippings refused outright. I'd like to look at them." Until that
+evening a hit in the crop's OWN words was the one vocabulary condition that refused with
+no person seeing it: `gates.check` on the OCR inside the crop, `clip_nameplate` on the
+model's reading of the band, `_check_transcription` on a headline or article, the ad
+lane on a transcribed ad. All four now hand the crop to the review queue instead
+(`_review()` in clips.py; `gates.check` collects the reason and downgrades to REVIEW
+unless rights, era or geometry already refuse, which still refuse outright).
+**Nothing REVIEW is ever posted, so the feed is unchanged; the queue gains the crops.**
+`log_review` now records `lane`, `words` and `image_box` so a line can be judged from
+the file. Verified on two of the afternoon's pages: the Americus article of 30 July 1917
+("NEGRO SOLDIERS IN SERIOUS CLASH") returns REVIEW with all three reasons named, and
+the Savannah Daily Herald nameplate of 3 July 1865 returns REVIEW on its page hits.
+Tests: `test_vocabulary_in_the_crop_is_REVIEW_since_11_September_2026`,
+`test_rights_and_era_still_refuse_outright`, and the Black-press test now asserts
+"never postable" rather than "refused".
+
+⚠️ **Found doing it: `transcribe.py` inherited the caller's stdin, and `claude -p` reads
+stdin as prompt.** A hand test run as `python3 - <<'EOF'` handed the model the rest of the
+heredoc; with Bash it ran the script (the 1839 "Ran cleanly. Results:" incident above was
+THAT, not the model wandering on its own), and under `--restricted` it came back as a
+"prompt-injection note" in the words field. `stdin=subprocess.DEVNULL` now; launchd gives
+/dev/null anyway, so no scheduled run was ever affected.
+
 ## ⏳ Next lane to build: notice, from weeklies' front pages (his call, 11 September 2026)
 
 "I'm not opposed to featuring clips of ads and notices." The headline lane finds the

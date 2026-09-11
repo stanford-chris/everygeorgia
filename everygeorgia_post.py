@@ -414,7 +414,8 @@ def log_review(r, state):
     line = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "lccn": r["lccn"], "date": r["date"], "edition": r["edition"],
-        "url": r["url"], "caption": r["caption"],
+        "url": r["url"], "caption": r["caption"], "lane": r.get("lane"),
+        "image_box": r.get("image_box"), "words": r.get("words"),
         "page_hits": r["page_hits"], "reasons": r["verdict"].reasons,
         "pass": state.get("pass"),
     }

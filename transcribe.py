@@ -142,7 +142,15 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
                                     "--model", model,
                                     prompt.format(name=name, year=year)],
                                    capture_output=True, text=True, env=env,
-                                   cwd=td, timeout=timeout)
+                                   cwd=td, timeout=timeout,
+                                   # ⚠️ stdin closed. claude -p reads whatever
+                                   # stdin holds as more prompt, and a caller
+                                   # run as `python3 - <<EOF` hands it the rest
+                                   # of that script: on 11 September 2026 the
+                                   # model was given a timing harness that way,
+                                   # ran it (it had Bash then), and returned
+                                   # the harness's output as a "transcription".
+                                   stdin=subprocess.DEVNULL)
         except (subprocess.TimeoutExpired, OSError) as exc:
             log(f"  (transcription unavailable: {exc.__class__.__name__})")
             continue
