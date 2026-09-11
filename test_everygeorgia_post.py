@@ -297,12 +297,18 @@ class LaunchThread(unittest.TestCase):
             segs = ep.thread_segments(p, dids)
             self.assertEqual(ep.text_of(segs), p["text"])
         last = ep.thread_segments(prof.thread()[-1], dids)
+        # Launch evening, 11 September 2026: Grady is a LINK on the words
+        # "journalism school at UGA", not a mention, and the handle is gone.
         self.assertEqual([s for s in last if s[0] == "mention"],
-                         [("mention", "@stanfordc.bsky.social", "did:plc:a"),
-                          ("mention", "@ugagrady.bsky.social", "did:plc:b")])
+                         [("mention", "@stanfordc.bsky.social", "did:plc:a")])
+        self.assertIn(("link", "journalism school at UGA", "https://bsky.app/profile/ugagrady.bsky.social"), last)
+        self.assertNotIn("@ugagrady", prof.thread()[-1]["text"])
         fifth = ep.thread_segments(prof.thread()[4], dids)
         link = next(s for s in fifth if s[0] == "link")
+        # And post 5's link rides on the paper's name, no printed URL.
+        self.assertEqual(link[1], "Georgia Weekly Telegraph and Georgia Journal & Messenger")
         self.assertEqual(link[2], "https://gahistoricnewspapers.galileo.usg.edu/lccn/sn85034222/1875-02-23/ed-1/seq-1/")
+        self.assertNotIn("gahistoricnewspapers", prof.thread()[4]["text"])
 
     def test_post_five_date_is_us_order_full_month(self):
         self.assertIn("February 23, 1875", prof.thread()[4]["text"])

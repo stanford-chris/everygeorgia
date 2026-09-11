@@ -90,10 +90,12 @@ THREAD = [
             "This account's avatar is a clipping too: An ornate blackletter "
             "capital G from the nameplate of the Georgia Weekly Telegraph and "
             "Georgia Journal & Messenger, Macon, February 23, 1875. The white "
-            "pitting in the strokes is the microfilm, not a filter.\n\n"
-            "gahistoricnewspapers.galileo.usg.edu/lccn/…"
+            "pitting in the strokes is the microfilm, not a filter."
         ),
-        "links": [("gahistoricnewspapers.galileo.usg.edu/lccn/…",
+        # The page link rides on the paper's name, his call on launch evening
+        # (11 September 2026), as the clippings' link rides on "Presented
+        # online": no printed URL.
+        "links": [("Georgia Weekly Telegraph and Georgia Journal & Messenger",
                    GHN + "/lccn/sn85034222/1875-02-23/ed-1/seq-1/")],
         "mentions": [],
     },
@@ -101,11 +103,14 @@ THREAD = [
         "text": (
             "Run by @stanfordc.bsky.social, not the Digital Library of Georgia. "
             "Born in Atlanta, I'm a graduate of the journalism school at UGA "
-            "(@ugagrady.bsky.social) and started my newspaper career at The Augusta "
+            "and started my newspaper career at The Augusta "
             "Chronicle. Corrections welcome."
         ),
-        "links": [],
-        "mentions": ["stanfordc.bsky.social", "ugagrady.bsky.social"],
+        # "journalism school at UGA" links to Grady's Bluesky profile, his call
+        # on launch evening (11 September 2026), in place of the bare handle in
+        # parentheses. A link, not a mention: it carries no notification.
+        "links": [("journalism school at UGA", "https://bsky.app/profile/ugagrady.bsky.social")],
+        "mentions": ["stanfordc.bsky.social"],
     },
 ]
 
