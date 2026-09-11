@@ -49,8 +49,9 @@ CUTOFF = None                  # ⚠️ Was "1931-01-01" until 11 September 2026
                                # Tribune to 1960), and the 21 August email told
                                # UGA their determination would be used rather
                                # than ours. None means no cutoff; a date string
-                               # restores one. The bio and post 1 still say
-                               # "before 1931" until the profile is rewritten.
+                               # restores one. The bio and post 1 were rewritten
+                               # the same day: the bio no longer names a year and
+                               # post 1 reads "1763 to the 1970s".
 
 
 class Policy:
