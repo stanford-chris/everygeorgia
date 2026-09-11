@@ -104,8 +104,13 @@ SHUFFLE_SEED = 20260911             # the day the poster was built; fixed so
                                     # the order is reproducible
 MAX_IMAGE_BYTES = 950_000           # under Bluesky's ~1 MB blob limit
 ALT_MAX = 1900
-CREDIT = "Presented online by the Digital Library of Georgia."
-LINK_TEXT = "Presented online"     # the words that carry the link to the page
+# ⚠️ Was "Presented online by the Digital Library of Georgia." until 18:49 KST
+# on 11 September 2026, his call on the fourth live post ("Change it ... to
+# just 'The Digital Library of Georgia.'"). UGA's one condition (10 September)
+# was to credit the Digital Library of Georgia, which this still does; the
+# longer sentence was our wording, not theirs.
+CREDIT = "The Digital Library of Georgia."
+LINK_TEXT = "The Digital Library of Georgia"     # the words that carry the link to the page
 
 CLIP = clips.clip                   # swapped by the tests; never call clips.clip
                                     # directly below this line
@@ -333,13 +338,12 @@ def compose(r):
     # house rule that a title of a work is quoted: in a one-line citation the
     # name IS the line. This account only; the alt text keeps its quotes.
     head = f"{label}{title}, {npc.post_date(r['date'])}. "
-    # ⚠️ The link to the page rides on "Presented online", his instruction on
+    # ⚠️ The link to the page rides on the credit's words, his instruction on
     # the first post (11 September 2026: "move the link to 'Presented online'
-    # rather than printing it in full"). The credit sentence is UGA's one
-    # condition and reads exactly as CREDIT; only its first two words carry
-    # the facet. LINK_TEXT is asserted to be CREDIT's own opening so the two
-    # cannot drift apart.
-    assert CREDIT.startswith(LINK_TEXT + " ")
+    # rather than printing it in full"; the credit was then cut to the
+    # library's name, so the whole name carries it). LINK_TEXT is asserted to
+    # be CREDIT's own opening so the two cannot drift apart.
+    assert CREDIT.startswith(LINK_TEXT)
     segs = [("text", head), ("link", LINK_TEXT, url),
             ("text", CREDIT[len(LINK_TEXT):] + "\n\n")]
     tags = [("tag", f"#{t}", t) for t in TAGS]

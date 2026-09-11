@@ -49,10 +49,10 @@ class Compose(unittest.TestCase):
         self.assertNotIn("p. 1", text)
         # The URL is not printed: it is a link facet on "Presented online".
         self.assertNotIn("gahistoricnewspapers", text)
-        self.assertIn("January 6, 1898. Presented online by the Digital Library of Georgia.", text)
+        self.assertIn("January 6, 1898. The Digital Library of Georgia.", text)
         links = [s for s in ep.compose(fake_result()) if s[0] == "link"]
         self.assertEqual(len(links), 1)
-        self.assertEqual(links[0][1], "Presented online")
+        self.assertEqual(links[0][1], "The Digital Library of Georgia")
         self.assertEqual(links[0][2],
                          "https://gahistoricnewspapers.galileo.usg.edu/lccn/sn89053135/1898-01-06/ed-1/seq-1/")
         self.assertTrue(text.endswith("\n\n#Georgia #History"))
@@ -81,7 +81,7 @@ class Compose(unittest.TestCase):
     def test_the_link_words_are_the_credit_s_own_opening(self):
         # If CREDIT is ever reworded, the facet must move with it or the
         # assert in compose() fires before a post is built.
-        self.assertTrue(ep.CREDIT.startswith(ep.LINK_TEXT + " "))
+        self.assertTrue(ep.CREDIT.startswith(ep.LINK_TEXT))
 
     def test_no_straight_marks_or_em_dash_reach_a_reader(self):
         for r in (fake_result(), fake_result(title="Burke's weekly for boys and girls.")):
@@ -347,7 +347,7 @@ class Promises(unittest.TestCase):
         self.assertIn("@", ghn_api.UA)
 
     def test_every_post_credits_dlg(self):
-        self.assertEqual(ep.CREDIT, "Presented online by the Digital Library of Georgia.")
+        self.assertEqual(ep.CREDIT, "The Digital Library of Georgia.")
         self.assertIn(ep.CREDIT, ep.text_of(ep.compose(fake_result())))
 
     def test_run_is_bounded(self):
