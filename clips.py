@@ -253,10 +253,17 @@ def _meta(lccn, date, lane=None):
     return meta
 
 
-NAMEPLATE_CONTEXT = 0.14  # of the page's height below the masthead band: the
-                          # lead headlines, not the fold. His request, 11
-                          # September 2026: "include the top of the page...
-                          # maybe not the top fold, but some headlines."
+NAMEPLATE_CONTEXT = 0.32  # of the page's height below the masthead band. Was
+                          # 0.14 ("the lead headlines, not the fold": his
+                          # request of 11 September 2026, "include the top of
+                          # the page... maybe not the top fold, but some
+                          # headlines"); raised the same evening on seeing the
+                          # first post live, his call ("Can we make the clip
+                          # deeper?", then "Last one" of four rendered depths,
+                          # 0.14/0.20/0.26/0.32). On the Dawson Journal that is
+                          # 40 percent of the page, 1599x875, width to height
+                          # 1.8. The band the model transcribes for the
+                          # vocabulary check grows with it.
 
 
 def clip_nameplate(lccn, date, ed=1, log=print):
