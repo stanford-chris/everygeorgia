@@ -57,7 +57,10 @@ MIN_CELL_W = 0.05        # narrower than this of the page is a sliver, not a
 MIN_SPAN = 0.06          # column gutters are measured over at least this of
                          # the page height, so word spaces cannot line up
 EDGE_DARK = 0.55         # a column dark down most of the page is film edge
-PAPER_RUN = 0.006        # paper mode: an edge ends at this much clear paper
+PAPER_RUN = 0.002        # paper mode: an edge ends at this much clear paper
+                         # beyond the OCR edge (2-3px at 1400). ⚠️ 0.006 asked
+                         # for more paper than the Macon Telegraph's gutters
+                         # hold and refused every headline on the page.
 GUTTER_CROSSED = 0.08    # a gutter is crossed on an item's rows when even its
                          # clearest column is this dark there
 RULE_DARK = 0.45         # an interior column at least this dark down the whole

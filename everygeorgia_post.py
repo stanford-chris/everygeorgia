@@ -354,7 +354,15 @@ def alt_text(r):
     promise, and names the model when a model read them: transcribe.PREFIX
     leads, for the reason image_alt.py gives (alt travels without the bio)."""
     lane = r.get("lane", "nameplate")
-    if lane == "nameplate" or not r.get("words"):
+    if lane == "nameplate":
+        alt = r["alt"]
+        if r.get("context") and r.get("words"):
+            alt = (alt.rstrip(".") + f", with the top of the page beneath it. "
+                   f"{transcribe.PREFIX}, the band beneath reads: “{r['words']}”")
+        if len(alt) > ALT_MAX:
+            alt = alt[:ALT_MAX - 2].rstrip() + "…”"
+        return alt
+    if not r.get("words"):
         return r["alt"][:ALT_MAX]
     meta = r["meta"]
     title = npc.display_title(meta.get("title"))

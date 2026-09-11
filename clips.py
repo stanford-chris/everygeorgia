@@ -170,6 +170,24 @@ def _curl(s):
     return s.replace("'", "’").replace('"', "”")
 
 
+def _loosen(box, coords, wfrac, hfrac):
+    """A box with a margin of the page's own proportions on each side,
+    clamped to the page. His request, 11 September 2026, on the Dublin
+    article: "zoom out a little bit... it doesn't have to be quite so
+    tight, and can include surrounding text, as long as the hed/article
+    is the focus." The margin is a fraction of the PAGE, not of the box,
+    so a one-line headline and a six-line one get the same air."""
+    cw, ch = coords["width"], coords["height"]
+    mx, my = int(cw * wfrac), int(ch * hfrac)
+    x0 = max(0, box[0] - mx); y0 = max(0, box[1] - my)
+    x1 = min(cw, box[0] + box[2] + mx); y1 = min(ch, box[1] + box[3] + my)
+    return (x0, y0, x1 - x0, y1 - y0)
+
+
+LOOSE_W = 0.035          # margin either side of a headline or article, of
+LOOSE_H = 0.018          # the page's width, and above and below, of its height
+
+
 def _fetch(page, box_ocr, width=CROP_WIDTH):
     image_box = page.to_image(box_ocr)
     w = min(width, image_box[2])
@@ -222,6 +240,47 @@ def _meta(lccn, date, lane=None):
     return meta
 
 
+NAMEPLATE_CONTEXT = 0.14  # of the page's height below the masthead band: the
+                          # lead headlines, not the fold. His request, 11
+                          # September 2026: "include the top of the page...
+                          # maybe not the top fold, but some headlines."
+
+
+def clip_nameplate(lccn, date, ed=1, log=print):
+    """The nameplate lane's crop, extended down into the top of the page.
+
+    ⚠️ This reopens the one risk the nameplate lane never had. Its safety
+    case was that a paper's name cannot be about a lynching; the band under
+    it can, and the OCR cannot be trusted to say so (the Banner-Herald's
+    unread headline). So the extension is transcribed by the model and
+    scored against the vocabulary prefixes exactly as a headline is, and a
+    hit REFUSES the post outright. The alt keeps the nameplate description
+    and adds the transcription, labelled."""
+    r = npc.clip(lccn, date, ed)
+    page = ghn_api.front_page(lccn, date, ed)
+    c = page.coords()
+    cw, ch = c["width"], c["height"]
+    band_h = int(r["band_fraction"] * ch)
+    ext = (0, 0, cw, min(ch, band_h + int(NAMEPLATE_CONTEXT * ch)))
+    below = (0, band_h, cw, ext[3] - band_h)
+    _, strip = _fetch(page, below, width=1600)
+    words = transcribe.transcribe(strip, date[:4], log=log, max_chars=6000, timeout=240)
+    if not words:
+        raise npc.Refused("the band under the nameplate could not be transcribed")
+    hits = vocabulary_hits(words)
+    if hits:
+        raise npc.Refused(f"the band under the nameplate carries {sorted(hits)}")
+    image_box, data = _fetch(page, ext, width=1600)
+    r.update({"seq": 1, "words": _curl(words[:300].rsplit(" ", 1)[0] + ("…" if len(words) > 300 else "")),
+              "generated": True,
+              "bytes": data, "image_box": image_box,
+              "band_fraction": ext[3] / float(ch), "context": True})
+    from PIL import Image
+    import io
+    im = Image.open(io.BytesIO(data)); r["size"] = (im.width, im.height)
+    return r
+
+
 def _headline_item(c, page):
     """(box, words inside) of the topmost display item below the nameplate
     that is not itself an advertisement, or None."""
@@ -263,10 +322,14 @@ def clip_headline(lccn, date, ed=1, log=print):
         raise npc.Refused("headline item too small")
     if box[3] > HEADLINE_MAX_FRAC * c["height"]:
         raise npc.Refused(f"headline item too deep ({box[3] / c['height']:.0%} of the page)")
-    image_box, data = _fetch(page, box)
-    words = transcribe.transcribe(data, date[:4], log=log)
+    # ⚠️ The words come from the TIGHT crop and the picture is the loose one:
+    # transcribing the loose crop put the story's first line into the
+    # headline's alt ("...IS REPORT HUNTSVILLE, Ala., April 26.").
+    _, tight = _fetch(page, box)
+    words = transcribe.transcribe(tight, date[:4], log=log)
     if not words:
         raise npc.Refused("headline could not be transcribed")
+    image_box, data = _fetch(page, _loosen(box, c, LOOSE_W, LOOSE_H))
     _check_transcription(words, "headline")
     return _result("headline", page, meta, date, ed, box, image_box, data,
                    verdict, page_hits, _curl(words), True)
@@ -354,10 +417,11 @@ def clip_article(lccn, date, ed=1, log=print):
     box = (hbox[0], hbox[1], hbox[2], int(bottom + 0.6 * med) - hbox[1])
     words_in = nameplate.words_in(c["words"], box)
     verdict, page_hits = _verdict("article", lccn, date, words_in, c["words"], True)
-    image_box, data = _fetch(page, box)
-    words = transcribe.transcribe(data, date[:4], log=log)
+    _, tight = _fetch(page, box)
+    words = transcribe.transcribe(tight, date[:4], log=log)
     if not words:
         raise npc.Refused("article could not be transcribed")
+    image_box, data = _fetch(page, _loosen(box, c, LOOSE_W, LOOSE_H))
     # ⚠️ Four markers for an article, not two: a news paragraph on the British
     # Order in Council "shutting off German trade" carried "trade" and
     # "orders" and was refused as an advertisement at two.
@@ -573,9 +637,7 @@ def clip_market(lccn, date, ed=1, seq=1, phrase="cotton market", log=print):
 
 def clip(lane, lccn, date, ed=1, seq=1, phrase=None, log=print):
     if lane == "nameplate":
-        r = npc.clip(lccn, date, ed)
-        r["seq"], r["words"], r["generated"] = 1, None, False
-        return r
+        return clip_nameplate(lccn, date, ed, log=log)
     if lane == "headline":
         return clip_headline(lccn, date, ed, log=log)
     if lane == "article":

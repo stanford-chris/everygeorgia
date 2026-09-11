@@ -120,10 +120,16 @@ def split_at_gutters(cands, words, cw, ch, pi):
     on the Cordele Dispatch of 26 April 1918 was one row to the OCR and
     three headlines to a reader."""
     per = pi.page.scale * pi.scale                 # small px per OCR unit
-    bounds = sorted(g[0] for g in pi.gutters())
     out = []
     for b, seg in cands:
         seg = sorted(seg, key=lambda w: w[0])
+        # ⚠️ Only a gutter that is clear on THIS segment's rows splits it. A
+        # page-level gutter can run under a headline from a table lower
+        # down the column, and it cut "REESE IS ON THE RACK" in two.
+        y0, y1 = pi.y_small(b[1]), pi.y_small(b[1] + b[3])
+        cols = pi.col_dark_in(y0, max(y0 + 1, y1))
+        bounds = sorted(g[0] for g in pi.gutters()
+                        if min(cols[g[0]:g[1]] or [1]) <= rules.GUTTER_CROSSED)
         pieces, cur = [], [seg[0]]
         for w in seg[1:]:
             prev = cur[-1]

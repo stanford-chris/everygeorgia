@@ -82,8 +82,11 @@ def clean(text):
     return text
 
 
-def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log=print):
-    """The printed words, or None."""
+def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log=print,
+               max_chars=MAX_CHARS):
+    """The printed words, or None. `max_chars` is the cap on the reply: a
+    headline's is MAX_CHARS, the band under a nameplate is allowed more,
+    since there its only job is the vocabulary check."""
     global _limit_waited
     env = env or claude_env()
     tries = 0
@@ -115,7 +118,7 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
         if "CANNOT_READ" in text:
             log("  (transcription: model could not read the clip)")
             return None
-        if not (MIN_CHARS <= len(text) <= MAX_CHARS):
+        if not (MIN_CHARS <= len(text) <= max_chars):
             log(f"  (transcription rejected: {len(text)} chars)")
             return None
         return text
