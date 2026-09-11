@@ -76,6 +76,39 @@ PROMPT = (
 
 _limit_waited = False
 
+# ⚠️ The model's own commentary, shipped as the page's words. Found on the
+# evening of 11 September 2026 in a dry run of the FIRST post: the Dawson
+# Journal's band came back "The image doesn't allow further zoom via this
+# tool, but the visible text is clear enough to transcribe. Vol. II. DAWSON,
+# GA., ..." and clean() has no eye for it, so it would have gone out as alt
+# text at 09:10 the next morning. Under --tools Read the model tries to
+# enlarge the image, cannot, and says so before answering. The prompt already
+# says "no commentary, no preamble" three ways; a prompt rule is not a fix
+# (CLAUDE.md, the alt-text verification pass). So a reply that reads as
+# commentary is REJECTED, the call is made once more naming the fault, and a
+# second such reply refuses the clip (None), which costs a candidate and not
+# a reader. The markers are tool talk and first-person apology, deliberately
+# NOT "let me" or "I'll", which an 1860s editorial can open with.
+COMMENTARY = re.compile(
+    r"\bthis tool\b|\bzoom\b|\bas an ai\b"
+    r"|\bi(?:'|’)?m (?:unable|not able|sorry)\b|\bi am (?:unable|not able|sorry)\b"
+    r"|\bi (?:can(?:no|'|’)t|cannot|could not|couldn(?:'|’)t) "
+    r"(?:zoom|read|make out|see|access|open|view)\b"
+    r"|\bthe (?:image|file|clipping|scan) (?:is|does|doesn(?:'|’)?t|appears|shows|contains)\b"
+    r"|\bhere(?:'|’)?s? (?:is |are )?(?:the |my |a )?transcription\b|\btranscription:"
+    r"|\bvisible text\b",
+    re.IGNORECASE)
+COMMENTARY_REMINDER = (
+    " Your previous reply began with commentary about the image or your tools "
+    "rather than the printed words. Reply with the printed words only."
+)
+
+
+def is_commentary(text):
+    """True when the reply talks about the image or the model instead of
+    quoting the page."""
+    return bool(COMMENTARY.search(text))
+
 
 def claude_env():
     env = os.environ.copy()
@@ -121,6 +154,7 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
     global _limit_waited
     env = env or claude_env()
     tries = 0
+    reminder = ""
     while tries < 2:
         tries += 1
         try:
@@ -140,7 +174,7 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
                 # reading the one file it answers in 20 s in two turns.
                 r = subprocess.run(["claude", "-p", "--restricted", "--tools", "Read",
                                     "--model", model,
-                                    prompt.format(name=name, year=year)],
+                                    prompt.format(name=name, year=year) + reminder],
                                    capture_output=True, text=True, env=env,
                                    cwd=td, timeout=timeout,
                                    # ⚠️ stdin closed. claude -p reads whatever
@@ -165,6 +199,11 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
             log(f"  (transcription failed, exit {r.returncode}: {err})")
             return None
         text = clean(r.stdout)
+        if is_commentary(text):
+            log(f"  (transcription rejected: reads as the model's commentary, not the page: "
+                f"{text[:80]!r})")
+            reminder = COMMENTARY_REMINDER
+            continue
         if prompt is BAND_PROMPT and text.strip() == "NONE":
             return ""
         if "CANNOT_READ" in text:

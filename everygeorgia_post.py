@@ -652,6 +652,8 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dry-run", action="store_true", help="print, post nothing, write no state")
     ap.add_argument("--count", type=int, default=1, help="how many to post (default 1)")
+    ap.add_argument("--save", metavar="DIR",
+                    help="dry run only: write each crop and its post text and alt to DIR")
     ap.add_argument("--lane", choices=LANES, help="this lane only, instead of the rotation")
     ap.add_argument("--setup-profile", action="store_true", help="write name, bio and avatar")
     ap.add_argument("--launch", action="store_true", help="post the pinned thread (once)")
@@ -704,6 +706,13 @@ def main():
         if args.dry_run:
             state.setdefault("posted", []).append(
                 {"lccn": lccn, "date": r["date"], "pass": state["pass"], "lane": r["lane"], "dry": True})
+            if args.save:
+                os.makedirs(args.save, exist_ok=True)
+                stem = os.path.join(args.save, f"{n + 1:02d}_{r['lane']}_{lccn}_{r['date']}")
+                with open(stem + ".jpg", "wb") as f:
+                    f.write(fit_image(r["bytes"]))
+                with open(stem + ".txt", "w") as f:
+                    f.write(text + "\n\n[alt] " + alt + "\n")
             continue
 
         image = fit_image(r["bytes"])
