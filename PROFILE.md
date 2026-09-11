@@ -261,9 +261,9 @@ difficult one, and a caption does not travel with a screenshot. It has to be tru
 standing alone, with no thread around it — which is the whole reason the
 denominator matters here more than anywhere else.
 
-**4 — alt text (213)**
+**4 — alt text (218)**
 ```
-Alt text: It carries the actual words of the clip, not a description, so a screen reader gets what the page says. Old display type defeats OCR, so those words are transcribed by an A.I. model, and the alt says so.
+Alt text: It carries the actual words of the clip, not only a description, so a screen reader gets what the page says. Old display type defeats OCR, so those words are transcribed by an A.I. model, and the alt says so.
 ```
 ✅ **The disclosure lives here, 11 September 2026**, and on every image's alt
 (`transcribe.PREFIX`), not in the bio: see the Description section.

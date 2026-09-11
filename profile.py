@@ -77,7 +77,7 @@ THREAD = [
     },
     {
         "text": (
-            "Alt text: It carries the actual words of the clip, not a "
+            "Alt text: It carries the actual words of the clip, not only a "
             "description, so a screen reader gets what the page says. Old display "
             "type defeats OCR, so those words are transcribed by an A.I. model, and "
             "the alt says so."
