@@ -1,15 +1,18 @@
 #!/bin/bash
-# everygeorgia_launch.sh — the one-off opening of Georgia in Print, 12 September 2026.
+# everygeorgia_launch.sh — the one-off opening of Georgia in Print, 11 September 2026.
 #
-# Posts the six-post pinned thread (everygeorgia_post.py --launch), then removes
-# its own launchd job so it can never fire again. The daily job posts the first
-# clipping, the Dawson Journal of 14 June 1867, at 09:10 the same morning.
+# Posts the six-post pinned thread (everygeorgia_post.py --launch), kickstarts
+# the daily job once so the first clipping (the Dawson Journal of 14 June 1867)
+# follows the thread within a minute, then removes its own launchd job so it
+# can never fire again.
 #
-# ⚠️ Timing. 08:40 Asia/Seoul on Saturday 12 September, his instruction of the
-# evening before: "post it tomorrow morning, so I can catch it if something goes
-# wrong." Thirty minutes ahead of the 09:10 daily slot, so the thread is up
-# before the first clipping and there is a run to watch. 7:40 p.m. Friday in
-# Georgia.
+# ⚠️ Timing. 20:00 Asia/Seoul on Friday 11 September, which is 7:00 a.m. that
+# Friday in Georgia: his instruction at 18:16 KST the same day, "move the first
+# post up to 7a ET today. I wanna get this going." It had been 08:40 KST on
+# Saturday the 12th ("post it tomorrow morning, so I can catch it if something
+# goes wrong"), with the daily 09:10 slot posting the first clipping; the
+# kickstart below replaces that half-hour gap, since the next daily slot after
+# 20:00 is 23:10. The 23:10 and 09:10 slots then carry on as scheduled.
 #
 # ⚠️ It does NOT self-remove if the thread fails. A half-posted thread has to be
 # repaired by hand, and leaving the job in place is the only signal that
@@ -58,9 +61,18 @@ if [ -e "$PLIST" ]; then
   notify "Posted, but the one-off job did not remove itself. See the log."
 else
   say "    plist deleted; the job cannot reload at login"
-  notify "Posted and pinned. The daily job posts the Dawson Journal at 09:10."
+  notify "Posted and pinned. Kickstarting the daily job for the first clipping."
 fi
-say "=== done. The daily job posts the first clipping at 09:10. ==="
+
+# The first clipping, now rather than at the next daily slot. `kickstart` runs
+# the daily job exactly as launchd would (its own log, its own Keychain read,
+# verified under launchd on 11 September). The poster's gate reads the state
+# file --launch just wrote, so this is the first run that can post.
+say "--- kickstarting the daily job for the first clipping"
+launchctl kickstart "gui/$(id -u)/com.chrisstanford.everygeorgia" \
+  && say "    kickstarted; see ~/Library/Logs/everygeorgia.log" \
+  || say "!! kickstart failed; the 23:10 slot will post the first clipping instead"
+say "=== done. The daily slots (23:10 and 09:10 KST) carry on from here. ==="
 
 # Last, deliberately: this terminates the script, so nothing may follow it.
 launchctl bootout "gui/$(id -u)/$LABEL" 2>/dev/null
