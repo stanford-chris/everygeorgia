@@ -109,12 +109,17 @@ THREAD = [
             "Run by @stanfordc.bsky.social, not the Digital Library of Georgia. "
             "Born in Atlanta, I'm a graduate of the journalism school at UGA "
             "and started my newspaper career at The Augusta "
-            "Chronicle. Corrections welcome."
+            "Chronicle. I wrote about how this account came to be in "
+            "\u201cOld News From Home.\u201d Corrections welcome."
         ),
         # "journalism school at UGA" links to Grady's Bluesky profile, his call
         # on launch evening (11 September 2026), in place of the bare handle in
         # parentheses. A link, not a mention: it carries no notification.
-        "links": [("journalism school at UGA", "https://bsky.app/profile/ugagrady.bsky.social")],
+        "links": [("journalism school at UGA", "https://bsky.app/profile/ugagrady.bsky.social"),
+                  # The essay, published 11 September 2026; linked here on his
+                  # instruction the same evening.
+                  ("Old News From Home",
+                   "https://chris-stanford.com/posts/georgia-in-print-georgia-historic-newspapers-bot/")],
         "mentions": ["stanfordc.bsky.social"],
     },
 ]
