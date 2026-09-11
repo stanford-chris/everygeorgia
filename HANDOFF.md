@@ -46,6 +46,96 @@ After launch, add the bot to `bot_health_check.py`, `bot_alt_check.py`,
 done ahead: a health check on an account that does not exist alerts every
 morning.
 
+## The four lanes, built the evening of 11 September 2026
+
+Chris: "I want everything. The profile can wait." So the advertisement,
+headline and market-report lanes were built the same day, on top of the
+nameplate lane, and the poster cycles the four (`LANES` in
+`everygeorgia_post.py`, one lane per run, a lane that comes up empty handing
+its slot to the next). ⚠️ **The launch still waits**, and two profile edits
+wait with it: the bio and post 1 say "before 1931", which is no longer a
+rule (below), and the headline lane's alt text is model-written, so the bio
+needs a disclosure line (everycarnegie's "Image descriptions are
+A.I.-written", in this account's words).
+
+**The 1931 cutoff is gone** (`gates.CUTOFF = None`), at his request: DLG
+marks 8,628 issues from 1931 on as No Copyright (the Savannah Tribune to
+1960, the Brantley Enterprise to 1973) and the 21 August email told UGA
+their determination would be used, not ours.
+
+| lane | source | crop | words a reader gets |
+| --- | --- | --- | --- |
+| nameplate | title order, front pages | `nameplate_crop.py` | the title, from the roster |
+| headline | title order, **dailies only** (38 titles, 78,766 issues; `DAILY_PER_YEAR`) | topmost display item below the nameplate with its deck, `items.py` + `rules.py` | **model transcription**, `transcribe.py`, alt prefixed `A.I.-transcribed` |
+| ad | search on genre phrases (`AD_PHRASES`: sarsaparilla, castoria, "for sale by all druggists"…), any page | the column block of set text around the phrase, `clips.block_around()` | OCR when legible, else the model |
+| market | search on `MARKET_PHRASES`, any page | the block under the phrase, capped at ten rows and 15% of the page | OCR only; refused when illegible |
+
+Every lane runs gates.py's crop and page passes, and the two model lanes run
+the vocabulary prefixes over the transcription as well, since for display
+type the OCR is the text it cannot read. Every lane's post is the same
+citation with its label in the bracketed slot: `[Headline]`,
+`[Advertisement]`, `[Market report]`.
+
+### What the day taught, in the order it bit
+
+- **lanes.py's geometries were measurement tools and said so.** Drawn on real
+  pages, headline boxes chained across every column and ads cut their own
+  borders. What separates items on a page is its RULES and GUTTERS, which are
+  ink, so `rules.py` reads them from one 1,400px fetch of the page.
+- **Gutters, not rules**: the Macon Telegraph has seven columns and no
+  printed rules. **Page-level gutters, not the item's own rows**: measured
+  over a few lines of an advertisement its own white space read as gutters
+  and three of three crops were cut through their lettering. **An interior
+  column dark down the page is a rule, not film edge**: treated as film,
+  an eight-column Savannah page had no boundaries and a block spanned it.
+- **`crop_frequency.norm()` returns ONE token.** Fed a transcription it
+  returned one word, so every ad had no advertising words and a headline
+  transcription carrying "negro" reached REVIEW instead of REFUSE. Pinned
+  in `test_clips.py`.
+- **Weeklies have no headlines.** The topmost display item on a small-town
+  front page came back "COUNTY DIRECTORY", an office address, a brand name.
+  The headline lane draws from dailies only, and refuses a transcription
+  under three words or reading as an advertisement.
+- **Display-ad OCR cannot say what a display ad is** ('ANDY GArtlACTlC'), and
+  a boxed-on-four-sides test found nothing on microfilm, where every rule is
+  broken. So ads are found by SEARCH on phrases with no other life in a
+  newspaper, as reference_ghn_lane_findings said in August, and the block
+  of set text around the phrase is the crop.
+- **The search stems even as `phrasetext`**: "market report" answers with
+  "market reports" and "Local Markets", so `find_phrase()` matches on
+  prefix.
+- **A market report is figures in prose**, not a table: "Bacon.—clear rib
+  sides 10 cts" with the figures OCR'd as "16@17c". The test is a share of
+  tokens carrying a digit, and the block ends at the paragraph after the
+  heading, or ten rows.
+
+### Yields, measured on the samples that set every constant
+
+| lane | tries | passed or REVIEW | what the refusals were |
+| --- | --- | --- | --- |
+| headline (dailies) | 22 | 7 | antebellum dailies have no headlines; two ads caught by the transcription test |
+| ad (search) | 23 | 10 | phrase stemmed away; block would not close |
+| market (search) | 50 | 3 | prose around the phrase; illegible OCR |
+
+⚠️ **The market lane is thin and the advertisement crops are uneven.** A
+market run looks at `SEARCH_TRIES` (8) candidates and will often post
+nothing, handing the slot on. Ad crops are columns of set text, sometimes
+walls of it, occasionally a neighbour's heading at the foot. **Both lanes
+ship because he asked for everything; hold either by removing it from
+`LANES`.** The crops were read by eye, as this file requires: the good ones
+are the J. D. & T. F. Smith card (Atlanta, 1884), the Marietta market report
+(1878) and "AIRPLANE RAID BY 20 OVER LONDON" (Augusta Herald, 1917).
+
+⚠️ **Cost per run rose.** A headline costs a model call (10-40 s, and one
+timed out at 120 s twice); an ad costs one when its OCR is under 72 percent
+word-like. The model is `claude-sonnet-5` through `claude -p` with the
+Keychain setup-token, as the photograph bots do, and a spent quota is waited
+out once per run through `limit_guard`.
+
+Tests: `test_clips.py` (12, synthetic page with columns, gutters and a
+rule), `test_everygeorgia_post.py` (30, lanes and rotation), `test_nameplate.py`
+(69). All stdlib plus Pillow, no network, no model.
+
 ## The poster, in five decisions
 
 1. **One issue per title, titles in a fixed shuffled order** (`SHUFFLE_SEED`,

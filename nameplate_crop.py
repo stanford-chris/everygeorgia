@@ -542,7 +542,7 @@ def clip(lccn, date, ed=1, width=CROP_WIDTH, lane="nameplate", refine=True):
     words = []
     meta = roster().get(lccn)
 
-    if meta is not None and meta.get("postable") == "yes" and date < "1931-01-01":
+    if meta is not None and meta.get("postable") == "yes" and not (gates.CUTOFF and date >= gates.CUTOFF):
         page = ghn_api.front_page(lccn, date, ed)
         c = page.coords()
         words = c["words"]

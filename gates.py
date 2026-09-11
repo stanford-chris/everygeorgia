@@ -40,7 +40,17 @@ from datetime import date
 PASS, REVIEW, REFUSE = "PASS", "REVIEW", "REFUSE"
 HERE = os.path.dirname(os.path.abspath(__file__))
 RIGHTS_CSV = os.path.join(HERE, "data", "georgia_rights.csv")
-CUTOFF = "1931-01-01"          # the project's own narrowing, on top of rights
+CUTOFF = None                  # ⚠️ Was "1931-01-01" until 11 September 2026. The
+                               # line was the project's own narrowing on top of
+                               # DLG's per-issue rights, never a rights rule, and
+                               # was lifted at Chris's request: DLG marks 8,628
+                               # issues from 1931 on as No Copyright (2,500 from
+                               # the 1930s, 3,000 from the 1940s, the Savannah
+                               # Tribune to 1960), and the 21 August email told
+                               # UGA their determination would be used rather
+                               # than ours. None means no cutoff; a date string
+                               # restores one. The bio and post 1 still say
+                               # "before 1931" until the profile is rewritten.
 
 
 class Policy:
@@ -68,10 +78,17 @@ POLICIES = {
     "headline": Policy(
         min_date=None, page_gate=True,
         why="the crop is blind to its page: 16.3% on already-flagged pages"),
+    "article": Policy(
+        min_date=None, page_gate=True,
+        why="a headline with its first paragraph; same blindness, same gate"),
     "ad": Policy(
         min_date="1867-01-01", page_gate=True,
         why="68.8% of pre-1865 front pages carry the standing slave-sale rate "
             "card; the shape does not fall to its floor until 1867"),
+    "market": Policy(
+        min_date="1867-01-01", page_gate=True,
+        why="a market report is a column of set text, the same shape as the "
+            "rate card the ad lane's floor exists for; same floor"),
 }
 
 
@@ -120,8 +137,9 @@ def check(lane, lccn, issue_date, crop_hits=None, page_hits=None,
         return Verdict(REFUSE, [f"{lccn} is not in the roster"])
     if meta.get("postable") != "yes":
         reasons.append(f"{lccn} has no NoC-US issue recorded"); outcome = REFUSE
-    if not issue_date or issue_date >= CUTOFF:
-        reasons.append(f"{issue_date} is on or after the {CUTOFF[:4]} cutoff")
+    if not issue_date or (CUTOFF and issue_date >= CUTOFF):
+        reasons.append(f"{issue_date} is on or after the {CUTOFF[:4]} cutoff"
+                       if issue_date else "no issue date")
         outcome = REFUSE
     if pol.min_date and issue_date and issue_date < pol.min_date:
         reasons.append(f"era gate: {lane} starts at {pol.min_date} "
@@ -149,7 +167,7 @@ def earliest(lane):
 def describe_policies():
     out = []
     for lane, p in POLICIES.items():
-        out.append(f"{lane:<10} from {p.min_date or 'any date'} to {CUTOFF}, "
+        out.append(f"{lane:<10} from {p.min_date or 'any date'} to {CUTOFF or 'any date'}, "
                    f"page gate {'on' if p.page_gate else 'OFF'}")
         out.append(f"           {p.why}")
     return "\n".join(out)

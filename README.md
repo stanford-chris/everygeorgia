@@ -57,6 +57,14 @@ this kind of clipping and stopped in December 2024.
   order; the GHN FAQ citation as the post; REVIEW logged to `data/review.jsonl`
   and skipped; `--launch` for the pinned thread; `--setup-profile`.
 - `profile.py` — the bio and the six-post thread as data.
+- `rules.py` — the page's grid from its pixels: gutters, rules, film edge, and
+  the snapping of an OCR box to its cell. ⚠️ Gutters over the whole page, never
+  over an item's own rows; interior dark columns are rules, not film.
+- `items.py` — display rows split at column gaps, boxed with their decks.
+- `clips.py` — one clipping from any lane; the block-of-text builder for the
+  search-driven lanes; the search candidate lists.
+- `transcribe.py` — the words in a clipping, by `claude -p` vision, prefixed
+  `A.I.-transcribed` wherever they reach a reader.
 - `crop_frequency.py` — the crop-level measurement above, plus `--titles`.
 - `permission_followup.py` — the UGA reminder. ⛔ Mails Chris, never UGA.
 - `test_nameplate.py` — 67 tests, stdlib only. `test_everygeorgia_post.py` — 25.

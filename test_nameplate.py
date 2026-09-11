@@ -506,11 +506,20 @@ class Gates(unittest.TestCase):
         self.assertEqual(
             gates.check("ad", "sn00000001", "1867-01-01").outcome, gates.PASS)
 
-    def test_cutoff_still_applies_to_every_lane(self):
-        for lane in gates.POLICIES:
-            self.assertEqual(
-                gates.check(lane, "sn00000001", "1931-01-01").outcome,
-                gates.REFUSE, lane)
+    def test_cutoff_when_set_applies_to_every_lane(self):
+        saved = gates.CUTOFF
+        try:
+            gates.CUTOFF = "1931-01-01"
+            for lane in gates.POLICIES:
+                self.assertEqual(
+                    gates.check(lane, "sn00000001", "1931-01-01").outcome,
+                    gates.REFUSE, lane)
+        finally:
+            gates.CUTOFF = saved
+
+    def test_no_cutoff_by_default_since_11_september_2026(self):
+        self.assertIsNone(gates.CUTOFF)
+        self.assertEqual(gates.check("nameplate", "sn00000001", "1942-06-10").outcome, gates.PASS)
 
     def test_unpostable_and_unknown_titles_refuse(self):
         self.assertEqual(

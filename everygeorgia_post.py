@@ -73,9 +73,11 @@ import sys
 import time
 from datetime import datetime, timezone
 
+import clips
 import ghn_api
 import nameplate_crop as npc
 import profile as prof
+import transcribe
 from crop_frequency import noc_issues
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -100,8 +102,23 @@ MAX_IMAGE_BYTES = 950_000           # under Bluesky's ~1 MB blob limit
 ALT_MAX = 1900
 CREDIT = "Presented online by the Digital Library of Georgia."
 
-CLIP = npc.clip                     # swapped by the tests; never call npc.clip
+CLIP = clips.clip                   # swapped by the tests; never call clips.clip
                                     # directly below this line
+
+# ⚠️ The four lanes, in the order the feed cycles through them, one per run:
+# with two runs a day each lane posts every other day. A lane that yields
+# nothing hands its slot to the next, so a slot is lost only when all four
+# come up empty. nameplate and headline draw from the title order (front
+# pages); ad and market draw from search hits on genre phrases, since their
+# material is on inner pages and the OCR of a display ad cannot say what it
+# is (see clips.py).
+LANES = ("nameplate", "headline", "article", "ad", "market")
+LANE_LABEL = {"nameplate": "Nameplate", "headline": "Headline", "article": "Article",
+              "ad": "Advertisement", "market": "Market report"}
+SEARCH_LANES = ("ad", "market")
+SEARCH_TRIES = 8                    # candidates a search lane looks at per run
+RECENT_TITLE_WINDOW = 30            # a search lane skips a title posted in its
+                                    # last N posts, for variety
 
 
 # --------------------------------------------------------------- credentials
@@ -145,8 +162,22 @@ def login_client(retries=4):
 def load_state():
     if os.path.exists(STATE_FILE):
         with open(STATE_FILE) as f:
-            return json.load(f)
-    return {"order": [], "pass": 1, "posted": [], "tried": {}}
+            state = json.load(f)
+    else:
+        state = {"order": [], "pass": 1, "posted": [], "tried": {}}
+    # tried is per lane since the lanes arrived; an older file's flat map
+    # was the nameplate lane's
+    tried = state.get("tried", {})
+    if tried and not all(isinstance(v, dict) for v in tried.values()):
+        state["tried"] = {"nameplate": tried}
+    state.setdefault("tried", {})
+    for lane in LANES:
+        state["tried"].setdefault(lane, {})
+    return state
+
+
+def lane_tried(state, lane):
+    return state.setdefault("tried", {}).setdefault(lane, {})
 
 
 def save_state(state):
@@ -160,10 +191,35 @@ def issues_by_title():
     """{lccn: [(date, ed), ...]} for every postable pre-1931 NoC-US issue,
     read through the rights join's own identifier logic."""
     issues, _ = noc_issues()
+    roster = npc.roster()
     by = collections.defaultdict(list)
     for lccn, date, ed in issues:
-        by[lccn].append((date, ed))
+        # ⚠️ DLG's pages carry a few titles the roster does not (sn01884514
+        # on 11 September 2026); a title the gates will refuse is not a
+        # candidate, and every try on one is a wasted fetch.
+        if roster.get(lccn, {}).get("postable") == "yes":
+            by[lccn].append((date, ed))
     return dict(by)
+
+
+DAILY_PER_YEAR = 150            # a title with at least this many issues per
+                                # year of its run is a daily. Weeklies hold
+                                # about 52. ⚠️ The headline lane draws from
+                                # dailies ONLY: a weekly's front page is
+                                # advertisements under a masthead, and on a
+                                # sample of them the "headline" came back as
+                                # "COUNTY DIRECTORY", an office address and a
+                                # brand name, 11 September 2026.
+
+
+def dailies(issues):
+    out = {}
+    for lccn, iss in issues.items():
+        years = sorted({d[:4] for d, _ in iss})
+        span = int(years[-1]) - int(years[0]) + 1
+        if len(iss) / float(span) >= DAILY_PER_YEAR:
+            out[lccn] = iss
+    return out
 
 
 def title_order(state, titles):
@@ -189,20 +245,22 @@ def dates_for(lccn, issues, pass_no):
     return out
 
 
-def posted_this_pass(state, lccn):
+def posted_this_pass(state, lccn, lane="nameplate"):
     return any(p["lccn"] == lccn and p.get("pass") == state["pass"]
+               and p.get("lane", "nameplate") == lane
                for p in state.get("posted", []))
 
 
-def next_titles(state, issues):
+def next_titles(state, issues, lane="nameplate"):
     """Titles still owed a post this pass, in order. Rolls the pass over when
-    every title has either posted or been exhausted."""
+    every title has either posted or been exhausted. The pass counter is
+    shared; each title-order lane keeps its own tried map."""
     order = title_order(state, issues)
     for _ in range(2):
-        tried = state.setdefault("tried", {})
+        tried = lane_tried(state, lane)
         owed = []
         for lccn in order:
-            if posted_this_pass(state, lccn):
+            if posted_this_pass(state, lccn, lane):
                 continue
             n_tried = len(tried.get(lccn, []))
             if n_tried >= min(TRIES_PER_TITLE, len(issues[lccn])):
@@ -211,8 +269,8 @@ def next_titles(state, issues):
         if owed:
             return owed
         state["pass"] = state.get("pass", 1) + 1
-        state["tried"] = {}
-        print(f"Every title has been through; starting pass {state['pass']}.")
+        state["tried"][lane] = {}
+        print(f"Every title has been through in the {lane} lane; starting pass {state['pass']}.")
     return []
 
 
@@ -243,7 +301,8 @@ def compose(r):
     seq = r["url"].rstrip("/").rsplit("-", 1)[-1]
     url = r["url"]
     where = f" {city}," if city else ""
-    head = f"[Nameplate], “{title},”{where} {npc.uk_date(r['date'])}, p. {seq}, "
+    label = LANE_LABEL[r.get("lane", "nameplate")]
+    head = f"[{label}], “{title},”{where} {npc.uk_date(r['date'])}, p. {seq}, "
     tail = f". {CREDIT}\n\n"
     visible = url.replace("https://", "").rstrip("/")
     tags = [("tag", f"#{t}", t) for t in TAGS]
@@ -280,7 +339,26 @@ def to_builder(segs):
 
 
 def alt_text(r):
-    return r["alt"][:ALT_MAX]
+    """The nameplate lane's alt is built in nameplate_crop.describe(). Every
+    other lane's alt carries the clip's own words, which is post 4's
+    promise, and names the model when a model read them: transcribe.PREFIX
+    leads, for the reason image_alt.py gives (alt travels without the bio)."""
+    lane = r.get("lane", "nameplate")
+    if lane == "nameplate" or not r.get("words"):
+        return r["alt"][:ALT_MAX]
+    meta = r["meta"]
+    title = npc.display_title(meta.get("title"))
+    city = (meta.get("city") or "").strip()
+    where = f"{city}, Georgia" if city else "Georgia"
+    seq = r["url"].rstrip("/").rsplit("-", 1)[-1]
+    what = {"headline": "headline", "article": "article", "ad": "advertisement",
+            "market": "market report"}[lane]
+    lead = f"{transcribe.PREFIX} {what}" if r.get("generated") else what.capitalize()
+    alt = (f"{lead} from “{title},” {where}, {npc.uk_date(r['date'])}, page {seq}, "
+           f"reading: “{r['words']}”")
+    if len(alt) > ALT_MAX:
+        alt = alt[:ALT_MAX - 2].rstrip() + "…”"
+    return alt
 
 
 def fit_image(data, max_bytes=MAX_IMAGE_BYTES):
@@ -323,14 +401,14 @@ def log_review(r, state):
         f.write(json.dumps(line, ensure_ascii=False) + "\n")
 
 
-def choose(state, issues, log=print):
+def choose(state, issues, log=print, lane="nameplate"):
     """Walk the owed titles and their dates until one clip PASSES. Returns
     (lccn, result) or (None, None). Every date looked at is recorded in
-    state['tried'] whether it passed or not, so a dry run that is then
+    state['tried'][lane] whether it passed or not, so a dry run that is then
     followed by a live run does not re-fetch, and a REVIEW is not re-offered
     next run."""
-    tried = state.setdefault("tried", {})
-    for lccn in next_titles(state, issues)[:TITLES_PER_RUN]:
+    tried = lane_tried(state, lane)
+    for lccn in next_titles(state, issues, lane)[:TITLES_PER_RUN]:
         seen = set(tried.get(lccn, []))
         for date, ed in dates_for(lccn, issues[lccn], state["pass"]):
             if date in seen:
@@ -340,16 +418,71 @@ def choose(state, issues, log=print):
             seen.add(date)
             tried[lccn] = sorted(seen)
             try:
-                r = CLIP(lccn, date, ed)
+                r = CLIP(lane, lccn, date, ed)
             except (npc.Refused, ghn_api.FetchError, ValueError) as e:
-                log(f"  skip {lccn} {date}: {e}")
+                log(f"  skip {lane} {lccn} {date}: {e}")
                 continue
             if r["postable"]:
                 return lccn, r
             log_review(r, state)
-            log(f"  review {lccn} {date}: {'; '.join(r['verdict'].reasons)}")
-        log(f"  {lccn}: nothing passed in {len(seen)} tries; next title")
+            log(f"  review {lane} {lccn} {date}: {'; '.join(r['verdict'].reasons)}")
+        log(f"  {lane} {lccn}: nothing passed in {len(seen)} tries; next title")
     return None, None
+
+
+def recent_titles(state, lane, n=RECENT_TITLE_WINDOW):
+    """Titles this lane posted among its last `n` posts."""
+    mine = [p["lccn"] for p in state.get("posted", []) if p.get("lane") == lane]
+    return set(mine[-n:])
+
+
+def choose_search(state, cands, lane, log=print):
+    """A search lane: candidates are (lccn, date, ed, seq, phrase) from
+    clips.search_candidates, walked in a seeded order that the pass number
+    reshuffles, skipping what this lane has tried and the titles it posted
+    recently. Bounded at SEARCH_TRIES a run."""
+    tried = lane_tried(state, lane)
+    order = list(cands)
+    random.Random(f"{lane}:{state.get('pass', 1)}:{SHUFFLE_SEED}").shuffle(order)
+    recent = recent_titles(state, lane)
+    looked = 0
+    for lccn, date, ed, seq, phrase in order:
+        key = f"{lccn}:{date}:{seq}"
+        if key in tried:
+            continue
+        if lccn in recent:
+            continue
+        if looked >= SEARCH_TRIES:
+            break
+        looked += 1
+        tried[key] = phrase
+        try:
+            r = CLIP(lane, lccn, date, ed, seq, phrase)
+        except (npc.Refused, ghn_api.FetchError, ValueError) as e:
+            log(f"  skip {lane} {lccn} {date} p{seq}: {e}")
+            continue
+        if r["postable"]:
+            return lccn, r
+        log_review(r, state)
+        log(f"  review {lane} {lccn} {date} p{seq}: {'; '.join(r['verdict'].reasons)}")
+    return None, None
+
+
+def next_lane(state):
+    """The lane this run starts with: the rotation position of the next
+    post, counting every post so far."""
+    # ⚠️ Dry posts count too. Saved state never holds one (a dry run writes
+    # no state), and counting them is what makes `--dry-run --count 4`
+    # preview the rotation instead of four of the same lane, which is what
+    # the first dry run produced.
+    n = len(state.get("posted", []))
+    return LANES[n % len(LANES)]
+
+
+def pick(state, sources, lane, log=print):
+    if lane in SEARCH_LANES:
+        return choose_search(state, sources[lane], lane, log=log)
+    return choose(state, sources[lane], log=log, lane=lane)
 
 
 # ------------------------------------------------------------------ profile
@@ -495,6 +628,7 @@ def main():
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--dry-run", action="store_true", help="print, post nothing, write no state")
     ap.add_argument("--count", type=int, default=1, help="how many to post (default 1)")
+    ap.add_argument("--lane", choices=LANES, help="this lane only, instead of the rotation")
     ap.add_argument("--setup-profile", action="store_true", help="write name, bio and avatar")
     ap.add_argument("--launch", action="store_true", help="post the pinned thread (once)")
     ap.add_argument("--status", action="store_true")
@@ -516,11 +650,21 @@ def main():
         return
 
     issues = issues_by_title()
+    rights = npc.roster()
+    sources = {"nameplate": issues, "headline": dailies(issues), "article": dailies(issues),
+               "ad": clips.ad_candidates(rights), "market": clips.market_candidates(rights)}
     client = None
     for n in range(args.count):
-        lccn, r = choose(state, issues)
+        start = LANES.index(args.lane) if args.lane else LANES.index(next_lane(state))
+        lccn = r = None
+        for k in range(len(LANES)):
+            lane = LANES[(start + k) % len(LANES)]
+            print(f"[{lane}]")
+            lccn, r = pick(state, sources, lane)
+            if r is not None or args.lane:
+                break
         if r is None:
-            print("Nothing passed the gates this run.")
+            print("Nothing passed the gates this run, in any lane.")
             break
         segs = compose(r)
         text = text_of(segs)
@@ -528,14 +672,14 @@ def main():
         print("-" * 60)
         print(text)
         print(f"[{len(text)} chars]  [alt] {alt}")
-        print(f"[band] {r['band_fraction']*100:.1f}% of page"
+        print(f"[{r['lane']}] {r['band_fraction']*100:.1f}% of page"
               f"{', extended to the ink edge' if r.get('extended') else ''}; "
               f"crop {r['size'][0]}x{r['size'][1]}")
         if len(text) > 300:
             sys.exit(f"post is {len(text)} characters")
         if args.dry_run:
             state.setdefault("posted", []).append(
-                {"lccn": lccn, "date": r["date"], "pass": state["pass"], "dry": True})
+                {"lccn": lccn, "date": r["date"], "pass": state["pass"], "lane": r["lane"], "dry": True})
             continue
 
         image = fit_image(r["bytes"])
@@ -546,6 +690,7 @@ def main():
                                  langs=["en"])
         state.setdefault("posted", []).append({
             "lccn": lccn, "date": r["date"], "edition": r["edition"],
+            "lane": r["lane"], "seq": r.get("seq", 1),
             "pass": state["pass"], "uri": res.uri,
             "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         })

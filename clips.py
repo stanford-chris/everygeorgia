@@ -1,0 +1,577 @@
+#!/usr/bin/env python3
+"""
+clips.py -- one clipping from any lane: the image, the citation pieces and
+the alt text, through the same gates.
+
+    clip("nameplate", lccn, date, ed)             -> nameplate_crop.clip()
+    clip("headline",  lccn, date, ed)             the topmost display item
+                                                   below the nameplate, with
+                                                   its deck; words by model
+    clip("ad",        lccn, date, ed)             the largest rule-closed item
+                                                   whose own words sell
+                                                   something; words by OCR,
+                                                   by model when the OCR is
+                                                   too poor to quote
+    clip("market",    lccn, date, ed, seq, phrase) the column cell holding a
+                                                   searched-for phrase; words
+                                                   by OCR
+
+Every lane returns the same dict nameplate_crop.clip() does, plus `lane`,
+`words` (the text a reader is promised), `generated` (True when a model
+wrote `words`, so the alt carries transcribe.PREFIX) and `seq`. Every lane
+raises nameplate_crop.Refused when there is nothing to show, and returns a
+REVIEW verdict as a result with `postable` False, exactly as the nameplate
+lane does: a caller that treats "not PASS" as "error" throws away the
+distinction gates.py is built on.
+
+⚠️ THREE VOCABULARY PASSES, NOT TWO. gates.py reads the OCR of the crop and
+of the page. For display type the OCR is the text it cannot read, so the
+words a model transcribes are scored a third time and refuse the crop if
+they carry the prefixes. That pass is what the nameplate lane's ink-edge gate
+exists to stand in for, and here it is direct.
+
+⚠️ Legibility is a gate, not a preference. An alt promising "the actual
+words" and delivering 'jgF EXPRESS AND f' is worse than no post. OCR words
+are quoted only when LEGIBLE of the tokens look like words; below that the
+advertisement lane asks the model, and the market lane refuses (a price
+table the OCR cannot read is not one a model reads better).
+"""
+import re
+
+import gates
+import ghn_api
+import items
+import nameplate
+import nameplate_crop as npc
+import rules
+import transcribe
+from crop_frequency import NEGRO_PREFIXES, SUBJECT_PREFIXES, norm, score
+
+CROP_WIDTH = 1200
+LEGIBLE = 0.80           # share of OCR tokens that look like words (0.72 let
+                         # "seven dsvs the longest nine In or" through)
+MIN_TOKENS = 6
+AD_MARKERS = 3           # distinct advertising markers an item needs
+MIN_AD_FRAC = 0.02       # an advertisement smaller than this of the page
+                         # area is a classified line, not a display ad
+MAX_ALT_WORDS = 1500
+
+# ⚠️ Shape, never genre, as everywhere here: these are the words an
+# advertisement is made of, and three distinct ones in one rule-closed item
+# of display type is an advertisement on every page looked at on
+# 11 September 2026, while no headline with its deck reached two.
+AD_WORDS = ("sale", "sold", "sell", "sells", "selling", "buy", "price", "prices",
+            "cheap", "cheapest", "druggist", "druggists", "dealer", "dealers",
+            "guaranteed", "cure", "cures", "cured", "remedy", "manufactured",
+            "manufacturers", "wholesale", "retail", "goods", "groceries", "wanted",
+            "apply", "agent", "agents", "bros", "warranted", "trial", "bottle",
+            "bottles", "store", "stock", "bargain", "bargains", "millinery",
+            "clothing", "hardware", "furniture", "pills", "liver", "tonic",
+            "offerings", "merchant", "merchants", "advertisement", "advertisements",
+            "customers", "trade", "shoes", "hats", "dry", "orders", "terms")
+PRICE_RE = re.compile(r"\$\d|\b\d+\s?c(?:ts|ents)?\b|¢")
+MARKET_PHRASES = ("cotton market", "market report", "prices current",
+                  "produce market", "local market", "wholesale prices")
+# ⚠️ Genre-specific, as reference_ghn_lane_findings requires: "sarsaparilla"
+# appears only in an advertisement (93,910 pages). Each phrase below was
+# chosen for having no other life in a newspaper.
+AD_PHRASES = ("sarsaparilla", "for sale by all druggists", "dry goods and notions",
+              "sewing machines", "guaranteed to cure", "castoria", "liver pills",
+              "wholesale and retail dealers", "buggies and wagons", "pianos and organs",
+              "clothing and hats", "boots and shoes", "millinery goods")
+MAX_BLOCK_FRAC = 0.25
+MARKET_MAX_FRAC = 0.15   # a market column deeper than this is unreadable as a post
+MIN_BLOCK_ROWS = 4
+PARA_GAP = 1.3           # a row gap this many body heights is a paragraph break
+MARKET_ROWS = 10         # ...and failing one, this many rows under the heading:
+                         # the Marietta Journal sets its paragraphs with no
+                         # extra lead at all
+HEADLINE_MAX_FRAC = 0.16 # a headline item deeper than this has taken a second
+                         # headline or a story with it
+MIN_BLOCK_FRAC = 0.015
+
+
+def wordlike(tok):
+    t = tok.strip(".,;:!?()[]\"'“”‘’-")
+    return len(t) >= 2 and sum(ch.isalpha() for ch in t) >= 0.8 * len(t)
+
+
+def legibility(words):
+    toks = [w[4] for w in words if w[4].strip()]
+    if len(toks) < MIN_TOKENS:
+        return 0.0, len(toks)
+    return sum(1 for t in toks if wordlike(t)) / float(len(toks)), len(toks)
+
+
+def reading_order(words):
+    """Words in reading order: rows by top, then left to right."""
+    rows = nameplate.rows_of(sorted(words, key=lambda w: (w[1], w[0])), row_tol=0.5)
+    out = []
+    for r in rows:
+        out.extend(sorted(r, key=lambda w: w[0]))
+    return out
+
+
+def ocr_text(words):
+    t = " ".join(w[4] for w in reading_order(words))
+    return " ".join(t.split())
+
+
+TOKEN_RE = re.compile(r"[a-z]+")
+
+
+def tokens(text):
+    """⚠️ Not crop_frequency.norm(), which returns ONE token (the longest
+    alphabetic run of a single OCR word). Fed a whole transcription it
+    returned one word, and the first version of both passes below scored
+    that one word: every advertisement had no advertising words and a
+    transcription carrying "negro" reached REVIEW instead of REFUSE."""
+    return TOKEN_RE.findall((text or "").lower())
+
+
+def ad_markers(text):
+    hits = {t for t in set(tokens(text)) if t in AD_WORDS}
+    if PRICE_RE.search(text or ""):
+        hits.add("$")
+    return hits
+
+
+def vocabulary_hits(text):
+    fake = [(0, 0, 0, 0, t) for t in tokens(text)]
+    return set(score(fake, SUBJECT_PREFIXES)) | set(score(fake, NEGRO_PREFIXES))
+
+
+TABULAR = 0.12           # share of tokens carrying a figure in a market
+                         # column. ⚠️ Not a clean table: the Savannah
+                         # Morning News's commercial column of 6 February
+                         # 1873 runs "Bacon.—clear rib sides 10 cts,
+                         # shoulders 7 cts" as prose, and its figures OCR
+                         # with a letter or two attached ("16@17c").
+
+
+def tabular(words):
+    toks = [w[4].strip() for w in words if w[4].strip()]
+    if not toks:
+        return 0.0
+    figs = [t for t in toks if any(ch.isdigit() for ch in t) and sum(ch.isalpha() for ch in t) <= 2]
+    return len(figs) / float(len(toks))
+
+
+def _curl(s):
+    return s.replace("'", "’").replace('"', "”")
+
+
+def _fetch(page, box_ocr, width=CROP_WIDTH):
+    image_box = page.to_image(box_ocr)
+    w = min(width, image_box[2])
+    data = page.fetch_crop(image_box, w)
+    npc._open_image(data)
+    return image_box, data
+
+
+def _verdict(lane, lccn, date, crop_words, page_words, have):
+    crop_hits, page_hits = set(), set()
+    for prefixes in (SUBJECT_PREFIXES, NEGRO_PREFIXES):
+        crop_hits |= set(score(crop_words, prefixes))
+        page_hits |= set(score(page_words, prefixes))
+    v = gates.check(lane, lccn, date, crop_hits=crop_hits, page_hits=page_hits,
+                    have_geometry=have)
+    if v.outcome == gates.REFUSE:
+        raise npc.Refused("; ".join(v.reasons))
+    return v, sorted(page_hits)
+
+
+def _result(lane, page, meta, date, ed, box, image_box, data, verdict,
+            page_hits, words, generated, extra=None):
+    from PIL import Image
+    import io
+    im = Image.open(io.BytesIO(data))
+    r = {
+        "lccn": page.lccn, "date": date, "edition": ed, "seq": page.seq, "lane": lane,
+        "verdict": verdict, "postable": verdict.postable,
+        "band_fraction": box[3] / float(page.coords()["height"]),
+        "extended": False, "meta": meta, "url": page.url,
+        "image_box": image_box, "size": (im.width, im.height),
+        "words_in_band": [], "page_hits": page_hits,
+        "words": words, "generated": generated,
+        "caption": "", "alt": "", "credit": f"{page.url}  (Georgia Historic Newspapers, Digital Library of Georgia)",
+        "bytes": data,
+    }
+    r.update(extra or {})
+    return r
+
+
+def _meta(lccn, date):
+    meta = npc.roster().get(lccn)
+    if meta is None or meta.get("postable") != "yes":
+        raise npc.Refused(f"{lccn} has no NoC-US issue recorded")
+    if gates.CUTOFF and date >= gates.CUTOFF:
+        raise npc.Refused(f"{date} is on or after the cutoff")
+    return meta
+
+
+def _headline_item(c, page):
+    """(box, words inside) of the topmost display item below the nameplate
+    that is not itself an advertisement, or None."""
+    for s, raw, seg in items.snapped("headline", page, c):
+        inside = nameplate.words_in(c["words"], s)
+        if len(ad_markers(ocr_text(inside))) >= AD_MARKERS:
+            continue
+        return s, inside
+    return None
+
+
+def _check_transcription(words, what):
+    hits = vocabulary_hits(words)
+    if hits:
+        raise npc.Refused(f"the transcribed {what} carries {sorted(hits)}")
+    plain = [t for t in tokens(words) if t != "illegible"]
+    if len(plain) < 3 or sum(1 for t in plain if len(t) >= 4) < 3:
+        raise npc.Refused(f"transcription too short or too broken to be a {what}: {words!r}")
+    if words.count("[illegible]") > len(plain) // 2:
+        raise npc.Refused(f"transcription mostly illegible: {words!r}")
+    if len(ad_markers(words)) >= 2:
+        raise npc.Refused(f"transcription reads as an advertisement: {words!r}")
+
+
+def clip_headline(lccn, date, ed=1, log=print):
+    meta = _meta(lccn, date)
+    page = ghn_api.front_page(lccn, date, ed)
+    c = page.coords()
+    chosen = _headline_item(c, page)
+    if chosen is None:
+        raise npc.Refused("no headline item below the nameplate")
+    box, inside = chosen
+    verdict, page_hits = _verdict("headline", lccn, date, inside, c["words"], True)
+    if box[3] < 0.015 * c["height"]:
+        raise npc.Refused("headline item too small")
+    if box[3] > HEADLINE_MAX_FRAC * c["height"]:
+        raise npc.Refused(f"headline item too deep ({box[3] / c['height']:.0%} of the page)")
+    image_box, data = _fetch(page, box)
+    words = transcribe.transcribe(data, date[:4], log=log)
+    if not words:
+        raise npc.Refused("headline could not be transcribed")
+    _check_transcription(words, "headline")
+    return _result("headline", page, meta, date, ed, box, image_box, data,
+                   verdict, page_hits, _curl(words), True)
+
+
+ARTICLE_ROWS = 14        # body rows under the deck, at most
+ARTICLE_MAX_FRAC = 0.22
+
+
+def clip_article(lccn, date, ed=1, log=print):
+    """The headline item plus the first paragraph beneath it: body-size rows
+    in the item's own column, until a paragraph break after four rows, or
+    ARTICLE_ROWS. His ask, 11 September 2026: "a headline and first graf."
+    Transcribed whole by the model, headline and paragraph together."""
+    meta = _meta(lccn, date)
+    page = ghn_api.front_page(lccn, date, ed)
+    c = page.coords()
+    chosen = _headline_item(c, page)
+    if chosen is None:
+        raise npc.Refused("no headline item below the nameplate")
+    hbox, inside = chosen
+    if hbox[3] > HEADLINE_MAX_FRAC * c["height"]:
+        raise npc.Refused("headline item too deep")
+    ch = c["height"]
+    med = nameplate.page_median_height(c["words"]) or 1
+    x0, x1 = hbox[0], hbox[0] + hbox[2]
+    below = [w for w in c["words"] if x0 <= w[0] + w[2] / 2.0 < x1 and w[1] >= hbox[1] + hbox[3] - med]
+    rows = _rows(below)
+    bottom = hbox[1] + hbox[3]
+    taken = 0
+    prev_bot = bottom
+    for rw in rows:
+        top = min(w[1] for w in rw); bot = max(w[1] + w[3] for w in rw)
+        if top < bottom - med:
+            continue
+        h = max(w[3] for w in rw)
+        if h >= 1.6 * med:                       # display type: the next item
+            break
+        gap = top - prev_bot
+        if taken and gap > PARA_GAP * med and taken >= 4:
+            break
+        if gap > 2.2 * med:
+            break
+        if bot - hbox[1] > ARTICLE_MAX_FRAC * ch:
+            break
+        prev_bot = bot
+        taken += 1
+        if taken >= ARTICLE_ROWS:
+            break
+    if taken < 3:
+        raise npc.Refused("no paragraph of body text under the headline")
+    box = (hbox[0], hbox[1], hbox[2], int(prev_bot + 0.8 * med) - hbox[1])
+    words_in = nameplate.words_in(c["words"], box)
+    verdict, page_hits = _verdict("article", lccn, date, words_in, c["words"], True)
+    image_box, data = _fetch(page, box)
+    words = transcribe.transcribe(data, date[:4], log=log)
+    if not words:
+        raise npc.Refused("article could not be transcribed")
+    _check_transcription(words, "article")
+    return _result("article", page, meta, date, ed, box, image_box, data,
+                   verdict, page_hits, _curl(words), True)
+
+
+def clip_ad(lccn, date, ed=1, seq=1, phrase=None, log=print):
+    """With a phrase (from AD_PHRASES, via search): the block of set text
+    around it, which is where legible advertising lives. Without one: the
+    largest rule-closed display item on the front page whose OCR sells
+    something, which on most pages the OCR cannot read well enough to say."""
+    meta = _meta(lccn, date)
+    pages = ghn_api.issue_pages(lccn, date, ed)
+    if seq < 1 or seq > len(pages):
+        raise npc.Refused(f"no seq-{seq} in this issue")
+    page = pages[seq - 1]
+    c = page.coords()
+    area = float(c["width"] * c["height"])
+    if phrase:
+        hit = find_phrase(c["words"], phrase)
+        if not hit:
+            raise npc.Refused(f"phrase {phrase!r} not found on the page's OCR")
+        pi = rules.PageInk(page)
+        box = block_around(pi, c, hit, allow_display=True, log=log)
+        if not box:
+            raise npc.Refused("the advertisement could not be closed on the grid")
+        inside = nameplate.words_in(c["words"], box)
+        text = ocr_text(inside)
+        if len(ad_markers(text)) < 2:
+            raise npc.Refused("the block around the phrase does not read as an advertisement")
+    else:
+        best = None
+        for s, raw, seg in items.snapped("ad", page, c):
+            inside = nameplate.words_in(c["words"], s)
+            text = ocr_text(inside)
+            if len(ad_markers(text)) < AD_MARKERS:
+                continue
+            if s[2] * s[3] < MIN_AD_FRAC * area:
+                continue
+            if best is None or s[2] * s[3] > best[0][2] * best[0][3]:
+                best = (s, inside, text)
+        if best is None:
+            raise npc.Refused("no rule-closed advertisement with advertising words")
+        box, inside, text = best
+    verdict, page_hits = _verdict("ad", lccn, date, inside, c["words"], True)
+    image_box, data = _fetch(page, box)
+    leg, n = legibility(inside)
+    if leg >= LEGIBLE:
+        words, generated = text, False
+    else:
+        words = transcribe.transcribe(data, date[:4], log=log)
+        if not words:
+            raise npc.Refused(f"advertisement OCR illegible ({leg:.0%}) and not transcribed")
+        generated = True
+        hits = vocabulary_hits(words)
+        if hits:
+            raise npc.Refused(f"the transcribed advertisement carries {sorted(hits)}")
+    return _result("ad", page, meta, date, ed, box, image_box, data, verdict,
+                   page_hits, _curl(words), generated, {"phrase": phrase})
+
+
+def _rows(words):
+    return [sorted(rw, key=lambda w: w[0])
+            for rw in nameplate.rows_of(sorted(words, key=lambda w: (w[1], w[0])), row_tol=0.5)]
+
+
+def block_around(pi, coords, seed, allow_display, log=print, max_frac=None):
+    """The column block of set text around `seed` words: x from the page's
+    gutters (rules.py), rows from the OCR, walking up and down from the
+    seed's row while rows are close together and no printed rule lies
+    between them. `allow_display` keeps display-size rows (an ad's own
+    heading); without it a display row ends the block (the next item's
+    heading ends a market table). Returns an OCR box or None.
+
+    ⚠️ Rows, not pixels, for the vertical extent. The pixel gap walk found
+    nothing to close on 17 of 40 market pages: body type is set with gaps
+    smaller than any page-relative gap and the walk ran to its cap. Rows
+    know where lines are; the pixels are asked only whether a rule sits
+    between two of them."""
+    cw, ch = coords["width"], coords["height"]
+    words = coords["words"]
+    med = nameplate.page_median_height(words) or 1
+    x0 = min(w[0] for w in seed); x1 = max(w[0] + w[2] for w in seed)
+    y0 = min(w[1] for w in seed); y1 = max(w[1] + w[3] for w in seed)
+    cb = pi.column_bounds(pi.from_ocr((x0, y0, x1 - x0, y1 - y0)), mode="column")
+    if cb is None:
+        return None
+    per = pi.page.scale * pi.scale                    # small px per OCR unit
+    cx0, cx1 = int(cb[0] / per), int(cb[1] / per)
+    incol = [w for w in words if cx0 <= w[0] + w[2] / 2.0 < cx1]
+    rows = _rows(incol)
+    if not rows:
+        return None
+    # the row holding the seed
+    sy = (y0 + y1) / 2.0
+    idx = min(range(len(rows)), key=lambda i: abs(min(w[1] for w in rows[i]) + max(w[3] for w in rows[i]) / 2.0 - sy))
+    cap = (max_frac or MAX_BLOCK_FRAC) * ch
+    sx0, sx1 = cb
+
+    def rule_between(ya, yb):
+        # ⚠️ With a margin either side: OCR word boxes are taller than the
+        # glyphs, so a rule sits INSIDE the box rows as often as between
+        # them, and a search-driven ad crop chained three advertisements
+        # through two clearly printed rules before the margin was added.
+        a, b = pi.y_small(ya) - 4, pi.y_small(yb) + 4
+        if b <= a:
+            return False
+        dark = pi.row_dark(sx0, sx1, a, b)
+        return any(d >= rules.HRULE_MIN_DARK for d in dark)
+
+    def row_top(i):
+        return min(w[1] for w in rows[i])
+
+    def row_bot(i):
+        return max(w[1] + w[3] for w in rows[i])
+
+    def row_h(i):
+        return max(w[3] for w in rows[i])
+
+    def is_display(i):
+        return row_h(i) >= 1.6 * med
+
+    lo = hi = idx
+    while lo > 0:
+        j = lo - 1
+        gap = row_top(lo) - row_bot(j)
+        if gap > 2.2 * med or rule_between(row_bot(j), row_top(lo)):
+            break
+        if is_display(j) and not allow_display:
+            break
+        if row_bot(hi) - row_top(j) > cap:
+            # ⚠️ The top is the cap, not a rule or a gap: the block begins
+            # mid-item ("ment is seven days the longest", Savannah Morning
+            # News, 13 January 1871). Nothing to show.
+            return None
+        lo = j
+        if is_display(j) and allow_display:
+            continue
+    paragraphs = 0
+    while hi < len(rows) - 1:
+        j = hi + 1
+        gap = row_top(j) - row_bot(hi)
+        if gap > 2.2 * med or rule_between(row_bot(hi), row_top(j)):
+            break
+        if is_display(j) and not allow_display and j > idx:
+            break
+        # ⚠️ A market report is its heading and the paragraph under it. The
+        # Marietta Journal of 21 November 1878 ran "Marietta Market Report"
+        # as the first item of its local notes, and the walk carried on
+        # through the court week and a robbery. A paragraph break (a gap
+        # over PARA_GAP of the body type) after at least three rows below
+        # the seed ends the block when `allow_display` is off.
+        if not allow_display and (gap > PARA_GAP * med and j - idx > 3 or j - idx > MARKET_ROWS):
+            break
+        if row_bot(j) - row_top(lo) > cap:
+            break
+        hi = j
+    top, bot = row_top(lo), row_bot(hi)
+    # ⚠️ A block is at least MIN_BLOCK_ROWS rows and MIN_BLOCK_FRAC of the
+    # page: "MOTT'S LIVER PILLS cure torpidity" came back as a two-line
+    # sliver 0.7% of the page deep, a reading notice cut from its column.
+    if hi - lo + 1 < MIN_BLOCK_ROWS or (bot - top) < MIN_BLOCK_FRAC * ch:
+        return None
+    pad = int(1.0 * med)                 # 0.6 cut the top line of a Savannah
+                                         # produce column through its figures
+    return (cx0, max(0, top - pad), cx1 - cx0, min(ch, bot + pad) - max(0, top - pad))
+
+
+def find_phrase(words, phrase):
+    """The word boxes of the first occurrence of `phrase` in reading order."""
+    toks = tokens(phrase)
+    seq = reading_order(words)
+    normed = [norm(w[4]).strip() for w in seq]
+    # ⚠️ Prefix, not equality: the search stems, so "market report" is
+    # answered with pages saying "market reports" and "Local Markets".
+    for i in range(len(seq) - len(toks) + 1):
+        if all(normed[i + k].startswith(toks[k]) for k in range(len(toks))):
+            return seq[i:i + len(toks)]
+    return None
+
+
+def clip_market(lccn, date, ed=1, seq=1, phrase="cotton market", log=print):
+    meta = _meta(lccn, date)
+    pages = ghn_api.issue_pages(lccn, date, ed)
+    if seq < 1 or seq > len(pages):
+        raise npc.Refused(f"no seq-{seq} in this issue")
+    page = pages[seq - 1]
+    c = page.coords()
+    hit = find_phrase(c["words"], phrase)
+    if not hit:
+        raise npc.Refused(f"phrase {phrase!r} not found on the page's OCR")
+    pi = rules.PageInk(page)
+    box = block_around(pi, c, hit, allow_display=False, log=log, max_frac=MARKET_MAX_FRAC)
+    if not box:
+        raise npc.Refused("the market item could not be closed on the grid")
+    inside = nameplate.words_in(c["words"], box)
+    leg, n = legibility(inside)
+    if leg < LEGIBLE:
+        raise npc.Refused(f"market OCR illegible ({leg:.0%} of {n} tokens)")
+    # ⚠️ The phrase is shape, not genre: "cotton market" sits in prose about
+    # a farmer's crop as readily as over a price list. A market report is a
+    # TABLE, and a table is figures: a fifth of its tokens at least.
+    tab = tabular(inside)
+    if tab < TABULAR:
+        raise npc.Refused(f"not a table: {tab:.0%} of tokens are figures")
+    verdict, page_hits = _verdict("market", lccn, date, inside, c["words"], True)
+    image_box, data = _fetch(page, box)
+    return _result("market", page, meta, date, ed, box, image_box, data, verdict,
+                   page_hits, _curl(ocr_text(inside)), False, {"phrase": phrase})
+
+
+def clip(lane, lccn, date, ed=1, seq=1, phrase=None, log=print):
+    if lane == "nameplate":
+        r = npc.clip(lccn, date, ed)
+        r["seq"], r["words"], r["generated"] = 1, None, False
+        return r
+    if lane == "headline":
+        return clip_headline(lccn, date, ed, log=log)
+    if lane == "article":
+        return clip_article(lccn, date, ed, log=log)
+    if lane == "ad":
+        return clip_ad(lccn, date, ed, seq, phrase, log=log)
+    if lane == "market":
+        return clip_market(lccn, date, ed, seq, phrase or MARKET_PHRASES[0], log=log)
+    raise ValueError(f"unknown lane {lane!r}")
+
+
+def market_candidates(rights, **kw):
+    return search_candidates(MARKET_PHRASES, rights, **kw)
+
+
+def ad_candidates(rights, **kw):
+    return search_candidates(AD_PHRASES, rights, **kw)
+
+
+def search_candidates(phrases, rights, date_lo="1867-01-01", date_hi="1930-12-31",
+                      per_phrase=200, log=print):
+    """(lccn, date, ed, seq, phrase) for search hits on postable issues.
+    Cached searches, a few pages per phrase, the date window split by decade
+    so no single window returns the whole corpus (README's date trap)."""
+    out, seen = [], set()
+    lo, hi = int(date_lo[:4]), int(date_hi[:4])
+    for phrase in phrases:
+        got = 0
+        for y0 in range(lo, hi + 1, 10):
+            y1 = min(hi, y0 + 9)
+            d1 = f"{y0:04d}-01-01" if y0 > lo else date_lo
+            d2 = f"{y1:04d}-12-31" if y1 < hi else date_hi
+            try:
+                hits = ghn_api.search(phrase, d1, d2, rows=50)
+            except ghn_api.FetchError as e:
+                log(f"  search {phrase!r} {y0}s: {e}")
+                continue
+            for it in hits:
+                lccn = it.get("lccn"); d = it.get("date") or ""
+                if len(d) != 8 or lccn not in rights or rights[lccn].get("postable") != "yes":
+                    continue
+                date = f"{d[:4]}-{d[4:6]}-{d[6:]}"
+                key = (lccn, date, int(it.get("sequence") or 1))
+                if key in seen:
+                    continue
+                seen.add(key)
+                out.append((lccn, date, 1, key[2], phrase))
+                got += 1
+            if got >= per_phrase:
+                break
+    return out

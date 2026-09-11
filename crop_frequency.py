@@ -59,8 +59,7 @@ from rights_join import identify
 HERE = os.path.dirname(os.path.abspath(__file__))
 RIGHTS_CACHE = os.path.join(HERE, "data", "rights")
 RIGHTS_CSV = os.path.join(HERE, "data", "georgia_rights.csv")
-CUTOFF = "1931-01-01"        # the project's own additional narrowing, never a
-                             # substitute for the per-issue rights join
+CUTOFF = gates.CUTOFF or "9999-12-31"   # one place: gates.py (None since 11 September 2026)
 SEED = 20260826              # fixed, so a quoted figure can be reproduced
 
 # ⚠️ Prefixes, not whole words: the point is to over-match. `lynch` takes

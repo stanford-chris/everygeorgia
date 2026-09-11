@@ -135,7 +135,7 @@ class Selection(unittest.TestCase):
         self.assertEqual(d1, ep.dates_for("sn00000001", self.issues["sn00000001"], 1))
 
     def test_pass_and_refuse_and_review(self):
-        def clip(lccn, date, ed):
+        def clip(lane, lccn, date, ed, seq=1, phrase=None):
             self.calls.append((lccn, date))
             if lccn == "sn00000002":
                 raise npc.Refused("no geometry")
@@ -149,12 +149,12 @@ class Selection(unittest.TestCase):
         self.assertIsNotNone(r)
         self.assertTrue(r["postable"])
         self.assertNotEqual(lccn, "sn00000002")
-        self.assertIn("sn00000002", s["tried"])           # refused, but tried
+        self.assertIn("sn00000002", s["tried"]["nameplate"])   # refused, but tried
         self.assertTrue(self.calls[0][0] == "sn00000002")  # order was honoured
         self.assertNotIn(("sn00000002", "1880-01-01"), [(c[0], c[1]) for c in self.calls[1:]])
 
     def test_review_is_logged_and_never_returned(self):
-        ep.CLIP = lambda l, d, e: fake_result(l, d, gates.REVIEW, page_hits={"lynch"})
+        ep.CLIP = lambda lane, l, d, e, seq=1, phrase=None: fake_result(l, d, gates.REVIEW, page_hits={"lynch"})
         issues = {"sn00000001": self.issues["sn00000001"]}
         s = {"order": ["sn00000001"], "pass": 1, "posted": [], "tried": {}}
         lccn, r = ep.choose(s, issues, log=lambda *a: None)
@@ -164,14 +164,14 @@ class Selection(unittest.TestCase):
         self.assertEqual(len(lines), 3)
         self.assertEqual(lines[0]["page_hits"], ["lynch"])
         self.assertIn("not a rejection", lines[0]["reasons"][0])
-        self.assertEqual(sorted(s["tried"]["sn00000001"]), sorted(d for d, _ in self.issues["sn00000001"]))
+        self.assertEqual(sorted(s["tried"]["nameplate"]["sn00000001"]), sorted(d for d, _ in self.issues["sn00000001"]))
 
     def test_tries_are_bounded_per_title(self):
         issues = {"sn00000009": [(f"19{i:02d}-01-01", 1) for i in range(20)]}
-        ep.CLIP = lambda l, d, e: (_ for _ in ()).throw(npc.Refused("x"))
+        ep.CLIP = lambda lane, l, d, e, seq=1, phrase=None: (_ for _ in ()).throw(npc.Refused("x"))
         s = {"order": [], "pass": 1, "posted": [], "tried": {}}
         ep.choose(s, issues, log=lambda *a: None)
-        self.assertEqual(len(s["tried"]["sn00000009"]), ep.TRIES_PER_TITLE)
+        self.assertEqual(len(s["tried"]["nameplate"]["sn00000009"]), ep.TRIES_PER_TITLE)
 
     def test_pass_rolls_over_when_every_title_is_done(self):
         import io, contextlib
@@ -181,13 +181,72 @@ class Selection(unittest.TestCase):
             owed = ep.next_titles(s, self.issues)
         self.assertEqual(s["pass"], 2)
         self.assertEqual(sorted(owed), sorted(self.issues))
-        self.assertEqual(s["tried"], {})
+        self.assertEqual(s["tried"]["nameplate"], {})
 
     def test_state_round_trips_atomically(self):
-        s = {"order": ["a"], "pass": 3, "posted": [], "tried": {}}
+        s = {"order": ["a"], "pass": 3, "posted": [], "tried": {lane: {} for lane in ep.LANES}}
         ep.save_state(s)
         self.assertEqual(ep.load_state(), s)
         self.assertFalse(os.path.exists(ep.STATE_FILE + ".tmp"))
+
+
+class Lanes(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self._state, self._review, self._clip = ep.STATE_FILE, ep.REVIEW_FILE, ep.CLIP
+        ep.STATE_FILE = os.path.join(self.tmp.name, "s.json")
+        ep.REVIEW_FILE = os.path.join(self.tmp.name, "r.jsonl")
+
+    def tearDown(self):
+        ep.STATE_FILE, ep.REVIEW_FILE, ep.CLIP = self._state, self._review, self._clip
+        self.tmp.cleanup()
+
+    def test_rotation_follows_the_post_count(self):
+        s = {"posted": []}
+        self.assertEqual(ep.next_lane(s), "nameplate")
+        s["posted"] = [{"lane": "nameplate"}, {"lane": "headline"}]
+        self.assertEqual(ep.next_lane(s), "article")
+        s["posted"].append({"lane": "article", "dry": True})  # dry posts count: previews rotate
+        self.assertEqual(ep.next_lane(s), "ad")
+
+    def test_each_lane_labels_its_citation(self):
+        for lane, label in ep.LANE_LABEL.items():
+            r = fake_result(); r["lane"] = lane; r["words"] = "COTTON 8 1/2"; r["generated"] = False
+            self.assertTrue(ep.text_of(ep.compose(r)).startswith(f"[{label}], "))
+
+    def test_alt_carries_the_words_and_names_the_model_only_when_used(self):
+        r = fake_result(); r["lane"] = "headline"; r["words"] = "REESE IS ON THE RACK"; r["generated"] = True
+        alt = ep.alt_text(r)
+        self.assertTrue(alt.startswith("A.I.-transcribed headline from “The Abbeville Chronicle,”"))
+        self.assertIn("“REESE IS ON THE RACK”", alt)
+        r["lane"] = "market"; r["generated"] = False; r["words"] = "Cotton 8 1/2"
+        alt = ep.alt_text(r)
+        self.assertTrue(alt.startswith("Market report from"))
+        self.assertNotIn("A.I.", alt)
+
+    def test_search_lane_skips_tried_and_recent_titles_and_is_bounded(self):
+        calls = []
+        def clip(lane, l, d, e, seq=1, phrase=None):
+            calls.append((l, d, seq)); raise npc.Refused("x")
+        ep.CLIP = clip
+        cands = [(f"sn{i:08d}", "1890-01-01", 1, 2, "sarsaparilla") for i in range(40)]
+        s = {"order": [], "pass": 1, "tried": {}, "posted": [{"lane": "ad", "lccn": "sn00000003"}]}
+        lccn, r = ep.choose_search(s, cands, "ad", log=lambda *a: None)
+        self.assertIsNone(r)
+        self.assertEqual(len(calls), ep.SEARCH_TRIES)
+        self.assertNotIn("sn00000003", [c[0] for c in calls])
+        again = []
+        ep.CLIP = lambda lane, l, d, e, seq=1, phrase=None: again.append(l) or (_ for _ in ()).throw(npc.Refused("x"))
+        ep.choose_search(s, cands, "ad", log=lambda *a: None)
+        self.assertFalse(set(again) & {c[0] for c in calls})
+
+    def test_old_flat_tried_map_migrates_to_the_nameplate_lane(self):
+        with open(ep.STATE_FILE, "w") as f:
+            json.dump({"order": [], "pass": 1, "posted": [], "tried": {"sn1": ["1900-01-01"]}}, f)
+        s = ep.load_state()
+        self.assertEqual(s["tried"]["nameplate"], {"sn1": ["1900-01-01"]})
+        for lane in ep.LANES:
+            self.assertIn(lane, s["tried"])
 
 
 class LaunchThread(unittest.TestCase):

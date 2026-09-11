@@ -56,7 +56,11 @@ UA = ("everygeorgia/1.0 (Bluesky @georgianewspapers.bsky.social; "
 PAUSE = 0.4
 TIMEOUT = 60
 
-LCCN_RE = re.compile(r"^[a-z]{2}\d{8,10}$")
+LCCN_RE = re.compile(r"^(?:[a-z]{2}\d{8,10}|\d{10})$")   # sn89053729, or the
+                                                         # all-digit form the
+                                                         # 2020s titles carry
+                                                         # (2022239691, the
+                                                         # Cordele Dispatch)
 DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
@@ -245,3 +249,30 @@ def issue_pages(lccn, date, ed=1):
 def front_page(lccn, date, ed=1):
     """seq-1. `sequence=1` is what the search API calls a front page too."""
     return issue_pages(lccn, date, ed)[0]
+
+
+def search(text, date1, date2, rows=50, page=1, sequence=None, mode="phrasetext"):
+    """One page of Open ONI search results, as the API's own `items` list:
+    each carries lccn, date (YYYYMMDD), sequence, title, city and the full
+    `ocr_eng` of the page. Cached like everything else here.
+
+    ⚠️ `date1`/`date2` must be ISO and `dateFilterType=range`; a bare year
+    is silently ignored and returns the whole corpus with a 200 (README).
+    `phrasetext` is the exact phrase (verified 11 September 2026: 670 pages
+    for "market report" in 1878, every one carrying the words adjacent,
+    against 997 for `proxtext`, which is words NEAR each other and returned
+    "Savannah market prices of cotton" and "produced for market" for it).
+    Shape, never genre, even so: verify what a phrase finds by looking at
+    crops, as every lane here has had to."""
+    check_ident("sn00000000", date1)
+    check_ident("sn00000000", date2)
+    q = (f"{BASE}/search/pages/results/?format=json&rows={int(rows)}&page={int(page)}"
+         f"&{mode}={quote(text)}&date1={date1}&date2={date2}"
+         f"&dateFilterType=range&searchType=advanced")
+    if sequence:
+        q += f"&sequence={int(sequence)}"
+    d = fetch(q)
+    items = d.get("items") or []
+    for it in items:
+        it["_total"] = d.get("totalItems")
+    return items
