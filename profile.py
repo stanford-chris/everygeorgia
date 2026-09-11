@@ -29,9 +29,10 @@ BIO = (
     # added, "before 1931" gone with the cutoff, and NO disclosure line here:
     # 256 characters will not hold both it and the DLG credit, and the alt
     # text carries "A.I.-transcribed" on every image, which is where it is
-    # read. Post 4 says it in words. 239 characters.
+    # read. Post 4 says it in words. 240 characters, the peach and the closed-up
+    # space his own touch.
     "A 🤖 posting clippings from Georgia's old newspapers: Nameplates, headlines, "
-    "articles, ads, market reports. 🗞️\n\n"
+    "articles, ads, market reports.🗞️🍑\n\n"
     "From Georgia Historic Newspapers, presented online by the Digital Library "
     "of Georgia. Unofficial. Run by @stanfordc.bsky.social."
 )
