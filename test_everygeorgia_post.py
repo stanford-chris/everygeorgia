@@ -43,7 +43,9 @@ class Compose(unittest.TestCase):
     def test_citation_form_with_credit_and_tags(self):
         text = ep.text_of(ep.compose(fake_result()))
         # No "[Nameplate]," on a nameplate post, his call on the first post, 11 September 2026.
-        self.assertTrue(text.startswith("“The Abbeville Chronicle,” Abbeville, January 6, 1898, p. 1, "))
+        # Title, date, link: no city, no page number, his instruction on the first post.
+        self.assertTrue(text.startswith("“The Abbeville Chronicle,” January 6, 1898. "))
+        self.assertNotIn("p. 1", text)
         self.assertIn("gahistoricnewspapers.galileo.usg.edu/lccn/sn89053135/1898-01-06/ed-1/seq-1. "
                       "Presented online by the Digital Library of Georgia.", text)
         self.assertTrue(text.endswith("\n\n#Georgia #History"))

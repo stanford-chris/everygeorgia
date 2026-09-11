@@ -310,17 +310,16 @@ def compose(r):
       "[article title]", [newspaper title], [issue date], p.[page number],
       [url]. Presented online by the Digital Library of Georgia.
     with a bracketed description in the title slot, since a nameplate has no
-    article title, and the image sequence number as the page, as the FAQ's own
-    example does. The city is added after the title (post 5 of the pinned
-    thread does the same) because half the roster's titles do not name their
-    town. Dates are U.S. order, his instruction, for this account alone. Their reply said the form is ours
-    to choose; the credit sentence is the one thing they asked for."""
+    article title. ⚠️ Cut to the title, the date and the link on the first
+    post, his instruction (11 September 2026: "The Dawson Journal, June 14,
+    1867. {link} is sufficient"): no city and no page number in the text. The
+    city and page live on in the alt text and in the link itself. Dates are
+    U.S. order, his instruction, for this account alone. Their reply said the
+    form is ours to choose; the credit sentence is the one thing they asked
+    for, and it stays."""
     meta = r["meta"]
     title = npc.display_title(meta.get("title"))
-    city = (meta.get("city") or "").strip()
-    seq = r["url"].rstrip("/").rsplit("-", 1)[-1]
     url = r["url"]
-    where = f" {city}," if city else ""
     # ⚠️ No "[Nameplate]," on a nameplate post, his call on the first post
     # (11 September 2026, "We don't need [nameplate] here"): the picture says
     # what it is. A headline, an advertisement or a market report keeps its
@@ -328,7 +327,7 @@ def compose(r):
     # not say which it is.
     lane = r.get("lane", "nameplate")
     label = "" if lane == "nameplate" else f"[{LANE_LABEL[lane]}], "
-    head = f"{label}“{title},”{where} {npc.post_date(r['date'])}, p. {seq}, "
+    head = f"{label}“{title},” {npc.post_date(r['date'])}. "
     tail = f". {CREDIT}\n\n"
     visible = url.replace("https://", "").rstrip("/")
     tags = [("tag", f"#{t}", t) for t in TAGS]
