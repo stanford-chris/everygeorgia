@@ -67,8 +67,10 @@ a working app password was stored (his job, in a GUI session:
 the 08:40 launch would have failed at login, left its job loaded and notified. **The test
 that found it, to re-run before relying on the job**:
 `python3 -c 'import sys; sys.argv=["x"]; import everygeorgia_post as ep; print(ep.login_client(retries=1).me.handle)'`.
-⚠️ **Also not verified: a Keychain read under launchd from this script**, which the daily
-job has never needed. If the log at `~/Library/Logs/everygeorgia-launch.log` shows a
+✅ **A Keychain read from a launchd job is verified too** (16:05 KST): a throwaway
+RunAtLoad agent ran `security find-generic-password ... -w | wc -c` and got 20 bytes back at
+exit 0, then was booted out and its plist deleted. Nothing about the launch is untested now
+except the post itself. If the log at `~/Library/Logs/everygeorgia-launch.log` shows a
 Keychain refusal, run `python3 everygeorgia_post.py --launch` by hand in a terminal
 and remove the plist. **After it posts**: add the bot to `bot_health_check.py`,
 `bot_alt_check.py`, `bot_variety_check.py` and `bot_scout_collect.py`.
