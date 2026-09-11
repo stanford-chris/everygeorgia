@@ -89,10 +89,11 @@ THREAD = [
     },
     {
         "text": (
-            "This account's avatar is a clipping too: An ornate blackletter "
-            "capital G from the nameplate of the Georgia Weekly Telegraph and "
-            "Georgia Journal & Messenger, Macon, February 23, 1875. The white "
-            "pitting in the strokes is the microfilm, not a filter."
+            # His wording, 11 September 2026, replacing the blackletter-G and
+            # microfilm sentences.
+            "This account's avatar is derived from the nameplate of the Georgia "
+            "Weekly Telegraph and Georgia Journal & Messenger, Macon, February 23, "
+            "1875."
         ),
         # The page link rides on the paper's name, his call on launch evening
         # (11 September 2026), as the clippings' link rides on "Presented
