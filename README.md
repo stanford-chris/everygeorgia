@@ -1,13 +1,13 @@
 # everygeorgia
 
-A proposed Bluesky account posting clippings from **Georgia Historic Newspapers**,
-run by the Digital Library of Georgia at UGA.
+**Georgia in Print**, [@georgianewspapers.bsky.social](https://bsky.app/profile/georgianewspapers.bsky.social):
+a Bluesky account posting clippings from **Georgia Historic Newspapers**, the
+archive run by the Digital Library of Georgia at UGA. Unofficial.
 
-> ✅ **Permission to publish arrived on 10 September 2026** from Donnie Summerlin,
-> Digital Projects Archivist, UGA Libraries, with one condition: credit the
-> Digital Library of Georgia. Every post ends "Presented online by the Digital
-> Library of Georgia." The poster was built on 11 September; the account itself
-> is created by hand. See `HANDOFF.md`.
+> ✅ **Permission to publish arrived on 10 September 2026** from UGA Libraries,
+> with one condition: credit the Digital Library of Georgia. Every post ends
+> "Presented online by the Digital Library of Georgia." The poster was built on
+> 11 September; the account was created by hand the same day. See `HANDOFF.md`.
 
 ## Why this project exists
 

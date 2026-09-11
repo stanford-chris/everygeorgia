@@ -51,7 +51,11 @@ import sys
 from datetime import date, datetime
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPTS = os.path.dirname(HERE)
+# ⚠️ ~/Scripts by name, not this file's parent: this directory lives in
+# ~/Projects and is reached from ~/Scripts through a symlink, so the parent
+# of the real path is not ~/Scripts (the trap that broke everycarnegie's
+# describer on 30 August 2026).
+SCRIPTS = os.path.join(os.path.expanduser("~"), "Scripts")
 STATE = os.path.join(HERE, "data", "permission_state.json")
 SENT_ON = date(2026, 8, 21)          # the original email
 NOT_BEFORE = date(2026, 9, 4)        # ⚠️ Two weeks after the email, and the

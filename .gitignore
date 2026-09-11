@@ -1,0 +1,11 @@
+# Rebuildable API caches and run state, not source. The roster and rights CSVs
+# in data/ are tracked: the rights join took a day of DLG 503s to complete.
+data/titles/
+data/rights/
+data/cache/
+data/permission_state.json
+data/*.log
+data/post_state.json
+data/post_state.json.tmp
+data/review.jsonl
+__pycache__/

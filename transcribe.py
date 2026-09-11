@@ -42,7 +42,11 @@ import sys
 import tempfile
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-sys.path.insert(0, os.path.dirname(HERE))
+# ⚠️ ~/Scripts by name, not this file's parent: this directory lives in
+# ~/Projects and is reached from ~/Scripts through a symlink, so the parent
+# of the real path is not ~/Scripts (the trap that broke everycarnegie's
+# describer on 30 August 2026).
+sys.path.insert(0, os.path.join(os.path.expanduser("~"), "Scripts"))
 import limit_guard  # noqa: E402
 
 MODEL = "claude-sonnet-5"

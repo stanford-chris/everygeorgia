@@ -3,9 +3,9 @@
 everygeorgia_post.py -- post one nameplate clipping from Georgia Historic
 Newspapers to Bluesky, as @georgianewspapers.bsky.social.
 
-Permission: Donnie Summerlin, Digital Projects Archivist, UGA Libraries, by
-email on 10 September 2026, to the request sent 21 August. One condition:
-"credit the Digital Library of Georgia". Every post does, in the citation
+Permission: UGA Libraries, by email on 10 September 2026, to the request sent
+21 August. One condition: credit the Digital Library of Georgia. Every post
+does, in the citation
 form from the GHN FAQ that the request promised, ending "Presented online by
 the Digital Library of Georgia." The other promises in that email are kept
 here too: NoC-US issues only (gates.py), an identifying User-Agent
@@ -81,7 +81,11 @@ import transcribe
 from crop_frequency import noc_issues
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-SCRIPTS = os.path.dirname(HERE)
+# ⚠️ ~/Scripts by name, not this file's parent: this directory lives in
+# ~/Projects and is reached from ~/Scripts through a symlink, so the parent
+# of the real path is not ~/Scripts (the trap that broke everycarnegie's
+# describer on 30 August 2026).
+SCRIPTS = os.path.join(os.path.expanduser("~"), "Scripts")
 DATA = os.path.join(HERE, "data")
 STATE_FILE = os.path.join(DATA, "post_state.json")
 REVIEW_FILE = os.path.join(DATA, "review.jsonl")

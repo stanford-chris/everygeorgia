@@ -7,19 +7,16 @@ line of it.
 
 ## ✅ Permission arrived on 10 September 2026, and the poster is built
 
-Donnie Summerlin, Digital Projects Archivist at UGA Libraries, replied to the
-21 August request on 10 September (T. Rashaun Ellis copied): "Yes, please do.
-We only ask that you credit the Digital Library of Georgia." On the rights
-question: "You can feel free to use the materials that are no longer under
-copyright however you choose. Permission from us is not necessary." On the
-citation form: "Feel free to cite in whatever form you prefer. Those are
-merely suggestions." On traffic: he forwarded the rate-limit question to their
-developers weeks ago, they never replied, and he is chasing it, so **no rate
-limit or User-Agent has been asked for**; ours identifies the account anyway
-(`ghn_api.UA`). On content: "It is up to your discretion to select what you
-post, but a cautious approach is certainly warranted." The mail is in the
-Inbox; `permission_followup.py --resolved` was run the same day and the
-reminder is silent.
+UGA Libraries replied to the 21 August request on 10 September: yes, with one
+condition, credit the Digital Library of Georgia. On rights: material no longer
+under copyright may be used freely and needs no permission from them. On the
+citation form: theirs is a suggestion, any form will do. On traffic: the
+rate-limit question had gone to their developers and had no answer yet, so
+**no rate limit or User-Agent has been asked for**; ours identifies the account
+anyway (`ghn_api.UA`). On content: selection is at our discretion, and a
+cautious approach is warranted. The mail is in the Inbox;
+`permission_followup.py --resolved` was run the same day and the reminder is
+silent.
 
 **What was built on 11 September 2026:**
 
