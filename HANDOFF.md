@@ -43,6 +43,27 @@ After launch, add the bot to `bot_health_check.py`, `bot_alt_check.py`,
 done ahead: a health check on an account that does not exist alerts every
 morning.
 
+## ✅ Launch scheduled: 08:40 KST, Saturday 12 September 2026
+
+`com.chrisstanford.everygeorgia-launch` (in `~/Library/LaunchAgents`, no mirror) runs
+`everygeorgia_launch.sh` once: `--launch` posts the six-post thread and pins post 1,
+then the script deletes its own plist and boots itself out, last, the everycarnegie
+shape. On failure it leaves the job in place as the signal and the poster refuses a
+second `--launch` once `data/post_state.json` records the thread. His call on the
+evening of the 11th: "post it tomorrow morning, so I can catch it if something goes
+wrong." The daily job then posts the first clipping, the Dawson Journal of 14 June
+1867 (a dry run from the empty state picks it), at 09:10. Verified: `plutil -lint`
+clean, `bash everygeorgia_launch.sh --dry-run` prints the six posts and removes
+nothing, `launchctl print` shows the job loaded from `~/Library/LaunchAgents`.
+⚠️ **Not verified: a Keychain read under launchd from this script**, which the daily
+job has never needed. If the log at `~/Library/Logs/everygeorgia-launch.log` shows a
+Keychain refusal, run `python3 everygeorgia_post.py --launch` by hand in a terminal
+and remove the plist. **After it posts**: add the bot to `bot_health_check.py`,
+`bot_alt_check.py`, `bot_variety_check.py` and `bot_scout_collect.py`.
+
+The final thread text is in `profile.py` (post 3 at 299, post 4 at 218, both his
+edits of the 11th; see PROFILE.md).
+
 ## The four lanes, built the evening of 11 September 2026
 
 Chris: "I want everything. The profile can wait." So the advertisement,
