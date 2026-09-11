@@ -143,6 +143,25 @@ Tests: `test_clips.py` (12, synthetic page with columns, gutters and a
 rule), `test_everygeorgia_post.py` (30, lanes and rotation), `test_nameplate.py`
 (69). All stdlib plus Pillow, no network, no model.
 
+## ⏳ Inside pages for headlines and articles: wanted, not yet possible
+
+Chris, 11 September 2026: "I'd eventually like to include inside pages."
+The capability exists (`clips.choose_page()`, a seeded draw with the
+running head skipped; `--seq` for a hand-picked page) and `INNER_SHARE` is
+0.0 because the measurement said so: 25 tries on pages 2, 3 and 5 of six
+dailies gave one news story, a poem, two advertisements and a masthead. The
+five crops are in the session record.
+
+**What it needs before it can be turned on**: a test for an advertisement
+that is not its vocabulary. The Pearline soap copy sells nothing by name
+until its last line; a poem has no markers at all. The signals worth trying,
+in order: the illustration (an inner-page item with a picture in it is an
+ad far more often than not), a rule box around the item, and a story's own
+shape (a dateline like "London.—" or "WASHINGTON, Dec. 8.—" opening the
+first paragraph, which the Crippen and Wilson stories both have and no
+advertisement does). The dateline test is cheap and probably the one to
+build first. Raise `INNER_SHARE` only with a measured yield behind it.
+
 ## The poster, in five decisions
 
 1. **One issue per title, titles in a fixed shuffled order** (`SHUFFLE_SEED`,
