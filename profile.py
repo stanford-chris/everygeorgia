@@ -81,10 +81,15 @@ THREAD = [
     },
     {
         "text": (
+            # ⚠️ The third sentence is his, 12 September 2026, the day the cartoon
+            # lane shipped: that lane's alt is a description of the drawing with
+            # the words after it, and the post as it stood promised words "not
+            # only a description". Thread reposted for it the same day.
             "Alt text: It carries the actual words of the clip, not only a "
             "description, so a screen reader gets what the page says. Old display "
             "type defeats OCR, so those words are transcribed by an A.I. model, and "
-            "the alt says so."
+            "the alt says so. A cartoon's alt also describes the drawing, and says "
+            "that, too."
         ),
         "links": [],
         "mentions": [],
