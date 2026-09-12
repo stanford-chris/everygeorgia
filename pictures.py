@@ -62,8 +62,13 @@ CELL_H_FRAC = 1 / 50.0   # ...and this of its height (about 35 x 33 px at 1400)
 COVER_MAX = 0.30         # OCR-box coverage under this is not set text (text
                          # columns measure 0.51, display ads 0.30-0.41, the
                          # strip 0.22, all on the 1919 Georgian page)
-INK_MAX = 0.70           # a cell inked more than this is film edge or a
-                         # solid bar, never a drawing
+INK_MAX = 0.90           # a cell inked more than this is film edge or a
+                         # solid bar, never a drawing. ⚠️ 0.70 until the
+                         # evening of 12 September 2026: the dense hatching
+                         # of "Side Glances" (Griffin Daily News, 19 February
+                         # 1930) runs past it, the panel came through as
+                         # fragments, and one fragment shipped as the crop.
+                         # Film black is 0.95 and up
 INK_MEAN_MIN = 0.06      # ⚠️ Over the COMPONENT, not the cell. The first
                          # pass floored each cell at 0.03 ink and threw away
                          # the white inside the drawing (a balloon's interior,
@@ -78,16 +83,30 @@ FILL_NEIGHBOURS = 5      # a cell with this many picture-like neighbours of 8
 FILL_PASSES = 2
 # ---- what counts as a picture ---------------------------------------------
 MIN_AREA_FRAC = 0.02     # of the page: below it a portrait cut or an ornament
-MAX_AREA_FRAC = 0.45     # above it the page's OCR failed, not a picture
+MAX_AREA_FRAC = 0.60     # above it the page's OCR failed, not a picture.
+                         # ⚠️ 0.45 until 12 September 2026, evening: the
+                         # Americus Times-Recorder's comic page of 9 February
+                         # 1920 is four strips stacked, one component of 36
+                         # percent of the page with ink and MORE without it,
+                         # and the coordinates-only pass (which has no ink
+                         # test) refused the whole page as "no hole". The
+                         # cheap pass now applies no ceiling at all, since
+                         # the ink pass, split_by_gaps and the clear-row share
+                         # are the tests for a page whose OCR simply failed
 MIN_W_FRAC = 0.10        # of the page's width (a column is 0.07-0.12)
 MIN_H_FRAC = 0.05        # of its height
-FILL_MIN = 0.45          # component cells over its bounding box's cells: an
-                         # L-shaped hole is two items, not one (the 1919
-                         # strip, its lettered balloons excluded, is 0.49)
+FILL_MIN = 0.35          # component cells over its bounding box's cells: an
+                         # L-shaped hole is two items, not one. The 1919
+                         # strip, its lettered balloons excluded, is 0.49;
+                         # the Griffin Daily News sports cartoon of
+                         # 19 February 1930, with its hand-lettered captions
+                         # and a headline bridged to its corner, 0.449, and
+                         # was refused at 0.45 (12 September 2026). A low
+                         # floor costs model calls, never a wrong post
 TOP_SKIP = {1: 0.10, "inner": 0.04}   # the nameplate band on a front page and
                          # the running head on an inner one are unread
                          # display type, and holes; skipped by position
-CANDIDATES_PER_PAGE = 2
+CANDIDATES_PER_PAGE = 3
 PAGES_PER_ISSUE = 16
 MODEL_CALLS_PER_ISSUE = 3   # ⚠️ Spent on the LARGEST candidates across the
                          # whole issue, not page by page: on the 1919
@@ -317,34 +336,108 @@ def components(like, ncols, nrows):
 NECK_FRAC = 0.30         # a cell column holding picture-like cells in fewer
                          # than this share of the component's rows is a
                          # bridge, not part of the picture
+NECK_MIN_RUN = 3         # ...when at least this many consecutive columns or
+                         # rows are. Two rows of hand lettering inside a
+                         # cartoon ("OLD BATTLEFIELDS OF THE 1928 CAMPAIGN"
+                         # and the cannon's labels, the Brunswick News,
+                         # 11 June 1930) are boxed by the OCR and read as a
+                         # neck two cells thick, and the cartoon was cut in
+                         # two at it; every bridge measured (the Banner-
+                         # Herald masthead, the Americus page banner, the
+                         # Brunswick portrait chain) is three to eight
+
+
+def _split_axis(cells, axis):
+    """Pieces of `cells` cut at every index along `axis` (0 rows, 1 columns)
+    that holds picture-like cells in under NECK_FRAC of the extent along
+    the other axis. One piece back when there is no neck."""
+    idx = [c[axis] for c in cells]; other = [c[1 - axis] for c in cells]
+    span = max(other) - min(other) + 1
+    per = {}
+    for c in cells:
+        per[c[axis]] = per.get(c[axis], 0) + 1
+    thin = [i for i in range(min(idx), max(idx) + 1) if per.get(i, 0) < NECK_FRAC * span]
+    necks, run = [], []
+    for i in thin + [None]:
+        if run and (i is None or i != run[-1] + 1):
+            if len(run) >= NECK_MIN_RUN:
+                necks.extend(run)
+            run = []
+        if i is not None:
+            run.append(i)
+    if not necks:
+        return [cells]
+    groups = {}
+    for c in cells:
+        if c[axis] in necks:
+            continue
+        k = sum(1 for x in necks if c[axis] > x)
+        groups.setdefault(k, []).append(c)
+    return list(groups.values()) or [cells]
 
 
 def split_at_necks(cells):
-    """The largest piece of a component once it is cut at every cell column
-    that is picture-like in under NECK_FRAC of the component's rows. On the
-    Banner-Herald's editorial page of 22 January 1925 the cartoon and the
-    paper's own masthead block beside it were bridged by three rows of
-    unread display type at the top and became one component, and the crop
-    carried the editorial next to the drawing. The cells between them are
-    picture-like in 3 of 18 rows; the drawing's own columns in nearly all.
-    (A page gutter judged clear on the component's rows was tried first and
-    could not fire there: the ragged edge of the column of type beside the
-    cartoon inks every gutter column on 14 percent of the rows.)"""
-    rs = [r for r, _ in cells]; cs = [c for _, c in cells]
-    span = max(rs) - min(rs) + 1
-    per_col = {}
-    for r, c in cells:
-        per_col[c] = per_col.get(c, 0) + 1
-    necks = sorted(c for c in range(min(cs), max(cs) + 1) if per_col.get(c, 0) < NECK_FRAC * span)
-    if not necks:
-        return cells
-    groups = {}
-    for r, c in cells:
-        if c in necks:
+    """Every piece of a component once it is cut, repeatedly, at its necks
+    in both directions: a column or row of cells picture-like in under
+    NECK_FRAC of the component's other extent is a bridge, not picture.
+
+    Columns: on the Banner-Herald's editorial page of 22 January 1925 the
+    cartoon and the paper's own masthead block beside it were bridged by
+    three rows of unread display type and became one component, and the
+    crop carried the editorial next to the drawing. Rows: on the Brunswick
+    News of 11 June 1930 a cartoon, a feature column and a strip stacked in
+    one column chained through the column's ornament and portrait into one
+    component 21 percent of the page, and the crop was 3,411 px tall; on the
+    Americus Times-Recorder's comic page of 9 February 1920 four strips
+    chained up into the unread page banner, touched the top of the page and
+    were skipped whole by the running-head rule. (A page gutter judged
+    clear on the component's rows was tried first and could not fire: the
+    ragged edge of a column of type inks every gutter column on 14 percent
+    of the rows.) Every piece is returned; candidates() sizes each."""
+    pieces, changed = [cells], True
+    while changed:
+        changed, out = False, []
+        for piece in pieces:
+            parts = _split_axis(piece, 1)
+            if len(parts) == 1:
+                parts = _split_axis(piece, 0)
+            if len(parts) > 1 or len(parts[0]) < len(piece):
+                changed = True
+            out.extend(parts)
+        pieces = out
+    return pieces
+
+
+def _pieces(comp, pi, coords, W, H, ncols, nrows):
+    """A component as the pieces a candidate is judged on: cut at its
+    necks, then (with the image) each piece parted into bands at paper
+    gaps, and each band neck-cut on columns once more, since a band's
+    columns are not the whole piece's. ⚠️ The Griffin Daily News sports
+    panel of 19 February 1930 shipped as a slice across the text column
+    beside it: the piece was wide because an unread headline bridged the
+    two at the top, and the band that held the panel kept that width."""
+    out = []
+    for piece in split_at_necks(comp):
+        if pi is None:
+            out.append(piece)
             continue
-        k = sum(1 for x in necks if c > x)
-        groups.setdefault(k, []).append((r, c))
-    return max(groups.values(), key=len) if groups else cells
+        rs = [r for r, _ in piece]; cs = [c for _, c in piece]
+        sbox = (int(min(cs) * pi.w / ncols), int(min(rs) * pi.h / nrows),
+                int((max(cs) - min(cs) + 1) * pi.w / ncols), int((max(rs) - min(rs) + 1) * pi.h / nrows))
+        for band in split_by_gaps(pi, sbox, coords):
+            ra, rb = int(band[1] * nrows / pi.h), int((band[1] + band[3]) * nrows / pi.h + 0.999)
+            in_band = [(r, c) for r, c in piece if ra <= r < rb]
+            if not in_band:
+                continue
+            best = max(_split_axis(in_band, 1), key=len)
+            # ⚠️ The band's rows are the extent, not the cells': the solid
+            # black monument at the top of the Griffin sports panel is over
+            # INK_MAX and not a picture-like cell, and a box rebuilt from
+            # the cells began halfway down the panel.
+            cs = [c for _, c in best]
+            out.append([(r, c) for r in range(ra, min(rb, nrows)) for c in range(min(cs), max(cs) + 1)
+                        if (r, c) in set(best) or True])
+    return out
 
 
 def candidates(coords, pi=None, seq=1):
@@ -357,20 +450,32 @@ def candidates(coords, pi=None, seq=1):
     W, H = coords["width"], coords["height"]
     skip = TOP_SKIP[1] if seq == 1 else TOP_SKIP["inner"]
     out = []
-    for cells, (c0, r0, c1, r1) in components(like, ncols, nrows):
-        cells = split_at_necks(cells)
+    for comp, _ in components(like, ncols, nrows):
+      for cells in _pieces(comp, pi, coords, W, H, ncols, nrows):
         rs = [r for r, _ in cells]; cs = [c for _, c in cells]
         c0, r0, c1, r1 = min(cs), min(rs), max(cs), max(rs)
         bw, bh = c1 - c0 + 1, r1 - r0 + 1
         area = len(cells) / float(ncols * nrows)
-        if area < MIN_AREA_FRAC or area > MAX_AREA_FRAC:
+        if area < MIN_AREA_FRAC or (ink is not None and area > MAX_AREA_FRAC):
             continue
         if bw / float(ncols) < MIN_W_FRAC or bh / float(nrows) < MIN_H_FRAC:
             continue
         if len(cells) / float(bw * bh) < FILL_MIN:
             continue
         if r0 / float(nrows) < skip:
-            continue
+            # ⚠️ Clip the rows in the running head or the nameplate band,
+            # never drop the piece: the Americus comic page's strips reach
+            # the top row through the unread page banner, and the whole
+            # page was skipped for it
+            cells = [(r, c) for r, c in cells if r / float(nrows) >= skip]
+            if not cells:
+                continue
+            rs = [r for r, _ in cells]; cs = [c for _, c in cells]
+            c0, r0, c1, r1 = min(cs), min(rs), max(cs), max(rs)
+            bw, bh = c1 - c0 + 1, r1 - r0 + 1
+            area = len(cells) / float(ncols * nrows)
+            if area < MIN_AREA_FRAC or bh / float(nrows) < MIN_H_FRAC:
+                continue
         if ink is not None and sum(ink[r][c] for r, c in cells) / len(cells) < INK_MEAN_MIN:
             continue
         box = (int(c0 * W / ncols), int(r0 * H / nrows),
@@ -448,8 +553,111 @@ def frame(pi, coords, box_ocr):
 def clear_share(pi, sbox):
     """The share of the box's rows that are paper across its width."""
     x, y, w, h = sbox
-    dark = pi.row_dark(x, x + w, y, y + h)
+    x0, x1 = _inside_film(pi, x, w)
+    dark = pi.row_dark(x0, x1, y, y + h)
     return sum(1 for d in dark if d <= PAPER_ABS) / float(len(dark) or 1)
+
+
+BAND_GAP_ROWS = 3        # a paper run this tall parts two bands: strips are
+                         # stacked with three or four rows of paper between
+                         # a strip's bottom rule and the next one's title
+                         # line at 1400px (the Americus comic page), under
+                         # rules.GAP_FRAC's seven, which left three strips
+                         # in one crop
+MIN_BAND_FRAC = 0.04     # a band of a component under this of the page's
+                         # height is a title line or a caption, not a picture
+PANEL_GAP = 0.012        # two adjacent tall bands parted by paper shorter
+                         # than this of the page are one picture (the rows
+                         # of panels of one strip)
+BOX_EDGE = 0.04          # a paper row with ink in the outer this-much of the
+                         # span on BOTH sides is inside a boxed picture, not
+                         # a gap: the sky in the Brunswick News cartoon
+                         # "'Twas Loaded" (11 June 1930) reads 0.005 dark
+                         # across 420 px because only its two border lines
+                         # cross those rows, and the cartoon was halved
+                         # there. Between two strips, and between two rows
+                         # of one strip's panels, no border crosses the gap
+
+
+def _inside_film(pi, x, w):
+    """(x0, x1) of the span with the film edge cut off: a black margin
+    inside the span makes every row read as ink, and on the Banner-Herald
+    of 24 October 1930 a column whose component began at the page's edge
+    had no paper row anywhere, so two stacked cartoons and a want-ad box
+    shipped as one crop 3,821 px tall."""
+    fl, fr = pi.film_edges()
+    x0, x1 = max(x, fl), min(x + w, fr)
+    # ⚠️ And the outermost SPAN_INSET of the span on each side: a column
+    # rule at the crop's edge, or a black stripe the page-level film test
+    # missed (the Banner-Herald of 24 October 1930, columns 6-18 inked on
+    # every row of the lower page), keeps every row off paper.
+    inset = max(3, int((x1 - x0) * SPAN_INSET))
+    x0, x1 = x0 + inset, x1 - inset
+    return (x0, x1) if x1 > x0 else (x, x + w)
+
+
+SPAN_INSET = 0.05
+def split_by_gaps(pi, sbox, coords=None):
+    """The box as bands parted by paper gaps across its width, short bands
+    dropped, and adjacent bands rejoined when the paper between them is
+    under PANEL_GAP. ⚠️ On the Americus Times-Recorder's comic page of
+    9 February 1920 four strips stacked down the page came through as ONE
+    component (their title lines are half-read display type and bridge
+    them), and the paper between the strips put its clear-row share over
+    TYPE_CLEAR_MAX, so a page of nothing but cartoons was "no picture-sized
+    hole". Each strip parted by paper is a band.
+
+    ⚠️ A paper row inside a BOX is not a gap (BOX_EDGE): that is what
+    keeps a boxed cartoon whole across its sky. The rejoin under PANEL_GAP
+    is otherwise unconditional between adjacent tall bands; a short band
+    between (a title line, a caption) breaks adjacency and parts them.
+    Two cleverer rules
+    were measured and dropped on 12 September 2026, on this page, the
+    Brunswick News of 11 June 1930, the Griffin Daily News of 19 February
+    1930 and the Banner-Herald of 24 October 1930: refusing to rejoin when
+    the lower band opens with display type cut the Brunswick cartoon
+    "'Twas Loaded" in half at "OLD BATTLEFIELDS OF THE 1928 CAMPAIGN",
+    since hand lettering in a cartoon is taller than any title; and
+    parting bands at printed rules as well as paper fired on rows inside
+    drawings and halved three of the six. Two strips set tight, title
+    against the strip above with no paper between, stay one band; the
+    model still calls that a comic strip, and a reader sees two. Adjacency
+    is what keeps a cartoon from rejoining the strip below it across a
+    column of type: the type is bands too short to keep, and a dropped
+    band breaks the chain. `coords` is accepted and unused, kept for the
+    signature the caller has."""
+    x, y, w, h = sbox
+    x0, x1 = _inside_film(pi, x, w)
+    dark = pi.row_dark(x0, x1, y, y + h)
+    edge = max(2, int((x1 - x0) * BOX_EDGE))
+
+    def boxed_row(i):
+        yy = y + i
+        return (any(pi.is_ink(xx, yy) for xx in range(x0, x0 + edge))
+                and any(pi.is_ink(xx, yy) for xx in range(x1 - edge, x1)))
+
+    gap = BAND_GAP_ROWS
+    bands, start, paper = [], None, 0
+    for i, d in enumerate(dark + [0.0] * gap):
+        if d <= PAPER_ABS and not (i < len(dark) and boxed_row(i)):
+            paper += 1
+            if start is not None and paper >= gap:
+                bands.append((start, i - paper + 1))
+                start = None
+        else:
+            paper = 0
+            if start is None:
+                start = i
+    min_h = int(pi.h * MIN_BAND_FRAC)
+    merged, last_end = [], None
+    for a, b in bands:
+        tall = b - a >= min_h
+        if tall and merged and last_end == merged[-1][1] and a - merged[-1][1] < pi.h * PANEL_GAP:
+            merged[-1] = (merged[-1][0], b)
+        elif tall:
+            merged.append((a, b))
+        last_end = b
+    return [(x, y + a, w, b - a) for a, b in merged] or [sbox]
 
 
 def trim_by_gaps(pi, sbox):
@@ -457,7 +665,8 @@ def trim_by_gaps(pi, sbox):
     zones cut off: see PAPER_ABS. The larger part is kept; a cut that would
     keep under half is not made."""
     x, y, w, h = sbox
-    dark = pi.row_dark(x, x + w, y, y + h)
+    x0, x1 = _inside_film(pi, x, w)
+    dark = pi.row_dark(x0, x1, y, y + h)
     gap = max(2, int(pi.h * rules.GAP_FRAC))
     runs, start = [], None
     for i, d in enumerate(dark + [1.0]):
@@ -664,7 +873,8 @@ def clip_cartoon(lccn, date, ed=1, seq=None, log=print):
     # what it looks at first.
     ranked = []
     for area, page, c, pi, box in found:
-        clear = clear_share(pi, trim_by_gaps(pi, pi.from_ocr(box)))
+        band = pi.from_ocr(box)
+        clear = clear_share(pi, band)
         if clear > TYPE_CLEAR_MAX:
             log(f"  picture p{page.seq}: lines of type, not looked at ({clear:.0%} of rows clear)")
             continue

@@ -378,6 +378,66 @@ are whole: the strip with its copyright line, the Parker illustration with
 its caption, the Banner-Herald cartoon with its title and a sliver of the
 column beside it.
 
+### The credit-line search seed, 12 September 2026, evening ("Build the credit-line search seed")
+
+The cartoon lane now draws two ways (`pick()` in the poster): first from search
+hits on the syndicate credit lines a strip carries in set type
+(`clips.CARTOON_PHRASES`: "International Feature Service", "Newspaper Feature
+Service", "Registered U. S. Patent Office"; `clips.cartoon_candidates()`, from
+1900), then, when nothing passes, from the title order as before. The search
+half keeps its own tried map under `CARTOON_SEARCH` and posts as "cartoon".
+
+**Measured before wiring.** 255 candidate pages on postable issues from one
+search page per phrase per decade: **185 are the Atlanta Georgian's** (a Hearst
+paper), 34 the Augusta Herald, 13 Americus, 11 the Brunswick News, 7 the
+Banner-Herald, 2 each Griffin and The Red and Black, 1 the Athens Banner; by
+year they run 1914-1922 with a tail to 1930. That share is why
+`CARTOON_RECENT_WINDOW` is 3, not the ad lane's 30: the Georgian may post one
+cartoon in four rather than none after its first. The lane was then run on
+eight hits spread across titles: two PASS at once (a Brunswick News editorial
+cartoon, "'Twas Loaded", and a Griffin Daily News sports panel by Laufer, both
+1930), one illustration refused, one id the client refuses (The Red and Black's
+`gua1179162`, now dropped at the search), and four "no hole" that were **the
+detector's faults, not the pages'**. Fixing them took the evening and every
+constant below was set on eight named pages, so re-run
+`pictures.clip_cartoon(lccn, date, seq=n)` on them and LOOK before moving one:
+the Georgian 1919-01-15 p10, Banner-Herald 1925-01-22 p4 and 1930-10-24 p9,
+Americus 1920-02-09 p7, Brunswick 1930-06-11 p4, Griffin 1930-02-19 p2, Augusta
+Herald 1922-08-20 p13, Augusta Daily Herald 1914-01-24 p5 (the illustration).
+Final regression on all eight: seven PASS or REVIEW with whole crops, the
+illustration refused twice over.
+
+**The geometry as settled, in `pictures.py`, each rule with the page that set it:**
+- the coordinates-only pass has no area ceiling (a comic page is half hole);
+- a component is cut at NECKS on columns and rows, a neck being three or more
+  consecutive cell rows or columns picture-like in under 30 percent of the
+  other extent, and EVERY piece is a candidate (the masthead block beside the
+  Banner-Herald cartoon; the portrait chain in the Brunswick column; two rows
+  of lettering inside "'Twas Loaded" are two thick and are not a neck);
+- rows in the running head or nameplate band are CLIPPED off a piece, never
+  the piece dropped (the Americus strips reach row 0 through the page banner);
+- each piece is parted into BANDS at paper gaps three rows deep across the
+  span (film edge and the outer 5 percent of the span excluded, since a black
+  stripe or a column rule keeps every row off paper), a paper row with ink at
+  both edges of the span being inside a BOX and no gap; adjacent tall bands
+  under 1.2 percent apart rejoin, a short band between (a title line) parts
+  them; each band is neck-cut on columns again and keeps the band's own rows
+  (the black monument in the Griffin panel is not a picture-like cell);
+- the ink ceiling is 0.90 (dense hatching passed 0.70 and fragmented "Side
+  Glances"), the fill floor 0.35, the clear-row share ranks and cuts at 0.25.
+
+⚠️ **Two cleverer rules were measured and dropped, and should not come back
+without a new measurement**: refusing a rejoin when the lower band opens with
+display type (hand lettering in a cartoon is taller than any title, and it
+halved "'Twas Loaded"), and parting bands at printed rules as well as paper
+(fires on rows inside drawings; halved three of six).
+
+⚠️ **Residual, known and accepted**: strips stacked inside a page-wide box (the
+Americus comic page) come through as one band, since the box test that keeps a
+cartoon whole across its sky also keeps them together; the model still calls
+it a comic strip and the crop is several strips, legible at 1200 wide. Not a
+slice and not a wrong kind.
+
 ## ⏳ Inside pages for headlines and articles: wanted, not yet possible
 
 Chris, 11 September 2026: "I'd eventually like to include inside pages."

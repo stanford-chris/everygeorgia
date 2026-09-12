@@ -16,6 +16,7 @@ import os
 import re
 import tempfile
 import unittest
+from unittest import mock
 
 import everygeorgia_post as ep
 import gates
@@ -199,7 +200,8 @@ class Selection(unittest.TestCase):
         self.assertEqual(s["tried"]["nameplate"], {})
 
     def test_state_round_trips_atomically(self):
-        s = {"order": ["a"], "pass": 3, "posted": [], "tried": {lane: {} for lane in ep.LANES}}
+        s = {"order": ["a"], "pass": 3, "posted": [],
+             "tried": {lane: {} for lane in ep.LANES + (ep.CARTOON_SEARCH,)}}
         ep.save_state(s)
         self.assertEqual(ep.load_state(), s)
         self.assertFalse(os.path.exists(ep.STATE_FILE + ".tmp"))
@@ -223,6 +225,36 @@ class Lanes(unittest.TestCase):
         self.assertEqual(ep.next_lane(s), "ad")
         s["posted"].append({"lane": "ad", "dry": True})  # dry posts count: previews rotate
         self.assertEqual(ep.next_lane(s), "market")
+
+    def test_cartoon_draws_from_the_credit_line_search_first_then_the_title_order(self):
+        """12 September 2026: the search half posts as "cartoon", keeps its
+        own tried map, and hands to the title order when nothing passes."""
+        calls = []
+        def fake_clip(lane, lccn, date, ed=1, seq=1, phrase=None, log=print):
+            calls.append((lane, lccn, date, seq, phrase))
+            if seq == 7:
+                return {"postable": True, "lane": lane, "lccn": lccn, "date": date, "edition": ed,
+                        "seq": seq, "url": "u", "caption": "", "page_hits": [], "words": "",
+                        "verdict": type("V", (), {"reasons": []})()}
+            raise ep.npc.Refused("no")
+        state = {"order": [], "pass": 1, "posted": [], "tried": {}}
+        for lane in ep.LANES + (ep.CARTOON_SEARCH,):
+            state["tried"].setdefault(lane, {})
+        sources = {"cartoon": {"t2": [("1915-01-01", 1)]},
+                   ep.CARTOON_SEARCH: [("t1", "1916-05-05", 1, 7, "International Feature Service")]}
+        with mock.patch.object(ep, "CLIP", fake_clip):
+            lccn, r = ep.pick(state, sources, "cartoon", log=lambda m: None)
+        self.assertEqual(lccn, "t1")
+        self.assertEqual(r["lane"], "cartoon")
+        self.assertEqual(calls[0], ("cartoon", "t1", "1916-05-05", 7, "International Feature Service"))
+        self.assertIn("t1:1916-05-05:7", state["tried"][ep.CARTOON_SEARCH])
+        # nothing from the search: the title order is tried
+        calls.clear()
+        sources[ep.CARTOON_SEARCH] = [("t1", "1916-05-05", 1, 3, "x")]
+        state["tried"][ep.CARTOON_SEARCH] = {}
+        with mock.patch.object(ep, "CLIP", fake_clip):
+            ep.pick(state, sources, "cartoon", log=lambda m: None)
+        self.assertEqual([c[1] for c in calls], ["t1", "t2"])
 
     def test_eligible_drops_issues_before_the_lanes_floor_and_empty_titles(self):
         issues = {"a": [("1849-03-17", 1), ("1905-01-01", 1)], "b": [("1871-09-19", 1)]}

@@ -52,10 +52,14 @@ class Detector(unittest.TestCase):
         self.assertEqual(pictures.candidates(synthetic_coords(hole=(1000, 2000, 300, 300)), None, 3), [])
         self.assertEqual(pictures.candidates(synthetic_coords(hole=(1000, 2000, 3000, 200)), None, 3), [])
 
-    def test_the_running_head_and_nameplate_band_are_skipped_by_position(self):
-        c = synthetic_coords(hole=(1000, 120, 1200, 500))           # top 2% to 10%
+    def test_the_running_head_and_nameplate_band_are_clipped_not_dropped(self):
+        c = synthetic_coords(hole=(1000, 120, 1200, 500))           # top 2% to 10%: too little left below
         self.assertEqual(pictures.candidates(c, None, seq=1), [])
         self.assertEqual(pictures.candidates(c, None, seq=5), [])
+        c = synthetic_coords(hole=(1000, 120, 1200, 1500))          # top 2% to 27%: clipped to the skip line
+        got = pictures.candidates(c, None, seq=5)
+        self.assertEqual(len(got), 1)
+        self.assertGreaterEqual(got[0][1][1] / 6000.0, pictures.TOP_SKIP["inner"] - 0.01)
 
     def test_a_paper_component_is_dropped_by_the_ink_mean(self):
         """With ink, a hole that is blank paper throughout is not a picture;
@@ -66,8 +70,13 @@ class Detector(unittest.TestCase):
         class Ink:
             def __init__(self, level):
                 self.w, self.h, self.level = 1400, 2100, level
+                self.page = type("P", (), {"scale": 1.0})(); self.scale = 0.35
             def is_ink(self, x, y):
                 return self.level
+            def film_edges(self):
+                return (0, self.w)
+            def row_dark(self, x0, x1, y0, y1):
+                return [0.3 if self.level else 0.0] * max(0, y1 - y0)
 
         with mock.patch.object(pictures, "cell_grid") as cg:
             for level, expect in ((False, 0), (True, 1)):
@@ -97,33 +106,90 @@ class ThinRules(unittest.TestCase):
 class ClearShare(unittest.TestCase):
     def test_lines_of_type_read_high_and_a_drawing_low(self):
         class PI:
+            w = 1400
+            def film_edges(self):
+                return (0, 1400)
             def row_dark(self, x0, x1, y0, y1):
                 # ten rows of type, each followed by two rows of leading
                 return [0.3, 0.3, 0.01, 0.01] * 10
         self.assertAlmostEqual(pictures.clear_share(PI(), (0, 0, 10, 40)), 0.5)
         class Drawing:
+            w = 1400
+            def film_edges(self):
+                return (0, 1400)
             def row_dark(self, x0, x1, y0, y1):
                 return [0.1] * 40
         self.assertEqual(pictures.clear_share(Drawing(), (0, 0, 10, 40)), 0.0)
 
 
 class Necks(unittest.TestCase):
-    def test_a_bridge_of_few_rows_is_cut_and_the_larger_piece_kept(self):
+    def test_a_bridge_of_few_rows_is_cut_and_both_pieces_come_back(self):
         big = [(r, c) for r in range(0, 18) for c in range(10, 24)]      # the drawing
         small = [(r, c) for r in range(0, 18) for c in range(0, 6)]      # the masthead block
         bridge = [(r, c) for r in range(0, 3) for c in range(6, 10)]     # unread display type
-        got = pictures.split_at_necks(big + small + bridge)
-        self.assertEqual(sorted(got), sorted(big))
+        got = sorted(sorted(p) for p in pictures.split_at_necks(big + small + bridge))
+        self.assertEqual(got, sorted([sorted(small), sorted(big)]))
+
+    def test_stacked_pictures_bridged_by_a_thin_chain_are_cut_on_rows(self):
+        top = [(r, c) for r in range(0, 12) for c in range(0, 20)]
+        chain = [(r, 3) for r in range(12, 20)]                          # a portrait's column
+        bottom = [(r, c) for r in range(20, 30) for c in range(0, 20)]
+        got = sorted(sorted(p) for p in pictures.split_at_necks(top + chain + bottom))
+        self.assertEqual(got, sorted([sorted(top), sorted(bottom)]))
 
     def test_a_solid_component_is_untouched(self):
         big = [(r, c) for r in range(0, 18) for c in range(10, 24)]
-        self.assertEqual(sorted(pictures.split_at_necks(big)), sorted(big))
+        self.assertEqual([sorted(p) for p in pictures.split_at_necks(big)], [sorted(big)])
+
+    def test_a_single_thin_row_inside_a_picture_is_not_a_neck(self):
+        big = [(r, c) for r in range(0, 18) for c in range(10, 24) if r not in (9, 10) or c in (10, 11)]   # rows 9-10: lettering
+        self.assertEqual(len(pictures.split_at_necks(big)), 1)
+
+
+class Bands(unittest.TestCase):
+    class PI:
+        w, h = 1400, 2000
+        def __init__(self, rows, boxed=()):
+            self.rows, self.boxed = rows, set(boxed)
+        def film_edges(self):
+            return (0, self.w)
+        def row_dark(self, x0, x1, y0, y1):
+            return self.rows[y0:y1]
+        def is_ink(self, x, y):
+            return y in self.boxed            # border lines at the span's edges on these rows
+
+    def test_stacked_strips_become_bands_and_panel_rows_stay_one(self):
+        ink, paper = 0.2, 0.0
+        rows = ([ink] * 150 + [paper] * 10 + [ink] * 150      # strip A: two rows of panels, 10 px apart
+                + [paper] * 12 + [ink] * 30 + [paper] * 12    # a full-width title line between
+                + [ink] * 200)                                # strip B
+        bands = pictures.split_by_gaps(self.PI(rows), (0, 0, 100, len(rows)))
+        self.assertEqual([(b[1], b[3]) for b in bands], [(0, 310), (364, 200)])
+
+    def test_paper_inside_a_box_is_not_a_gap(self):
+        ink, paper = 0.2, 0.0
+        rows = [ink] * 150 + [paper] * 12 + [ink] * 30 + [paper] * 12 + [ink] * 200   # a boxed cartoon's sky and lettering
+        boxed = range(0, len(rows))                                                    # border lines on every row
+        bands = pictures.split_by_gaps(self.PI(rows, boxed), (0, 0, 100, len(rows)))
+        self.assertEqual([(b[1], b[3]) for b in bands], [(0, 404)])
+
+    def test_bands_across_a_column_of_type_do_not_rejoin(self):
+        ink, paper, line = 0.2, 0.0, 0.3
+        rows = [ink] * 200 + [paper] * 4 + ([line] * 6 + [paper] * 4) * 10 + [ink] * 200
+        bands = pictures.split_by_gaps(self.PI(rows), (0, 0, 100, len(rows)))
+        self.assertEqual([(b[1], b[3]) for b in bands], [(0, 200), (304, 200)])
+
+    def test_a_solid_picture_is_one_band(self):
+        rows = [0.2] * 300
+        self.assertEqual(pictures.split_by_gaps(self.PI(rows), (5, 0, 100, 300)), [(5, 0, 100, 300)])
 
 
 class Trim(unittest.TestCase):
     def test_a_paper_gap_in_the_outer_zone_cuts_the_component(self):
         class PI:
-            h = 2000
+            h, w = 2000, 1400
+            def film_edges(self):
+                return (0, 1400)
             def row_dark(self, x0, x1, y0, y1):
                 # 300 rows: ink, then 12 rows of paper at 240, then ink
                 return [0.004 if 240 <= y < 252 else 0.2 for y in range(y0, y1)]
@@ -131,7 +197,9 @@ class Trim(unittest.TestCase):
 
     def test_a_gap_in_the_middle_does_not_cut(self):
         class PI:
-            h = 2000
+            h, w = 2000, 1400
+            def film_edges(self):
+                return (0, 1400)
             def row_dark(self, x0, x1, y0, y1):
                 return [0.004 if 140 <= y < 160 else 0.2 for y in range(y0, y1)]
         self.assertEqual(pictures.trim_by_gaps(PI(), (10, 0, 100, 300)), (10, 0, 100, 300))
@@ -220,6 +288,8 @@ class Lane(unittest.TestCase):
             scale = 0.35
             def gutters(self):
                 return []
+            def film_edges(self):
+                return (0, 1400)
             def row_dark(self, x0, x1, y0, y1):
                 return [0.2] * max(0, y1 - y0)
             def from_ocr(self, box):

@@ -139,11 +139,27 @@ LANES = ("nameplate", "headline", "ad", "market", "cartoon")
 LANE_LABEL = {"nameplate": "Nameplate", "headline": "Headline", "article": "Article",
               "ad": "Advertisement", "market": "Market report", "cartoon": "Cartoon"}
 SEARCH_LANES = ("ad", "market")
-SEARCH_TRIES = {"ad": 8, "market": 16}   # candidates a search lane looks at per
-                                    # run: the market lane passes one in fifteen
-                                    # and handed off twelve times in twelve at 8
+SEARCH_TRIES = {"ad": 8, "market": 16,  # candidates a search lane looks at per
+               "cartoon-search": 4}   # run: the market lane passes one in fifteen
+                                    # and handed off twelve times in twelve at 8;
+                                    # a cartoon-search candidate costs up to two
+                                    # model calls, so four
 RECENT_TITLE_WINDOW = 30            # a search lane skips a title posted in its
                                     # last N posts, for variety
+# ⚠️ The cartoon lane draws TWO ways, since 12 September 2026 ("Build the
+# credit-line search seed"): first from search hits on the syndicate credit
+# lines a strip carries (clips.CARTOON_PHRASES), then, if none passes, from
+# the title order like the headline lane. The title order alone gave one
+# cartoon in 33 issues; the credit lines are where the strips are. The search
+# half keeps its own tried map under CARTOON_SEARCH and posts under "cartoon".
+CARTOON_SEARCH = "cartoon-search"
+CARTOON_RECENT_WINDOW = 3           # ⚠️ Not RECENT_TITLE_WINDOW: the credit
+                                    # lines are overwhelmingly one title's (the
+                                    # Atlanta Georgian, a Hearst paper), and the
+                                    # ad lane's 30-post rule would bar it after
+                                    # its first cartoon. Three lets the Georgian
+                                    # post one cartoon in four; measured share
+                                    # of hits in HANDOFF.md
 
 
 # --------------------------------------------------------------- credentials
@@ -196,7 +212,7 @@ def load_state():
     if tried and not all(isinstance(v, dict) for v in tried.values()):
         state["tried"] = {"nameplate": tried}
     state.setdefault("tried", {})
-    for lane in LANES:
+    for lane in LANES + (CARTOON_SEARCH,):
         state["tried"].setdefault(lane, {})
     return state
 
@@ -531,15 +547,18 @@ def recent_titles(state, lane, n=RECENT_TITLE_WINDOW):
     return set(mine[-n:])
 
 
-def choose_search(state, cands, lane, log=print):
+def choose_search(state, cands, lane, log=print, clip_lane=None, recent_lane=None, window=None):
     """A search lane: candidates are (lccn, date, ed, seq, phrase) from
     clips.search_candidates, walked in a seeded order that the pass number
     reshuffles, skipping what this lane has tried and the titles it posted
-    recently. Bounded at SEARCH_TRIES a run."""
+    recently. Bounded at SEARCH_TRIES a run. `clip_lane` is the lane the
+    clip is cut and posted as when it differs from the tried-map key (the
+    cartoon lane's search half)."""
     tried = lane_tried(state, lane)
+    clip_lane = clip_lane or lane
     order = list(cands)
     random.Random(f"{lane}:{state.get('pass', 1)}:{SHUFFLE_SEED}").shuffle(order)
-    recent = recent_titles(state, lane)
+    recent = recent_titles(state, recent_lane or lane, window or RECENT_TITLE_WINDOW)
     looked = 0
     for lccn, date, ed, seq, phrase in order:
         key = f"{lccn}:{date}:{seq}"
@@ -552,7 +571,7 @@ def choose_search(state, cands, lane, log=print):
         looked += 1
         tried[key] = phrase
         try:
-            r = CLIP(lane, lccn, date, ed, seq, phrase)
+            r = CLIP(clip_lane, lccn, date, ed, seq, phrase)
         except (npc.Refused, ghn_api.FetchError, ValueError) as e:
             log(f"  skip {lane} {lccn} {date} p{seq}: {e}")
             continue
@@ -577,6 +596,13 @@ def next_lane(state):
 def pick(state, sources, lane, log=print):
     if lane in SEARCH_LANES:
         return choose_search(state, sources[lane], lane, log=log)
+    if lane == "cartoon":
+        lccn, r = choose_search(state, sources[CARTOON_SEARCH], CARTOON_SEARCH, log=log,
+                                clip_lane="cartoon", recent_lane="cartoon",
+                                window=CARTOON_RECENT_WINDOW)
+        if r is not None:
+            return lccn, r
+        log("  cartoon: nothing from the credit-line search; the title order")
     return choose(state, sources[lane], log=log, lane=lane)
 
 
@@ -751,7 +777,8 @@ def main():
     sources = {"nameplate": issues, "headline": eligible(dailies(issues), "headline"),
                "article": eligible(dailies(issues), "article"),
                "ad": clips.ad_candidates(rights), "market": clips.market_candidates(rights),
-               "cartoon": eligible(dailies(issues), "cartoon")}
+               "cartoon": eligible(dailies(issues), "cartoon"),
+               CARTOON_SEARCH: clips.cartoon_candidates(rights)}
     client = None
     for n in range(args.count):
         start = LANES.index(args.lane) if args.lane else LANES.index(next_lane(state))

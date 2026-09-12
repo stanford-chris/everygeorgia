@@ -87,6 +87,16 @@ AD_PHRASES = ("sarsaparilla", "for sale by all druggists", "dry goods and notion
               "sewing machines", "guaranteed to cure", "castoria", "liver pills",
               "wholesale and retail dealers", "buggies and wagons", "pianos and organs",
               "clothing and hats", "boots and shoes", "millinery goods")
+# ⚠️ The cartoon lane's search seed, 12 September 2026: the credit line a
+# syndicated strip or cartoon carries in set type, which the OCR reads where
+# it cannot read the drawing. Shape, never genre, as everywhere: a syndicate
+# line sits under a feature column and a serial as readily as under a strip,
+# so the hit only says which PAGE to look at; pictures.py's detector and the
+# model's kind still decide. Measured on the corpus: none of these appears on
+# any page before 1905, and together they mark 11,470 pages in 1915-1919.
+CARTOON_PHRASES = ("International Feature Service", "Newspaper Feature Service",
+                   "Registered U. S. Patent Office")
+CARTOON_SEARCH_FROM = "1900-01-01"
 MAX_BLOCK_FRAC = 0.25
 MAX_BLOCK_W = 0.45       # a block wider than this of the page is not one item
 MARKET_MAX_FRAC = 0.15   # a market column deeper than this is unreadable as a post
@@ -808,6 +818,11 @@ def ad_candidates(rights, **kw):
     return search_candidates(AD_PHRASES, rights, **kw)
 
 
+def cartoon_candidates(rights, **kw):
+    kw.setdefault("date_lo", CARTOON_SEARCH_FROM)
+    return search_candidates(CARTOON_PHRASES, rights, **kw)
+
+
 def search_candidates(phrases, rights, date_lo="1867-01-01", date_hi="1930-12-31",
                       per_phrase=200, log=print):
     """(lccn, date, ed, seq, phrase) for search hits on postable issues.
@@ -830,6 +845,9 @@ def search_candidates(phrases, rights, date_lo="1867-01-01", date_hi="1930-12-31
                 lccn = it.get("lccn"); d = it.get("date") or ""
                 if len(d) != 8 or lccn not in rights or rights[lccn].get("postable") != "yes":
                     continue
+                if not ghn_api.LCCN_RE.match(lccn):
+                    continue            # The Red and Black is "gua1179162": the
+                                        # client refuses it, so it is not a candidate
                 date = f"{d[:4]}-{d[4:6]}-{d[6:]}"
                 key = (lccn, date, int(it.get("sequence") or 1))
                 if key in seen:
