@@ -11,9 +11,8 @@ archive run by the Digital Library of Georgia at UGA. Unofficial.
 
 ## Why this project exists
 
-Chris is a Georgia native and a UGA Grady College graduate whose first newspaper job
-was at *The Augusta Chronicle*; his grandfather was an advertising executive at the
-*Atlanta Journal-Constitution*. The DLG's own Twitter account used to post exactly
+I'm a Georgia native and a UGA Grady College graduate whose first newspaper job
+was at *The Augusta Chronicle*. The DLG's own Twitter account used to post exactly
 this kind of clipping and stopped in December 2024.
 
 ## Two APIs, and they are complementary
