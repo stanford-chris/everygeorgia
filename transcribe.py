@@ -234,6 +234,49 @@ HEADLINE_PROMPT = (
 ITEM_PROMPTS = (BAND_PROMPT, HEADLINE_PROMPT)
 
 
+def _strip_fences(text):
+    return re.sub(r"^```[a-z]*\n?|\n?```$", "", (text or "").strip()).strip()
+
+
+def ask(image_bytes, year, prompt, *, env=None, model=MODEL, timeout=TIMEOUT, log=print):
+    """One confined call with the image alone in its cwd, the reply's lines
+    kept (a prompt whose answer is labelled lines needs them), or None on a
+    failure. The pictures lane's reading of a drawing goes through here:
+    transcribe() applies the commentary guards, which a DESCRIPTION of a
+    picture legitimately trips ("the drawing shows"), so that lane reads its
+    reply through its own parser. Same flags, same stdin, same quota wait;
+    the confinement is not to be relaxed here either."""
+    global _limit_waited
+    env = env or claude_env()
+    tries = 0
+    while tries < 2:
+        tries += 1
+        try:
+            with tempfile.TemporaryDirectory() as td:
+                name = "clip.jpg"
+                with open(os.path.join(td, name), "wb") as f:
+                    f.write(image_bytes)
+                r = subprocess.run(["claude", "-p", "--restricted", "--tools", "Read",
+                                    "--model", model, prompt.format(name=name, year=year)],
+                                   capture_output=True, text=True, env=env,
+                                   cwd=td, timeout=timeout, stdin=subprocess.DEVNULL)
+        except (subprocess.TimeoutExpired, OSError) as exc:
+            log(f"  (model unavailable: {exc.__class__.__name__})")
+            continue
+        if r.returncode != 0:
+            err = (r.stderr or r.stdout or "").strip()[:200] or "(no output)"
+            if not _limit_waited and limit_guard.is_usage_limit(err):
+                _limit_waited = True
+                if limit_guard.wait_for_reset(err, budget_s=LIMIT_BUDGET_S,
+                                              log=lambda m: log(f"  {m}")):
+                    tries -= 1
+                    continue
+            log(f"  (model call failed, exit {r.returncode}: {err})")
+            return None
+        return _strip_fences(r.stdout)
+    return None
+
+
 def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log=print,
                max_chars=MAX_CHARS, prompt=PROMPT):
     """The printed words, or None. `max_chars` is the cap on the reply: a

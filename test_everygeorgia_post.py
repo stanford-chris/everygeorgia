@@ -224,13 +224,19 @@ class Lanes(unittest.TestCase):
         s["posted"].append({"lane": "ad", "dry": True})  # dry posts count: previews rotate
         self.assertEqual(ep.next_lane(s), "market")
 
+    def test_eligible_drops_issues_before_the_lanes_floor_and_empty_titles(self):
+        issues = {"a": [("1849-03-17", 1), ("1905-01-01", 1)], "b": [("1871-09-19", 1)]}
+        self.assertEqual(ep.eligible(issues, "cartoon"), {"a": [("1905-01-01", 1)]})
+        self.assertEqual(ep.eligible(issues, "nameplate"), issues)   # no floor
+
     def test_the_article_lane_is_held_on_his_instruction(self):
         # 11 September 2026: "Hold the article lane until the ad test exists."
         # Both article picks in that evening's twelve were grocers' ads. A hold
         # is a decision pending, not a bug: restore it only when he says so, and
         # move this test with it.
         self.assertNotIn("article", ep.LANES)
-        self.assertEqual(ep.LANES, ("nameplate", "headline", "ad", "market"))
+        # "cartoon" joined 12 September 2026 ("Build the cartoon lane, strips included")
+        self.assertEqual(ep.LANES, ("nameplate", "headline", "ad", "market", "cartoon"))
 
     def test_no_lane_carries_a_bracketed_label(self):
         # His call on the first headline post, 11 September 2026.

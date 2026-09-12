@@ -119,10 +119,9 @@ LINK_TEXT = "Digital Library of Georgia"     # the words that carry the link to 
 CLIP = clips.clip                   # swapped by the tests; never call clips.clip
                                     # directly below this line
 
-# ⚠️ The four lanes, in the order the feed cycles through them, one per run:
-# with two runs a day each lane posts every other day. A lane that yields
-# nothing hands its slot to the next, so a slot is lost only when all four
-# come up empty. nameplate and headline draw from the title order (front
+# ⚠️ The lanes, in the order the feed cycles through them, one per run. A
+# lane that yields nothing hands its slot to the next, so a slot is lost only
+# when all of them come up empty. nameplate and headline draw from the title order (front
 # pages); ad and market draw from search hits on genre phrases, since their
 # material is on inner pages and the OCR of a display ad cannot say what it
 # is (see clips.py).
@@ -132,9 +131,13 @@ CLIP = clips.clip                   # swapped by the tests; never call clips.cli
 # prose (Americus Times-Recorder 1904, Griffin Daily News 1888). Restore it
 # between "headline" and "ad" once clips.py can tell an ad from an article
 # (HANDOFF.md names the dateline test as the one to try).
-LANES = ("nameplate", "headline", "ad", "market")
+# ✅ "cartoon" since 12 September 2026, his instruction ("Build the cartoon
+# lane, strips included"): a drawing on any page of a daily, found by the hole
+# it leaves in the OCR and sorted by the model (pictures.py). Title order,
+# dailies only, the first lane whose alt is a description.
+LANES = ("nameplate", "headline", "ad", "market", "cartoon")
 LANE_LABEL = {"nameplate": "Nameplate", "headline": "Headline", "article": "Article",
-              "ad": "Advertisement", "market": "Market report"}
+              "ad": "Advertisement", "market": "Market report", "cartoon": "Cartoon"}
 SEARCH_LANES = ("ad", "market")
 SEARCH_TRIES = {"ad": 8, "market": 16}   # candidates a search lane looks at per
                                     # run: the market lane passes one in fifteen
@@ -241,6 +244,24 @@ def dailies(issues):
         span = int(years[-1]) - int(years[0]) + 1
         if len(iss) / float(span) >= DAILY_PER_YEAR:
             out[lccn] = iss
+    return out
+
+
+def eligible(issues, lane):
+    """The issues a lane may draw from: those on or after its era floor,
+    titles with none dropped. ⚠️ Without this a title whose every issue
+    predates the floor still costs TRIES_PER_TITLE fetch-free skips a run,
+    and in the cartoon lane's first dry run (12 September 2026) four of
+    eight titles went that way, 1828 to 1878, before a page was looked at."""
+    import gates
+    floor = gates.earliest(lane)
+    if not floor:
+        return issues
+    out = {}
+    for lccn, iss in issues.items():
+        keep = [(d, e) for d, e in iss if d >= floor]
+        if keep:
+            out[lccn] = keep
     return out
 
 
@@ -401,6 +422,13 @@ def alt_text(r):
     promise, and names the model when a model read them: transcribe.PREFIX
     leads, for the reason image_alt.py gives (alt travels without the bio)."""
     lane = r.get("lane", "nameplate")
+    if lane == "cartoon":
+        # built in pictures.compose_alt(): the description labelled as the
+        # model's, the printed words labelled as transcribed
+        alt = r["alt"]
+        if len(alt) > ALT_MAX:
+            alt = alt[:ALT_MAX - 1].rstrip() + "…"
+        return alt
     if lane == "nameplate":
         alt = r["alt"]
         if r.get("context") and r.get("words"):
@@ -720,8 +748,10 @@ def main():
 
     issues = issues_by_title()
     rights = npc.roster()
-    sources = {"nameplate": issues, "headline": dailies(issues), "article": dailies(issues),
-               "ad": clips.ad_candidates(rights), "market": clips.market_candidates(rights)}
+    sources = {"nameplate": issues, "headline": eligible(dailies(issues), "headline"),
+               "article": eligible(dailies(issues), "article"),
+               "ad": clips.ad_candidates(rights), "market": clips.market_candidates(rights),
+               "cartoon": eligible(dailies(issues), "cartoon")}
     client = None
     for n in range(args.count):
         start = LANES.index(args.lane) if args.lane else LANES.index(next_lane(state))

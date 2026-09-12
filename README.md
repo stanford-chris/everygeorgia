@@ -65,6 +65,11 @@ this kind of clipping and stopped in December 2024.
   search-driven lanes; the search candidate lists.
 - `transcribe.py` — the words in a clipping, by `claude -p` vision, prefixed
   `A.I.-transcribed` wherever they reach a reader.
+- `pictures.py` — the cartoon lane: a drawing found by the hole it leaves in the
+  OCR (line art cannot be told from type by its ink; it can by its OCR-box
+  coverage, 0.22 against 0.51), framed by the page's grid, sorted by kind by the
+  model, described and transcribed by it. The one lane whose alt is a
+  description, labelled `A.I.-described`. See HANDOFF.md.
 - `crop_frequency.py` — the crop-level measurement above, plus `--titles`.
 - `permission_followup.py` — the UGA reminder. ⛔ Mails Chris, never UGA.
 - `test_nameplate.py` — 67 tests, stdlib only. `test_everygeorgia_post.py` — 25.

@@ -1,4 +1,4 @@
-# everygeorgia — where things stand, 11 September 2026
+# everygeorgia — where things stand, 12 September 2026
 
 A Bluesky account posting clippings from **Georgia Historic Newspapers**, run by
 the Digital Library of Georgia at UGA. Read `README.md` for the technical
@@ -293,6 +293,90 @@ visible, and not before: the launch was scheduled and verified as it stood.
   1865"). The notice lane starts where the ad lane does.
 - Measure on twenty weekly front pages by eye before it ships, as every lane was,
   and add it to `LANES` last.
+
+## ✅ The cartoon lane, 12 September 2026 ("Build the cartoon lane, strips included")
+
+`pictures.py`, the sixth lane in `LANES`, drawing from the dailies like the
+headline lane. Read its docstring first; the short form:
+
+- **A cartoon is found by the hole it leaves in the OCR, not by its ink.** The
+  three August attempts measured ink and failed because line art is neither
+  text-textured nor continuous-toned. Re-measured on the Atlanta Georgian of
+  15 January 1919, page 10: the strip is 0.18 ink against 0.15 for a text
+  column, and no rule separates them; OCR-box coverage is 0.22 against 0.51.
+  So the page is cut into cells (1/40 by 1/50), a cell is picture-like when
+  under `COVER_MAX` (0.30) coverage and not film-black, a closing pass folds
+  the lettered balloons back in, and a connected block big enough is a
+  candidate. The ink floor is on the COMPONENT'S mean (0.06), never the cell:
+  the first pass floored each cell and threw away the white inside the drawing.
+- **Two cheap passes before any image.** Coordinates alone say whether a page
+  has a hole worth the 1400px fetch; the ink pass confirms it; candidates are
+  ranked ACROSS THE ISSUE (advertisement words in the framed crop last, then
+  by size) before `MODEL_CALLS_PER_ISSUE` (3) are spent. Page by page, the
+  1919 front page's unread headline cluster and a shoe advertisement's
+  engraving would have spent the budget before the strip on page 10.
+- **The frame** snaps only to a gutter within 3 percent of the picture's own
+  edge (`rules.column_bounds` took the next uncrossed gutter and the whole
+  column of type between, since the strip's border reads as crossing its
+  own); trims at an absolute paper gap (`PAPER_ABS` 0.02) in the outer 30
+  percent of the component, which is what cut off the unread headline tier
+  the component had grown into (a rule test cannot: the dark-suited figures
+  read 0.45-0.72, as a rule does); and takes up to three real-text OCR lines
+  above (display allowed: a strip's title) and below (body height only: a
+  caption, never the next item's headline).
+- **The model sorts the kind** (`PICTURE_PROMPT`, through `transcribe.ask()`,
+  a confined call whose reply keeps its lines): editorial-cartoon,
+  comic-strip, sports-cartoon and humorous-drawing post; photograph,
+  engraving, advertisement, map, diagram, ornament, text-only and other are
+  refused and named in the log. It also transcribes the title and the printed
+  words (balloons separated by bars, joined with periods as the band is) and
+  describes the drawing in a sentence or two, and answers a separate
+  CARICATURE line: a yes is REVIEW. Vocabulary in anything it read is REVIEW.
+  The page gate applies as everywhere. Measured on the strip: 22 s, parsed
+  clean, kind comic-strip, caricature no.
+- **The alt is the one on this account that is a description**: "A.I.-described
+  comic strip from “Atlanta Georgian,” Atlanta, Georgia, January 15, 1919,
+  page 10. Five men sit around a card table… A.I.-transcribed, the words
+  read: “HA! HA!! …”". Both labels are load-bearing: `bot_alt_check.py`'s
+  marker for this account is the second. Quotes are curled by position
+  (`pictures.curl`), not by `clips._curl`, which closed an opening one.
+- **Era floor 1900, measured on the corpus's credit lines** (the table is in
+  gates.py): no syndicate line on any page before 1905, "cartoonist" rare
+  before 1900, and the first dry run at 1880 spent 35 model calls on 1886-1904
+  dailies for engravings, advertisements and photographs. Local cartoons
+  before 1900 are unmeasured.
+- **A lane draws only from issues past its floor** (`eligible()` in the
+  poster): four of the first run's eight titles were 1828-1878 and cost five
+  skips each before a page was looked at.
+
+⚠️ **The detector finds PICTURES; only the model's KIND line stands between an
+advertisement's engraving and the feed**, and its first miss was in that
+direction: a serial-story illustration signed Parker (Augusta Daily Herald,
+24 January 1914) came back comic-strip and would have posted. The prompt
+gained an "illustration" kind and the cartoon kinds now say what makes one
+(exaggeration, panels, balloons, a joke or a comment); re-read, it is
+illustration and the strip is still comic-strip. `test_pictures.py` (26) pins
+that gate, the caricature REVIEW, the vocabulary REVIEW, both alt labels, the
+detector on a synthetic page, the neck split, the trim, the thin-rule test
+and the clear-row share.
+
+**Yield, measured 12 September 2026, and the honest reading is that it is
+thin.** A hand sample of one random issue from each of seven eligible dailies
+plus the known Georgian page: **one PASS** (the Georgian's strip), **one
+REVIEW** (a Dorman H. Smith editorial cartoon, "Give Him Time!", Banner-Herald
+of 22 January 1925, page 4: the page gate, since the editorial beside it is
+headed "The Negro and the South"), six refused with every picture named:
+photographs, advertisements, unread type, one illustration. The two dry runs
+through the poster, 25 issues of 1886-1911 dailies, found no cartoon at all
+and spent about 60 model calls saying so, which is what moved the floor to
+1900 and put the clear-row share ahead of size in the ranking. **Expect the
+lane to hand its slot on more often than it posts** until the title order
+reaches the Georgian (14,118 issues, 1913-1920, the one title where strips
+are routine); the two eligible-issue fixes bound what an empty run costs at
+about eight titles' worth of model calls. Three frames were read by eye and
+are whole: the strip with its copyright line, the Parker illustration with
+its caption, the Banner-Herald cartoon with its title and a sliver of the
+column beside it.
 
 ## ⏳ Inside pages for headlines and articles: wanted, not yet possible
 

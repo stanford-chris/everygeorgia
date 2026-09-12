@@ -794,6 +794,9 @@ def clip(lane, lccn, date, ed=1, seq=1, phrase=None, log=print):
         return clip_ad(lccn, date, ed, seq, phrase, log=log)
     if lane == "market":
         return clip_market(lccn, date, ed, seq, phrase or MARKET_PHRASES[0], log=log)
+    if lane == "cartoon":
+        import pictures                      # imports this module; resolved late
+        return pictures.clip_cartoon(lccn, date, ed, seq if seq and seq > 1 else None, log=log)
     raise ValueError(f"unknown lane {lane!r}")
 
 

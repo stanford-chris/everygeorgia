@@ -96,6 +96,21 @@ POLICIES = {
         min_date="1867-01-01", page_gate=True,
         why="a market report is a column of set text, the same shape as the "
             "rate card the ad lane's floor exists for; same floor"),
+    # ⚠️ 1900 for the cartoon lane, MEASURED on the corpus's own credit lines
+    # (12 September 2026): pages carrying a syndicate line ("Newspaper
+    # Feature Service", "International Feature Service", "Registered U. S.
+    # Patent Office") number 0 in every five-year band to 1904, 3 in
+    # 1905-09, then 206, 11,470 and 364 in the 1910s and early 1920s; pages
+    # saying "cartoonist" run 17, 51, 68, 133 a band through 1899 and 371
+    # from 1900. The lane's first dry run, at a floor of 1880, spent 35
+    # model calls on 1886-1904 dailies and every picture was an engraving,
+    # an advertisement or a photograph. Local, unsyndicated cartoons before
+    # 1900 are not measured by this; if one is wanted, look for it by hand.
+    "cartoon": Policy(
+        min_date="1900-01-01", page_gate=True,
+        why="a drawing on a daily's page; the page gate for the credit link, "
+            "the model's caricature reading and the vocabulary pass over its "
+            "words for the drawing itself"),
 }
 
 
