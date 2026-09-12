@@ -153,6 +153,20 @@ class Periods(unittest.TestCase):
                 self.assertEqual(transcribe.transcribe(b"j", "1916", log=lambda m: None),
                                  "REESE IS ON THE RACK")
 
+    def test_the_headline_prompt_joins_a_deck_with_a_period_and_keeps_sentence_case(self):
+        deck = "NIVELLE TAKES THE HEAD FROM JOFFRE\nFrench general staff reshuffled after a long conference in Paris"
+        with mock.patch.object(transcribe, "claude_env", return_value={}):
+            run = mock.Mock(side_effect=[_proc(deck)])
+            with mock.patch.object(transcribe.subprocess, "run", run):
+                out = transcribe.transcribe(b"j", "1916", log=lambda m: None,
+                                            prompt=transcribe.HEADLINE_PROMPT)
+        # one call: a lowercase deck is not "described" prose in this lane
+        self.assertEqual(run.call_count, 1)
+        self.assertEqual(out, "NIVELLE TAKES THE HEAD FROM JOFFRE. "
+                              "French general staff reshuffled after a long conference in Paris.")
+        self.assertIn("on a line of its own", transcribe.HEADLINE_PROMPT)
+        self.assertNotIn("single space between lines", transcribe.HEADLINE_PROMPT)
+
     def test_a_multi_line_reply_is_still_screened_for_commentary(self):
         with mock.patch.object(transcribe, "claude_env", return_value={}):
             run = mock.Mock(side_effect=[_proc(DAWSON.replace(". ", ".\n")), _proc(self.AMERICUS)])

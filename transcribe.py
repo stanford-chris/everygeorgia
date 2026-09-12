@@ -212,6 +212,27 @@ BAND_PROMPT = (
     "NONE."
 )
 
+# The headline lane's crop: a headline and whatever decks sit under it, all
+# display type, so the same one-item-per-line rule as the band (his call,
+# 12 September 2026, "Do the same for the headline lane"): a deck otherwise
+# runs straight on from its headline in the alt. ⚠️ looks_described() is NOT
+# applied here: a deck set in sentence case is legitimately lowercase prose.
+# The full PROMPT stays for articles and advertisements, whose lines wrap
+# mid-sentence and where a period per line would be wrong.
+HEADLINE_PROMPT = (
+    "The file {name} in this directory is a clipping from a Georgia newspaper "
+    "printed in {year}: a headline, with any decks or subheadings beneath it. "
+    "Transcribe the words printed in it, exactly as printed, in reading order. "
+    "Put the headline and each deck or subheading on a line of its own, however "
+    "many printed lines it occupies, with a single space between the printed "
+    "lines of one item. Keep the original spelling and capitalisation. Write "
+    "[illegible] for any word you cannot read. Reply with the transcription and "
+    "nothing else: no description, no summary, no commentary, no quotation marks "
+    "around it, no preamble. If the image is unreadable reply exactly CANNOT_READ."
+)
+# the prompts whose reply is one item per line, joined by join_items()
+ITEM_PROMPTS = (BAND_PROMPT, HEADLINE_PROMPT)
+
 
 def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log=print,
                max_chars=MAX_CHARS, prompt=PROMPT):
@@ -276,7 +297,7 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
         if "CANNOT_READ" in text:
             log("  (transcription: model could not read the clip)")
             return None
-        if prompt is BAND_PROMPT:
+        if any(prompt is p for p in ITEM_PROMPTS):
             # the guards above read the flattened reply; the reader gets the
             # items with a period between them (see join_items)
             text = join_items(items_of(r.stdout))

@@ -22,6 +22,17 @@ import items
 import rules
 
 
+class HeadlineWords(unittest.TestCase):
+    def test_periods_between_items_do_not_disturb_the_headline_checks(self):
+        import transcribe
+        words = transcribe.join_items(["MOB LYNCHES TWO NEAR MACON", "Sheriff Powerless, Says Report"])
+        self.assertEqual(clips._check_transcription(words, "headline"), {"lynch"})
+        clips._refuse_own_title(words, {"title": "The Macon telegraph."}, "headline")  # no raise
+        with self.assertRaises(clips.npc.Refused):
+            clips._refuse_own_title(transcribe.join_items(["MACON TELEGRAPH", "CITY EDITION"]),
+                                    {"title": "The Macon telegraph."}, "headline")
+
+
 class CutBand(unittest.TestCase):
     """The 300-character cut for the alt falls on an item boundary when the
     items are period-separated (12 September 2026), not mid-headline."""

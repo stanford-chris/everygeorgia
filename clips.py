@@ -468,7 +468,7 @@ def clip_headline(lccn, date, ed=1, seq=None, log=print):
     # transcribing the loose crop put the story's first line into the
     # headline's alt ("...IS REPORT HUNTSVILLE, Ala., April 26.").
     _, tight = _fetch(page, box)
-    words = transcribe.transcribe(tight, date[:4], log=log)
+    words = transcribe.transcribe(tight, date[:4], log=log, prompt=transcribe.HEADLINE_PROMPT)
     if not words:
         raise npc.Refused("headline could not be transcribed")
     image_box, data = _fetch(page, _loosen(box, c, LOOSE_W, LOOSE_H))
