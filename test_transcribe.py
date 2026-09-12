@@ -104,5 +104,64 @@ class Retry(unittest.TestCase):
         self.assertNotIn("previous reply", run.call_args.args[0][-1])
 
 
+class Periods(unittest.TestCase):
+    """The band's items are joined with periods, his call on 12 September
+    2026: one item per line from the model, the punctuation ours."""
+    AMERICUS = ("GERMANS ATTACK SOMME FRONTS FAILING TO GAIN\n"
+                "WEATHER MAY ALLOW VISITORS TO SHOW\n\n"
+                "ITALY SAYS PEACE TO COME TOGETHER\n"
+                "OLDEST AND YOUNGEST SHAKE WITH WILSON.\n"
+                "WHERE IS THE MONEY?\n")
+
+    def test_each_item_ends_in_a_period_and_none_is_doubled(self):
+        out = transcribe.join_items(transcribe.items_of(self.AMERICUS))
+        self.assertEqual(out, "GERMANS ATTACK SOMME FRONTS FAILING TO GAIN. "
+                              "WEATHER MAY ALLOW VISITORS TO SHOW. "
+                              "ITALY SAYS PEACE TO COME TOGETHER. "
+                              "OLDEST AND YOUNGEST SHAKE WITH WILSON. "
+                              "WHERE IS THE MONEY?")
+        self.assertNotIn("..", out)
+
+    def test_a_wrapped_item_stays_one_item(self):
+        # printed over two lines, returned on one: no period inside it
+        out = transcribe.join_items(transcribe.items_of("THE NEWS, Established 1871.\nBlakely   &  Ellis"))
+        self.assertEqual(out, "THE NEWS, Established 1871. Blakely & Ellis.")
+
+    def test_the_prompt_asks_for_one_item_per_line_and_not_a_single_space_between_lines(self):
+        self.assertIn("on a line of its own", transcribe.BAND_PROMPT)
+        self.assertNotIn("single space between lines", transcribe.BAND_PROMPT)
+        # the full prompt (headline, article, ad) is deliberately unchanged
+        self.assertIn("single space between lines", transcribe.PROMPT)
+
+    def test_the_band_reply_reaches_the_caller_with_periods(self):
+        with mock.patch.object(transcribe, "claude_env", return_value={}):
+            run = mock.Mock(side_effect=[_proc(self.AMERICUS)])
+            with mock.patch.object(transcribe.subprocess, "run", run):
+                out = transcribe.transcribe(b"j", "1916", log=lambda m: None,
+                                            prompt=transcribe.BAND_PROMPT, max_chars=8000)
+        self.assertTrue(out.startswith("GERMANS ATTACK SOMME FRONTS FAILING TO GAIN. WEATHER"))
+        self.assertTrue(out.endswith("WHERE IS THE MONEY?"))
+
+    def test_none_and_the_other_prompts_are_untouched(self):
+        with mock.patch.object(transcribe, "claude_env", return_value={}):
+            run = mock.Mock(side_effect=[_proc("NONE\n")])
+            with mock.patch.object(transcribe.subprocess, "run", run):
+                self.assertEqual(transcribe.transcribe(b"j", "1916", log=lambda m: None,
+                                                       prompt=transcribe.BAND_PROMPT), "")
+            run = mock.Mock(side_effect=[_proc("REESE IS\nON THE RACK")])
+            with mock.patch.object(transcribe.subprocess, "run", run):
+                self.assertEqual(transcribe.transcribe(b"j", "1916", log=lambda m: None),
+                                 "REESE IS ON THE RACK")
+
+    def test_a_multi_line_reply_is_still_screened_for_commentary(self):
+        with mock.patch.object(transcribe, "claude_env", return_value={}):
+            run = mock.Mock(side_effect=[_proc(DAWSON.replace(". ", ".\n")), _proc(self.AMERICUS)])
+            with mock.patch.object(transcribe.subprocess, "run", run):
+                out = transcribe.transcribe(b"j", "1867", log=lambda m: None,
+                                            prompt=transcribe.BAND_PROMPT, max_chars=8000)
+        self.assertEqual(run.call_count, 2)
+        self.assertTrue(out.startswith("GERMANS"))
+
+
 if __name__ == "__main__":
     unittest.main()

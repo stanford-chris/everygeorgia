@@ -127,6 +127,24 @@ def ocr_text(words):
 
 
 TOKEN_RE = re.compile(r"[a-z]+")
+BAND_ALT_CHARS = 300
+
+
+def cut_band(words, limit=BAND_ALT_CHARS):
+    """The band's words for the alt: whole if they fit, else cut at the last
+    item boundary (transcribe.join_items puts a period between items) or,
+    failing one in the first half, at a word, and closed with an ellipsis.
+    The period before the ellipsis is dropped so it reads "…WITH WILSON…"
+    and not "WILSON.…"."""
+    if len(words) <= limit:
+        return words
+    head = words[:limit]
+    at = head.rfind(". ")
+    if at < limit // 2:
+        at = head.rfind(" ")
+    if at <= 0:
+        at = limit
+    return head[:at].rstrip().rstrip(".") + "…"
 
 
 def tokens(text):
@@ -307,7 +325,7 @@ def clip_nameplate(lccn, date, ed=1, log=print):
         r["verdict"] = _review(r["verdict"], f"the band under the nameplate carries {sorted(hits)}")
         r["postable"] = False
     image_box, data = _fetch(page, ext, width=1600)
-    r.update({"seq": 1, "words": _curl(words[:300].rsplit(" ", 1)[0] + ("…" if len(words) > 300 else "")) if words else "",
+    r.update({"seq": 1, "words": _curl(cut_band(words)) if words else "",
               "generated": bool(words),
               "bytes": data, "image_box": image_box,
               "band_fraction": ext[3] / float(ch), "context": True})

@@ -22,6 +22,31 @@ import items
 import rules
 
 
+class CutBand(unittest.TestCase):
+    """The 300-character cut for the alt falls on an item boundary when the
+    items are period-separated (12 September 2026), not mid-headline."""
+    def test_short_words_pass_whole(self):
+        self.assertEqual(clips.cut_band("A. B. C."), "A. B. C.")
+
+    def test_cut_falls_on_an_item_boundary_and_drops_that_period(self):
+        items = [f"HEADLINE NUMBER {i} SAYS SOMETHING OF NOTE." for i in range(12)]
+        words = " ".join(items)
+        out = clips.cut_band(words)
+        self.assertTrue(len(out) <= clips.BAND_ALT_CHARS + 1)
+        self.assertTrue(out.endswith("OF NOTE…"), out[-30:])
+        self.assertNotIn(".…", out)
+        # every item kept is whole
+        kept = out[:-1]
+        self.assertTrue(words.startswith(kept))
+        self.assertTrue(words[len(kept):].startswith(". "))
+
+    def test_without_a_boundary_in_the_second_half_it_cuts_at_a_word(self):
+        words = "SHORT. " + " ".join(["WORD"] * 100)
+        out = clips.cut_band(words)
+        self.assertTrue(out.endswith("WORD…"))
+        self.assertNotIn("WOR…", out)
+
+
 class Tokens(unittest.TestCase):
     def test_whole_text_is_tokenised_not_reduced_to_one_word(self):
         self.assertEqual(clips.tokens("The negro vote, with the white"),

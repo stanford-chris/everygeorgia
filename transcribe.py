@@ -155,6 +155,41 @@ def clean(text):
     return text
 
 
+# ⚠️ The band's items are separated by PERIODS, his call on 12 September 2026,
+# on reading the Americus Times-Recorder alt: "GERMANS ATTACK SOMME FRONTS
+# FAILING TO GAIN WEATHER MAY ALLOW VISITORS TO SHOW" is nine headlines as one
+# clause, because the prompt asked for a single space between lines and a
+# screen reader gets no pause. The model is asked only WHERE the boundaries
+# are (one item per line); the punctuation is ours, so it is the same every
+# time, and a period buys a longer pause than a comma. The paper did separate
+# these items, by rules and white space, so this is nearer what was printed,
+# not further from it.
+TERMINAL = ".!?…"
+
+
+def items_of(text):
+    """The reply's lines, each cleaned as clean() cleans, empties dropped."""
+    text = re.sub(r"^```[a-z]*\n?|\n?```$", "", text.strip()).strip()
+    out = []
+    for line in text.splitlines():
+        line = " ".join(line.split()).strip().strip('"').strip()
+        if line:
+            out.append(line)
+    return out
+
+
+def join_items(items):
+    """One string, each item ending in a period unless it already ends in
+    terminal punctuation, so "A. B! C." and never "A.. B"."""
+    parts = []
+    for it in items:
+        it = it.strip()
+        if not it:
+            continue
+        parts.append(it if it[-1] in TERMINAL else it + ".")
+    return " ".join(parts)
+
+
 # The band under a nameplate: display type only. ⚠️ Asked for every word, an
 # 1839 front page's band is a wall of body text, thousands of characters, and
 # the call ran past 240 s twice per candidate on 11 September 2026 (eight
@@ -167,7 +202,9 @@ BAND_PROMPT = (
     "printed in {year}. Transcribe only the words set in large or bold display "
     "type: headlines, titles, slogans, datelines and the like. Ignore body "
     "text set in small type entirely, even if there is a lot of it. Transcribe "
-    "exactly as printed, in reading order, with a single space between lines. "
+    "exactly as printed, in reading order. Put each headline, title, slogan or "
+    "dateline on a line of its own, however many printed lines it occupies, "
+    "with a single space between the printed lines of one item. "
     "Keep the original spelling and capitalisation. Write [illegible] for any "
     "word you cannot read. Reply with the transcription and nothing else: no "
     "description, no summary, no commentary, no quotation marks around it, no "
@@ -239,6 +276,10 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
         if "CANNOT_READ" in text:
             log("  (transcription: model could not read the clip)")
             return None
+        if prompt is BAND_PROMPT:
+            # the guards above read the flattened reply; the reader gets the
+            # items with a period between them (see join_items)
+            text = join_items(items_of(r.stdout))
         if not (MIN_CHARS <= len(text) <= max_chars):
             log(f"  (transcription rejected: {len(text)} chars)")
             return None
