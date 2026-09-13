@@ -19,6 +19,7 @@ from PIL import Image, ImageDraw
 import clips
 import gates
 import items
+import nameplate_crop as npc
 import rules
 
 
