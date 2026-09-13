@@ -238,16 +238,36 @@ def _strip_fences(text):
     return re.sub(r"^```[a-z]*\n?|\n?```$", "", (text or "").strip()).strip()
 
 
-def ask(image_bytes, year, prompt, *, env=None, model=MODEL, timeout=TIMEOUT, log=print):
-    """One confined call with the image alone in its cwd, the reply's lines
-    kept (a prompt whose answer is labelled lines needs them), or None on a
-    failure. The pictures lane's reading of a drawing goes through here:
-    transcribe() applies the commentary guards, which a DESCRIPTION of a
-    picture legitimately trips ("the drawing shows"), so that lane reads its
-    reply through its own parser. Same flags, same stdin, same quota wait;
-    the confinement is not to be relaxed here either."""
+def _call_model(image_bytes, year, prompt, *, env, model, timeout, log,
+                 unavailable_label, failed_label, on_success=None):
+    """One confined `claude -p --restricted --tools Read` call over the image
+    alone in its own cwd -- shared by ask() and transcribe(), whose bodies
+    were near-identical copies of exactly this: build the temp dir, write
+    the image, run the call, catch `TimeoutExpired`/`OSError`, wait out a
+    spent quota once per run through `limit_guard`. Up to two attempts: a
+    transient exception or a hard failure spends one, a successful quota
+    wait does not (`tries -= 1`), matching both callers' original loops.
+
+    ⚠️⚠️ --restricted --tools Read, and the reason is on the record
+    (11 September 2026). Unconfined, `claude -p` is an agent with Bash: on
+    an easy band it read the file once (35 s); on a hard one it cropped and
+    enlarged the image with sips and Python through a dozen tool calls
+    (60-280 s, the timeouts); and on the Georgia Pioneer of 22 March 1839 it
+    ran `find ~ -iname clips.py`, read THIS project's code, ran
+    clip_nameplate itself on three pages and returned "Ran cleanly.
+    Results: ..." as the transcription. Confined to reading the one file it
+    answers in 20 s in two turns.
+
+    `on_success(raw_stdout)` sees a successful reply and returns either
+    `("return", value)` to stop here and hand back `value`, or
+    `("retry", new_prompt)` to spend the second attempt on a reformulated
+    prompt (transcribe()'s commentary reminder, appended to the *template*
+    so it survives the `.format()` below). With no `on_success`, a
+    successful reply is returned as raw stdout (ask()'s case).
+    `unavailable_label` and `failed_label` are the only wording difference
+    between the two callers' log lines. The subprocess invocation itself --
+    flags, env, cwd, timeout, stdin -- must stay exactly as it is."""
     global _limit_waited
-    env = env or claude_env()
     tries = 0
     while tries < 2:
         tries += 1
@@ -259,54 +279,6 @@ def ask(image_bytes, year, prompt, *, env=None, model=MODEL, timeout=TIMEOUT, lo
                 r = subprocess.run(["claude", "-p", "--restricted", "--tools", "Read",
                                     "--model", model, prompt.format(name=name, year=year)],
                                    capture_output=True, text=True, env=env,
-                                   cwd=td, timeout=timeout, stdin=subprocess.DEVNULL)
-        except (subprocess.TimeoutExpired, OSError) as exc:
-            log(f"  (model unavailable: {exc.__class__.__name__})")
-            continue
-        if r.returncode != 0:
-            err = (r.stderr or r.stdout or "").strip()[:200] or "(no output)"
-            if not _limit_waited and limit_guard.is_usage_limit(err):
-                _limit_waited = True
-                if limit_guard.wait_for_reset(err, budget_s=LIMIT_BUDGET_S,
-                                              log=lambda m: log(f"  {m}")):
-                    tries -= 1
-                    continue
-            log(f"  (model call failed, exit {r.returncode}: {err})")
-            return None
-        return _strip_fences(r.stdout)
-    return None
-
-
-def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log=print,
-               max_chars=MAX_CHARS, prompt=PROMPT):
-    """The printed words, or None. `max_chars` is the cap on the reply: a
-    headline's is MAX_CHARS, the band under a nameplate is allowed more,
-    since there its only job is the vocabulary check."""
-    global _limit_waited
-    env = env or claude_env()
-    tries = 0
-    reminder = ""
-    while tries < 2:
-        tries += 1
-        try:
-            with tempfile.TemporaryDirectory() as td:
-                name = "clip.jpg"
-                with open(os.path.join(td, name), "wb") as f:
-                    f.write(image_bytes)
-                # ⚠️⚠️ --restricted --tools Read, and the reason is on the
-                # record (11 September 2026). Unconfined, `claude -p` is an
-                # agent with Bash: on an easy band it read the file once
-                # (35 s); on a hard one it cropped and enlarged the image
-                # with sips and Python through a dozen tool calls (60-280 s,
-                # the timeouts); and on the Georgia Pioneer of 22 March 1839
-                # it ran `find ~ -iname clips.py`, read THIS project's code,
-                # ran clip_nameplate itself on three pages and returned "Ran
-                # cleanly. Results: ..." as the transcription. Confined to
-                # reading the one file it answers in 20 s in two turns.
-                r = subprocess.run(["claude", "-p", "--restricted", "--tools", "Read",
-                                    "--model", model,
-                                    prompt.format(name=name, year=year) + reminder],
-                                   capture_output=True, text=True, env=env,
                                    cwd=td, timeout=timeout,
                                    # ⚠️ stdin closed. claude -p reads whatever
                                    # stdin holds as more prompt, and a caller
@@ -317,7 +289,7 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
                                    # the harness's output as a "transcription".
                                    stdin=subprocess.DEVNULL)
         except (subprocess.TimeoutExpired, OSError) as exc:
-            log(f"  (transcription unavailable: {exc.__class__.__name__})")
+            log(f"  ({unavailable_label} unavailable: {exc.__class__.__name__})")
             continue
         if r.returncode != 0:
             err = (r.stderr or r.stdout or "").strip()[:200] or "(no output)"
@@ -327,25 +299,59 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
                                               log=lambda m: log(f"  {m}")):
                     tries -= 1
                     continue
-            log(f"  (transcription failed, exit {r.returncode}: {err})")
+            log(f"  ({failed_label} failed, exit {r.returncode}: {err})")
             return None
-        text = clean(r.stdout)
+        if on_success is None:
+            return r.stdout
+        action, value = on_success(r.stdout)
+        if action == "retry":
+            prompt = value
+            continue
+        return value
+    return None
+
+
+def ask(image_bytes, year, prompt, *, env=None, model=MODEL, timeout=TIMEOUT, log=print):
+    """One confined call with the image alone in its cwd, the reply's lines
+    kept (a prompt whose answer is labelled lines needs them), or None on a
+    failure. The pictures lane's reading of a drawing goes through here:
+    transcribe() applies the commentary guards, which a DESCRIPTION of a
+    picture legitimately trips ("the drawing shows"), so that lane reads its
+    reply through its own parser. Same flags, same stdin, same quota wait;
+    the confinement is not to be relaxed here either."""
+    env = env or claude_env()
+    raw = _call_model(image_bytes, year, prompt, env=env, model=model, timeout=timeout,
+                      log=log, unavailable_label="model", failed_label="model call")
+    return None if raw is None else _strip_fences(raw)
+
+
+def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log=print,
+               max_chars=MAX_CHARS, prompt=PROMPT):
+    """The printed words, or None. `max_chars` is the cap on the reply: a
+    headline's is MAX_CHARS, the band under a nameplate is allowed more,
+    since there its only job is the vocabulary check."""
+    env = env or claude_env()
+
+    def on_success(raw_stdout):
+        text = clean(raw_stdout)
         if is_commentary(text) or (prompt is BAND_PROMPT and looks_described(text)):
             log(f"  (transcription rejected: reads as the model's commentary, not the page: "
                 f"{text[:80]!r})")
-            reminder = COMMENTARY_REMINDER
-            continue
+            return "retry", prompt + COMMENTARY_REMINDER
         if prompt is BAND_PROMPT and text.strip() == "NONE":
-            return ""
+            return "return", ""
         if "CANNOT_READ" in text:
             log("  (transcription: model could not read the clip)")
-            return None
+            return "return", None
         if any(prompt is p for p in ITEM_PROMPTS):
             # the guards above read the flattened reply; the reader gets the
             # items with a period between them (see join_items)
-            text = join_items(items_of(r.stdout))
+            text = join_items(items_of(raw_stdout))
         if not (MIN_CHARS <= len(text) <= max_chars):
             log(f"  (transcription rejected: {len(text)} chars)")
-            return None
-        return text
-    return None
+            return "return", None
+        return "return", text
+
+    return _call_model(image_bytes, year, prompt, env=env, model=model, timeout=timeout,
+                       log=log, unavailable_label="transcription", failed_label="transcription",
+                       on_success=on_success)
