@@ -386,30 +386,3 @@ def snap(pi, box_ocr, mode="column", rules_only=False, include_border=False, vmo
         x0, x1 = max(0, x0 - m), min(pi.w, x1 + m)
         y0, y1 = max(0, y0 - m), min(pi.h, y1 + m)
     return pi.to_ocr((x0, y0, x1 - x0, y1 - y0))
-
-
-def boxed(pi, sbox, reach=0.006, need=0.75):
-    """Is the (small-image) box enclosed by printed rules on all four sides?
-    Each side is searched within `reach` of the page width just outside the
-    box for a line dark along at least `need` of the box's length. A cell
-    bounded by two column rules and two item rules passes as readily as a
-    bordered advertisement, which is the point: both are an item the page
-    itself has closed off."""
-    x, y, w, h = sbox
-    r = max(2, int(pi.w * reach))
-    def vline(xs):
-        best = 0
-        for xx in xs:
-            if 0 <= xx < pi.w:
-                d = sum(1 for yy in range(y, y + h) if 0 <= yy < pi.h and pi.is_ink(xx, yy)) / float(max(1, h))
-                best = max(best, d)
-        return best >= need
-    def hline(ys):
-        best = 0
-        for yy in ys:
-            if 0 <= yy < pi.h:
-                d = sum(1 for xx in range(x, x + w) if 0 <= xx < pi.w and pi.is_ink(xx, yy)) / float(max(1, w))
-                best = max(best, d)
-        return best >= need
-    return (vline(range(x - r, x + 2)) and vline(range(x + w - 2, x + w + r + 1))
-            and hline(range(y - r, y + 2)) and hline(range(y + h - 2, y + h + r + 1)))
