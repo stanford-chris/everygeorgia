@@ -315,6 +315,280 @@ class Grid(unittest.TestCase):
         self.assertLessEqual(s[0] + s[2], 1400)
 
 
+class RuleIsolation(unittest.TestCase):
+    """clips.row_has_rule: a rule is an ISOLATED dark row with paper close
+    on both sides, not any row past a bare darkness floor. Both arrays
+    below are pi.row_dark() readings taken directly off the Augusta Herald
+    of 19 February 1918, 13 September 2026 -- the incident that prompted
+    the isolation rule, not synthetic data. The old bare
+    `any(d >= HRULE_MIN_DARK)` test got both backwards from one threshold:
+    it missed the real rule (peak 0.430, just under 0.45) and caught the
+    false one (peak 0.475, just over it)."""
+
+    class FakePI:
+        """Duck-types just enough of rules.PageInk for row_has_rule: OCR
+        space equals small-image space, and row_dark returns a canned
+        reading keyed by y regardless of x0/x1."""
+        def __init__(self, dark_by_y):
+            self._dark = dark_by_y
+
+        def y_small(self, y):
+            return y
+
+        def row_dark(self, x0, x1, y0, y1):
+            return [self._dark.get(y, 0.0) for y in range(y0, y1)]
+
+    # "New York.--The cotton market...renewed steadiness..." on the
+    # Augusta Herald: two tight-leaded body lines with no rule between
+    # them at all.
+    FALSE_RULE = {
+        552: 0.000, 553: 0.000, 554: 0.134, 555: 0.006, 556: 0.000,
+        557: 0.000, 558: 0.000, 559: 0.128, 560: 0.430, 561: 0.475,
+        562: 0.413, 563: 0.307, 564: 0.000, 565: 0.000, 566: 0.050,
+        567: 0.318, 568: 0.458, 569: 0.380, 570: 0.341, 571: 0.028,
+        572: 0.000, 573: 0.078, 574: 0.330, 575: 0.464, 576: 0.358,
+    }
+
+    # "...December 27.85" -> "PRODUCE MARKET" on the same page: the real
+    # printed rule above that section heading.
+    REAL_RULE = {
+        678: 0.017, 679: 0.078, 680: 0.151, 681: 0.134, 682: 0.106,
+        683: 0.117, 684: 0.006, 685: 0.000, 686: 0.000, 687: 0.000,
+        688: 0.000, 689: 0.430, 690: 0.011, 691: 0.000, 692: 0.006,
+        693: 0.335, 694: 0.436, 695: 0.285, 696: 0.279, 697: 0.324,
+    }
+
+    def test_tight_body_text_leading_is_not_read_as_a_rule(self):
+        pi = self.FakePI(self.FALSE_RULE)
+        self.assertFalse(clips.row_has_rule(pi, 0, 1, 558, 571))
+
+    def test_a_real_rule_below_the_old_bare_threshold_is_still_found(self):
+        pi = self.FakePI(self.REAL_RULE)
+        self.assertTrue(clips.row_has_rule(pi, 0, 1, 684, 692))
+
+    def test_an_all_paper_gap_has_no_rule(self):
+        pi = self.FakePI({})
+        self.assertFalse(clips.row_has_rule(pi, 0, 1, 100, 120))
+
+    def test_an_isolated_spike_with_clear_paper_either_side_is_a_rule(self):
+        dark = {y: 0.0 for y in range(90, 111)}
+        dark[100] = 0.9
+        pi = self.FakePI(dark)
+        self.assertTrue(clips.row_has_rule(pi, 0, 1, 96, 104))
+
+
+class MarketSectionPage:
+    """A synthetic page with TWO market sections stacked in one column:
+    each a tall boxed heading with a real printed rule above it, a
+    body-height subhead partway down, and tabular body rows -- the shape
+    the market lane's section walk (13 September 2026) is meant to cross,
+    stopping at the SECOND section's own heading rather than running into
+    it or stopping short at the first subhead.
+
+    ⚠️ image_w stays exactly PAGE_WIDTH (1400): PageInk always fetches at
+    that width, and a fixture whose image is already that wide is never
+    resized, keeping OCR space and small-image space identical (scale
+    1.0) the way FakePage's own fixture relies on. image_h is shrunk
+    instead, to keep the column's own ink a large enough share of the
+    page for column_bounds to read it as ink rather than as more paper."""
+    lccn, date, ed, seq = "sn00000002", "1900-01-01", 1, 1
+    image_w, image_h = 1400, 450
+    url = "https://example/lccn/sn00000002/1900-01-01/ed-1/seq-1/"
+    COL_X0, COL_X1 = 470, 940     # matches FakePage's column 2
+
+    def __init__(self):
+        from PIL import Image, ImageDraw
+        im = Image.new("L", (1400, self.image_h), 210)
+        d = ImageDraw.Draw(im)
+        words = []
+
+        # filler "text" in the columns either side, same shape as
+        # FakePage's, so column_bounds finds a real gutter on both sides
+        # of the market column rather than running to the page edge.
+        for cx in (0, 940):
+            for k, y in enumerate(range(20, self.image_h - 20, 20)):
+                jitter = (k * 4) % 9
+                for x in range(cx + 30 + jitter, cx + 430, 9):
+                    d.rectangle([x, y, x + 2, y + 10], fill=40)
+
+        def draw_row(x, y, h, text):
+            # a full-width bar under the row (what a real printed line
+            # of type inks across its column, for the pixel-level rule
+            # and gutter tests) plus one word box per space-separated
+            # token on top, at the OCR-realistic positions find_phrase
+            # and the row grouping actually need -- find_phrase matches
+            # consecutive WORDS, not a substring of one merged string.
+            d.rectangle([self.COL_X0 + 10, y, self.COL_X1 - 10, y + h], fill=120)
+            cx = x
+            for tok in text.split():
+                w = max(20, len(tok) * 14)
+                d.rectangle([cx, y, cx + w, y + h], fill=30)
+                words.append((cx, y, w, h, tok))
+                cx += w + 8
+
+        def rule(y):
+            d.rectangle([self.COL_X0 + 10, y, self.COL_X1 - 10, y + 3], fill=20)
+
+        BODY_H = 14
+        HEAD_H = 40
+
+        def heading(y, text):
+            rule(y - 20)                            # clear paper either side
+            draw_row(self.COL_X0 + 20, y, HEAD_H, text)
+            return y + HEAD_H + 10
+
+        def body_row(y, text):
+            draw_row(self.COL_X0 + 20, y, BODY_H, text)
+            return y + BODY_H + 6
+
+        y = heading(40, "MARKET ONE")
+        for i in range(3):
+            y = body_row(y, f"PRICE {10 + i} AND {20 + i}")
+        y = body_row(y, "SUBHEAD A")                 # body-height, non-display
+        for i in range(3):
+            y = body_row(y, f"QUOTE {30 + i} FOR {40 + i}")
+        y = heading(y + 30, "MARKET TWO")
+        for i in range(3):
+            y = body_row(y, f"RATE {50 + i} TO {60 + i}")
+
+        self._im = im
+        self._words = words
+        self.scale = 1.0
+
+    def coords(self):
+        return {"width": 1400, "height": self.image_h, "words": list(self._words)}
+
+    def to_image(self, box):
+        x, y, w, h = box
+        if w <= 0 or h <= 0:
+            raise ValueError("empty box")
+        return (int(x), int(y), int(w), int(h))
+
+    def fetch_crop(self, image_box, width=1200):
+        import io
+        x, y, w, h = image_box
+        crop = self._im.crop((x, y, x + w, y + h))
+        if crop.width != width:
+            crop = crop.resize((width, max(1, int(crop.height * width / crop.width))))
+        buf = io.BytesIO(); crop.save(buf, format="JPEG", quality=92)
+        return buf.getvalue()
+
+
+class MarketSectionWalk(unittest.TestCase):
+    def setUp(self):
+        self.page = MarketSectionPage()
+        self.coords = self.page.coords()
+        self.pi = rules.PageInk(self.page)
+
+    def _box_for(self, phrase):
+        hit = clips.find_phrase(self.coords["words"], phrase)
+        self.assertIsNotNone(hit, phrase)
+        return clips.block_around(self.pi, self.coords, hit, allow_display=False,
+                                  max_frac=clips.MARKET_MAX_FRAC)
+
+    def test_the_crop_starts_at_its_own_heading_not_a_prior_sections_tail(self):
+        box = self._box_for("market one")
+        self.assertIsNotNone(box)
+        words_in = clips.nameplate.words_in(self.coords["words"], box)
+        text = clips.ocr_text(words_in)
+        self.assertIn("MARKET ONE", text)
+
+    def test_the_crop_runs_past_a_subhead_to_the_next_sections_heading(self):
+        box = self._box_for("market one")
+        words_in = clips.nameplate.words_in(self.coords["words"], box)
+        text = clips.ocr_text(words_in)
+        self.assertIn("SUBHEAD A", text)             # a within-section subhead: kept
+        self.assertIn("QUOTE 30", text)               # the rows after it: kept
+        self.assertNotIn("MARKET TWO", text)           # the NEXT section: not swallowed
+        self.assertNotIn("RATE 50", text)
+
+    def test_a_hit_in_the_second_section_does_not_reach_back_into_the_first(self):
+        box = self._box_for("market two")
+        words_in = clips.nameplate.words_in(self.coords["words"], box)
+        text = clips.ocr_text(words_in)
+        self.assertIn("MARKET TWO", text)
+        self.assertNotIn("QUOTE 30", text)
+        self.assertNotIn("MARKET ONE", text)
+
+
+class FlatHeadingPage(MarketSectionPage):
+    """The same two-section shape as MarketSectionPage, but with NEITHER a
+    rule between the sections NOR a heading tall enough to read as display
+    (18px against a 14px body -- 1.29x, under is_display's 1.6x floor):
+    the shape of the Savannah Morning News of 18 April 1873, where
+    "Sandersville Prices Current" measured 1.37x its page median and nothing
+    else separated it from the unrelated advertisement above it either.
+    Only the paragraph-gap guard can catch a section boundary here."""
+    lccn, date = "sn00000003", "1900-01-02"
+
+    def __init__(self):
+        from PIL import Image, ImageDraw
+        im = Image.new("L", (1400, self.image_h), 210)
+        d = ImageDraw.Draw(im)
+        words = []
+
+        for cx in (0, 940):
+            for k, y in enumerate(range(20, self.image_h - 20, 20)):
+                jitter = (k * 4) % 9
+                for x in range(cx + 30 + jitter, cx + 430, 9):
+                    d.rectangle([x, y, x + 2, y + 10], fill=40)
+
+        def draw_row(x, y, h, text):
+            d.rectangle([self.COL_X0 + 10, y, self.COL_X1 - 10, y + h], fill=120)
+            cx = x
+            for tok in text.split():
+                w = max(20, len(tok) * 14)
+                d.rectangle([cx, y, cx + w, y + h], fill=30)
+                words.append((cx, y, w, h, tok))
+                cx += w + 8
+
+        BODY_H = 14
+        HEAD_H = 18                                   # NOT tall enough to be "display"
+
+        def heading(y, text):                          # no rule() call at all
+            draw_row(self.COL_X0 + 20, y, HEAD_H, text)
+            return y + HEAD_H + 10
+
+        def body_row(y, text):
+            draw_row(self.COL_X0 + 20, y, BODY_H, text)
+            return y + BODY_H + 6
+
+        y = heading(40, "MARKET ONE")
+        for i in range(3):
+            y = body_row(y, f"PRICE {10 + i} AND {20 + i}")
+        # a gap over PARA_GAP*med (~18) but under the walk's own hard
+        # 2.2*med cutoff (~31) -- big enough that only the paragraph-gap
+        # guard this test exists to pin can catch it, small enough that
+        # it looks like ordinary extra lead rather than a different item.
+        y = heading(y + 15, "MARKET TWO")
+        for i in range(3):
+            y = body_row(y, f"RATE {50 + i} TO {60 + i}")
+
+        self._im = im
+        self._words = words
+        self.scale = 1.0
+
+
+class MarketSectionWalkNoRuleNoDisplay(unittest.TestCase):
+    """The paragraph-gap guard (13 September 2026) is what has to catch
+    this shape, since neither of the other two signals fire."""
+    def setUp(self):
+        self.page = FlatHeadingPage()
+        self.coords = self.page.coords()
+        self.pi = rules.PageInk(self.page)
+
+    def test_the_gap_alone_stops_the_climb_at_the_next_sections_heading(self):
+        hit = clips.find_phrase(self.coords["words"], "market two")
+        box = clips.block_around(self.pi, self.coords, hit, allow_display=False,
+                                 max_frac=clips.MARKET_MAX_FRAC)
+        self.assertIsNotNone(box)
+        words_in = clips.nameplate.words_in(self.coords["words"], box)
+        text = clips.ocr_text(words_in)
+        self.assertIn("MARKET TWO", text)
+        self.assertNotIn("MARKET ONE", text)            # the whole point: no reach-back
+        self.assertNotIn("PRICE 10", text)
+
+
 class Policies(unittest.TestCase):
     def test_market_lane_has_the_ad_lanes_era_floor(self):
         self.assertEqual(gates.earliest("market"), gates.earliest("ad"))

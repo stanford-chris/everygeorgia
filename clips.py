@@ -99,15 +99,56 @@ CARTOON_PHRASES = ("International Feature Service", "Newspaper Feature Service",
 CARTOON_SEARCH_FROM = "1900-01-01"
 MAX_BLOCK_FRAC = 0.25
 MAX_BLOCK_W = 0.45       # a block wider than this of the page is not one item
-MARKET_MAX_FRAC = 0.15   # a market column deeper than this is unreadable as a post
+MARKET_MAX_FRAC = 0.40   # a market crop runs from its own section heading to
+                         # the next one, an ad or unrelated matter, or this
+                         # much of the page, whichever comes first. Raised
+                         # from 0.15 on 13 September 2026, his complaint on
+                         # the Augusta Herald of 19 February 1918 ("this
+                         # crop was fine, but it could have been wider") --
+                         # the real ceiling now, since the row walk below
+                         # stops at the next section heading well before
+                         # this in the ordinary case.
 MIN_BLOCK_ROWS = 4
 PARA_GAP = 1.3           # a row gap this many body heights is a paragraph break
-MARKET_ROWS = 10         # ...and failing one, this many rows under the heading:
-                         # the Marietta Journal sets its paragraphs with no
-                         # extra lead at all
+MARKET_ROWS = 80         # ...and failing one (a market section with no
+                         # visible paragraph gap at all -- the Marietta
+                         # Journal sets its own with no extra lead), this
+                         # many rows past the hit before the walk gives up
+                         # looking for one. Raised from 10 the same day:
+                         # that figure capped the walk at a couple of short
+                         # paragraphs and was what kept a market crop from
+                         # ever reaching the next section's own heading.
+                         # MARKET_MAX_FRAC is the real ceiling now.
 HEADLINE_MAX_FRAC = 0.16 # a headline item deeper than this has taken a second
                          # headline or a story with it
 MIN_BLOCK_FRAC = 0.015
+RULE_ISOLATION = 2       # small-image rows either side of a candidate rule
+                         # row that must themselves read close to paper
+RULE_PAPER_MAX = 0.15    # ...that close.
+RULE_CANDIDATE_MIN_DARK = 0.30
+                         # a row this dark is worth testing for isolation.
+                         # ⚠️ LOWER than rules.HRULE_MIN_DARK (0.45) on
+                         # purpose, and only safe because isolation does
+                         # the real discriminating now: on the Augusta
+                         # Herald of 19 February 1918, 13 September 2026,
+                         # the real rule above a "PRODUCE MARKET" heading
+                         # measured 0.430 -- BELOW the old bare
+                         # HRULE_MIN_DARK test, so it was missed entirely
+                         # -- while two rows up, tight body-text leading
+                         # with no rule at all measured 0.475, ABOVE it,
+                         # and was wrongly read as one. A bare threshold on
+                         # any row in the gap cannot tell a thin printed
+                         # rule from a dense line of type, because on a
+                         # page this compressed a single text row is only
+                         # a few small-image pixels tall and both can
+                         # cross it. Shape is what tells them apart,
+                         # measured on the same page: the real rule's own
+                         # near neighbours read 0.00-0.01 (isolated), every
+                         # false one's read 0.31-0.48 (part of a multi-row
+                         # glyph cluster) -- which is also why the floor
+                         # can safely drop: RULE_PAPER_MAX rejects a
+                         # non-isolated candidate regardless of how dark
+                         # its own row reads.
 
 
 def wordlike(tok):
@@ -138,6 +179,16 @@ def ocr_text(words):
 
 TOKEN_RE = re.compile(r"[a-z]+")
 BAND_ALT_CHARS = 300
+MARKET_ALT_CHARS = 1600  # everygeorgia_post.py's ALT_MAX is 1900 and the
+                         # market alt's own wrapper ("Market report from
+                         # ..., reading: ...") runs to about 150-250 chars
+                         # of that depending on the title, so this leaves
+                         # headroom. Added 13 September 2026 when the
+                         # section-walk widened the crop (and so the OCR
+                         # text it carries) well past what alt_text()'s own
+                         # blunt end-of-string truncation could cut
+                         # cleanly; that truncation stays as a backstop,
+                         # this is what actually does the cutting now.
 
 
 def cut_band(words, limit=BAND_ALT_CHARS):
@@ -605,7 +656,8 @@ def clip_ad(lccn, date, ed=1, seq=1, phrase=None, log=print):
         if not hit:
             raise npc.Refused(f"phrase {phrase!r} not found on the page's OCR")
         pi = rules.PageInk(page)
-        box = block_around(pi, c, hit, allow_display=True, log=log)
+        box = block_around(pi, c, hit, allow_display=True, log=log,
+                           rule_test=row_has_rule_legacy)
         if not box:
             raise npc.Refused("the advertisement could not be closed on the grid")
         inside = nameplate.words_in(c["words"], box)
@@ -648,7 +700,56 @@ def _rows(words):
             for rw in nameplate.rows_of(sorted(words, key=lambda w: (w[1], w[0])), row_tol=0.5)]
 
 
-def block_around(pi, coords, seed, allow_display, log=print, max_frac=None):
+def row_has_rule(pi, sx0, sx1, ya, yb):
+    """Is there a printed horizontal rule between OCR rows at `ya` and `yb`,
+    over columns [sx0, sx1) of `pi`?
+
+    ⚠️ A margin either side of the gap: OCR word boxes are taller than the
+    glyphs, so a rule sits INSIDE the box rows as often as between them,
+    and a search-driven ad crop chained three advertisements through two
+    clearly printed rules before the margin was added.
+
+    ⚠️ Isolation, not a bare darkness threshold, is what makes a row the
+    rule. See RULE_PAPER_MAX above: on a dense page a single row of tight
+    body-text leading measures just as dark as a printed rule over the
+    padded window, and a bare `any(d >= HRULE_MIN_DARK)` cannot tell them
+    apart -- it missed a real rule at 0.430 and caught a false one at
+    0.475 on the same page, in opposite directions, from one threshold.
+    A rule is a thin, ISOLATED spike with paper close on both sides; tight
+    body text is a multi-row cluster of glyph ink with no such isolation,
+    even where its darkest single row clears the threshold."""
+    pad = 4 + RULE_ISOLATION
+    a, b = max(0, pi.y_small(ya) - pad), pi.y_small(yb) + pad
+    if b <= a:
+        return False
+    dark = pi.row_dark(sx0, sx1, a, b)
+    for i, d in enumerate(dark):
+        if d < RULE_CANDIDATE_MIN_DARK:
+            continue
+        near = dark[max(0, i - RULE_ISOLATION):i] + dark[i + 1:i + 1 + RULE_ISOLATION]
+        if not near or max(near) <= RULE_PAPER_MAX:
+            return True
+    return False
+
+
+def row_has_rule_legacy(pi, sx0, sx1, ya, yb):
+    """The rule test `block_around` used before 13 September 2026, kept
+    verbatim (same padding, same bare threshold) for the AD lane, which
+    nobody asked to change: swapping it for row_has_rule() shifted which
+    advertisements closed cleanly on a 20-candidate spot check the same
+    day (six of twenty passed either way, but not the same six -- a real
+    behaviour change to a lane out of scope for the market-crop fix).
+    row_has_rule() is for the market lane; this is for the ad lane, until
+    someone measures whether isolation helps it too."""
+    a, b = pi.y_small(ya) - 4, pi.y_small(yb) + 4
+    if b <= a:
+        return False
+    dark = pi.row_dark(sx0, sx1, a, b)
+    return any(d >= rules.HRULE_MIN_DARK for d in dark)
+
+
+def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
+                 rule_test=row_has_rule):
     """The column block of set text around `seed` words: x from the page's
     gutters (rules.py), rows from the OCR, walking up and down from the
     seed's row while rows are close together and no printed rule lies
@@ -682,15 +783,7 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None):
     sx0, sx1 = cb
 
     def rule_between(ya, yb):
-        # ⚠️ With a margin either side: OCR word boxes are taller than the
-        # glyphs, so a rule sits INSIDE the box rows as often as between
-        # them, and a search-driven ad crop chained three advertisements
-        # through two clearly printed rules before the margin was added.
-        a, b = pi.y_small(ya) - 4, pi.y_small(yb) + 4
-        if b <= a:
-            return False
-        dark = pi.row_dark(sx0, sx1, a, b)
-        return any(d >= rules.HRULE_MIN_DARK for d in dark)
+        return rule_test(pi, sx0, sx1, ya, yb)
 
     def row_top(i):
         return min(w[1] for w in rows[i])
@@ -711,6 +804,28 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None):
         if gap > 2.2 * med or rule_between(row_bot(j), row_top(lo)):
             break
         if is_display(j) and not allow_display:
+            break
+        # ⚠️ The down-walk's own paragraph-break guard, mirrored upward,
+        # but WITHOUT its "j - idx > 3" grace period. Without a guard at
+        # all, a market section whose own heading reads no taller than
+        # its body (an older, cruder typeset -- "Sandersville Prices
+        # Current" measured 1.37x the page median on the Savannah Morning
+        # News of 18 April 1873, under the 1.6x is_display floor) has NO
+        # backstop at all in this direction: neither a rule nor a display
+        # row ever fires, and the climb ran straight through an unrelated
+        # advertisement and two OTHER towns' price lists above it, all the
+        # way to the top of the column. ⚠️ The grace period itself is
+        # wrong to mirror: down-walk needs it because the row right below
+        # a heading (its own byline or subhead) often carries extra lead
+        # from the heading, not because a section starts more than three
+        # rows from its hit -- but when the hit itself IS the heading
+        # (the common case here), the gap directly ABOVE it is exactly
+        # the previous section's own boundary, and a grace period is what
+        # let the climb sail straight past it (126 units against a
+        # 105-unit PARA_GAP threshold, dropped because it fell on the
+        # very first row considered) before finally stopping four
+        # sections later.
+        if not allow_display and (gap > PARA_GAP * med or idx - j > MARKET_ROWS):
             break
         if row_bot(hi) - row_top(j) > cap:
             # ⚠️ The top is the cap, not a rule or a gap: the block begins
@@ -789,8 +904,9 @@ def clip_market(lccn, date, ed=1, seq=1, phrase="cotton market", log=print):
         raise npc.Refused(f"not a table: {tab:.0%} of tokens are figures")
     verdict, page_hits = _verdict("market", lccn, date, inside, c["words"], True)
     image_box, data = _fetch(page, box)
+    words = cut_band(ocr_text(inside), MARKET_ALT_CHARS)
     return _result("market", page, meta, date, ed, box, image_box, data, verdict,
-                   page_hits, _curl(ocr_text(inside)), False, {"phrase": phrase})
+                   page_hits, _curl(words), False, {"phrase": phrase})
 
 
 def clip(lane, lccn, date, ed=1, seq=1, phrase=None, log=print):
