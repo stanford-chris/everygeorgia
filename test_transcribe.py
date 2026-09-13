@@ -18,6 +18,13 @@ DESCRIBED = ("The masthead line ”DAWSON, GA., FRIDAY, JUNE 14, 1867.” is cle
 GOOD_BAND = ("Vol. II. DAWSON, GA., FRIDAY, JUNE 14, 1867. No. 21. Rates of Advertising. Job Work "
              "The Peddler’s Story. HOYL & SIMMONS, ATTORNEYS AT LAW, DAWSON, GEORGIA. Young America "
              "at the Wheel. Muscular Development of Women. Remedy for Bud Worm. Power of Scent in a")
+# What SHIPPED on the Griffin Daily News post, 14:12 KST 13 September 2026, with both
+# earlier guards in place: not tool talk, not description of the page's elements, but
+# the model explaining an OCR judgement call before the transcription itself.
+JUDGEMENT_CALL = ("I'll present the transcription as printed, since the character clearly "
+                   "renders as “CE” (a broken/worn “B” in the original type) "
+                   "rather than a fully illegible mark. GRIFFIN GEORGIA, SATURDAY MORNING, MAY 19 "
+                   "1888. SUMMER PRICES REACHED AT LAST! Extraordinary Inducements! FOR THIS WEEK, AT")
 PROSE_AD = ("Read what one of the GREATEST NEWSPAPERS IN AMERICA has to say on this subject: The "
             "manufacturers of Castoria have been compelled to spend hundreds of thousands of dollars "
             "to familiarize the public with the signature of Chas. H. Fletcher.")
@@ -64,6 +71,9 @@ class Commentary(unittest.TestCase):
             run = mock.Mock(side_effect=[_proc(prose)])
             with mock.patch.object(transcribe.subprocess, "run", run):
                 self.assertEqual(transcribe.transcribe(b"j", "1867", log=lambda m: None), prose)
+
+    def test_the_griffin_reply_s_judgement_call_is_caught(self):
+        self.assertTrue(transcribe.is_commentary(JUDGEMENT_CALL))
 
     def test_prose_an_editorial_could_open_with_passes(self):
         for t in ("Let me say at once that the image of our fathers is before us.",

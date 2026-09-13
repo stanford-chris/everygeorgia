@@ -102,6 +102,18 @@ _limit_waited = False
 # prose; the bad Dawson reply is 60 percent lowercase words against 17 for
 # the good one. That test is NOT applied to the full PROMPT, where a prose
 # advertisement is legitimately lowercase.
+# ⚠️⚠️ And the THIRD shape, which shipped on the Griffin Daily News post at
+# 14:12 KST on 13 September 2026 with both guards in place: not tool talk,
+# not a description of the page's elements, but the model EXPLAINING AN OCR
+# JUDGEMENT CALL before the transcription itself: "I'll present the
+# transcription as printed, since the character clearly renders as "CE" (a
+# broken/worn "B" in the original type) rather than a fully illegible mark."
+# `is_commentary()` slept through it (no "this tool", no first-person apology,
+# no "is clearly"/"in bold type" phrasing) and it went out as the alt of a
+# public post. The markers below name this register: a sentence explaining
+# WHY a character was rendered a given way, which necessarily talks about the
+# artifact ("the original type") or the act of transcribing it ("the
+# transcription as printed") rather than reproducing it.
 COMMENTARY = re.compile(
     r"\bthis tool\b|\bzoom\b|\bas an ai\b"
     r"|\bi(?:'|’)?m (?:unable|not able|sorry)\b|\bi am (?:unable|not able|sorry)\b"
@@ -115,7 +127,10 @@ COMMENTARY = re.compile(
     r"|\bflanking\b|\bappears to (?:read|be|say)\b|\breads as follows\b"
     r"|\bthe (?:masthead|dateline|nameplate|headline|banner) (?:line|text|reads|is|appears)\b"
     r"|\bthe (?:large|small|main|bold) (?:display |body )?(?:text|type|headline|dateline)\b"
-    r"|\bset in (?:large|small|bold|display|body)\b",
+    r"|\bset in (?:large|small|bold|display|body)\b"
+    # explaining an OCR judgement call rather than just making it
+    r"|\bpresent the transcription\b|\bthe transcription as printed\b"
+    r"|\bclearly renders\b|\bin the original type\b|\brather than a fully illegible\b",
     re.IGNORECASE)
 LOWERCASE_SHARE_MAX = 0.45
 
