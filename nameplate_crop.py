@@ -134,9 +134,6 @@ def post_date(iso):
     return f"{MONTHS[int(m) - 1]} {int(d)}, {y}"
 
 
-uk_date = post_date     # the old name, kept so nothing else breaks
-
-
 SMALL_WORDS = {"a", "an", "and", "the", "of", "for", "on", "in", "at", "to",
                "by", "or", "&", "de", "la"}
 
