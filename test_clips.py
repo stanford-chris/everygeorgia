@@ -589,6 +589,268 @@ class MarketSectionWalkNoRuleNoDisplay(unittest.TestCase):
         self.assertNotIn("PRICE 10", text)
 
 
+class AdHeadingGapPage:
+    """One column holding a single item: a display heading, then a gap far
+    wider than any ordinary body-line leading, then plain body rows -- the
+    shape of "Important to the Public" over "GO TO COOKE'S..." on the Daily
+    Constitutionalist of 1 October 1872 (the ad his 14 September 2026 crop
+    complaint was about). The real gap there measured 652 units against a
+    94-unit page median, 6.9x; HEAD_GAP below is sized the same way, well
+    past the walk's ordinary 2.2x body-line ceiling.
+
+    ⚠️ image_h is 1000, not bigger: column_bounds' own gutter detection
+    reads darkness averaged over the WHOLE page height, and a page tall
+    enough to dilute this fixture's sparse content below GUTTER_DARK reads
+    the ad's own column as more paper -- at image_h 1200 column_bounds
+    returned (31, 1371), nearly the whole page, instead of the ad's own
+    (480, 931). 1000 keeps both real: enough headroom under the up-walk's
+    own 0.25-of-page height cap for HEAD_GAP to clear it, and enough ink
+    density in the column for the gutters on either side to still read."""
+    lccn, date, ed, seq = "sn00000005", "1900-01-04", 1, 1
+    image_w, image_h = 1400, 1000
+    url = "https://example/lccn/sn00000005/1900-01-04/ed-1/seq-1/"
+    COL_X0, COL_X1 = 470, 940
+
+    def __init__(self):
+        from PIL import Image, ImageDraw
+        im = Image.new("L", (1400, self.image_h), 210)
+        d = ImageDraw.Draw(im)
+        words = []
+
+        for cx in (0, 940):
+            for k, y in enumerate(range(20, self.image_h - 20, 20)):
+                jitter = (k * 4) % 9
+                for x in range(cx + 30 + jitter, cx + 430, 9):
+                    d.rectangle([x, y, x + 2, y + 10], fill=40)
+
+        def draw_row(x, y, h, text):
+            d.rectangle([self.COL_X0 + 10, y, self.COL_X1 - 10, y + h], fill=120)
+            cx = x
+            for tok in text.split():
+                w = max(20, len(tok) * 14)
+                d.rectangle([cx, y, cx + w, y + h], fill=30)
+                words.append((cx, y, w, h, tok))
+                cx += w + 8
+
+        HEAD_H, BODY_H, HEAD_GAP = 40, 14, 100   # HEAD_GAP >> 2.2 * a 14-unit median
+
+        draw_row(self.COL_X0 + 20, 40, HEAD_H, "AD HEADING")
+        y = 40 + HEAD_H + HEAD_GAP
+        for i in range(4):
+            draw_row(self.COL_X0 + 20, y, BODY_H, f"BODY LINE {i}")
+            y += BODY_H + 6
+
+        self._im = im
+        self._words = words
+        self.scale = 1.0
+
+    def coords(self):
+        return {"width": 1400, "height": self.image_h, "words": list(self._words)}
+
+    def to_image(self, box):
+        x, y, w, h = box
+        if w <= 0 or h <= 0:
+            raise ValueError("empty box")
+        return (int(x), int(y), int(w), int(h))
+
+    def fetch_crop(self, image_box, width=1200):
+        import io
+        x, y, w, h = image_box
+        crop = self._im.crop((x, y, x + w, y + h))
+        if crop.width != width:
+            crop = crop.resize((width, max(1, int(crop.height * width / crop.width))))
+        buf = io.BytesIO(); crop.save(buf, format="JPEG", quality=92)
+        return buf.getvalue()
+
+
+class AdHeadingGap(unittest.TestCase):
+    """block_around's up-walk, allow_display=True: an ad's own display
+    heading must be admitted whatever the gap below it, per the function's
+    own docstring ("allow_display keeps display-size rows"). Before the fix
+    the plain `gap > 2.2 * med` test broke the climb before allow_display
+    ever got a say, and the Cooke's clothing ad shipped on Bluesky missing
+    "Important to the Public" entirely."""
+    def setUp(self):
+        self.page = AdHeadingGapPage()
+        self.coords = self.page.coords()
+        self.pi = rules.PageInk(self.page)
+        self.hit = clips.find_phrase(self.coords["words"], "body line 0")
+        self.assertIsNotNone(self.hit)
+
+    def test_the_heading_is_admitted_across_the_wide_gap_when_allow_display(self):
+        box = clips.block_around(self.pi, self.coords, self.hit, allow_display=True)
+        self.assertIsNotNone(box)
+        words_in = clips.nameplate.words_in(self.coords["words"], box)
+        text = clips.ocr_text(words_in)
+        self.assertIn("AD HEADING", text)
+        self.assertIn("BODY LINE 0", text)
+
+    def test_the_same_wide_gap_still_stops_the_climb_without_allow_display(self):
+        # allow_display=False is the market lane's call, never the ad
+        # lane's, but the gate must hold: the new allowance is keyed to
+        # is_display(j) AND allow_display, not to is_display(j) alone.
+        box = clips.block_around(self.pi, self.coords, self.hit, allow_display=False)
+        self.assertIsNotNone(box)
+        words_in = clips.nameplate.words_in(self.coords["words"], box)
+        text = clips.ocr_text(words_in)
+        self.assertNotIn("AD HEADING", text)
+        self.assertIn("BODY LINE 0", text)
+
+
+class BannerHeadingPage:
+    """A banner heading ("BANNER HEAD") set across two narrower columns,
+    each holding its OWN unrelated content at the SAME row heights, split
+    by a real vertical rule -- the shape of "COTTON MARKET" on the Augusta
+    Herald of 19 February 1918, which is a banner over an Augusta cotton
+    price table on the left and, on the right, an unrelated advertisement
+    then a different cotton report. Same-height rows on both sides are
+    what make nameplate.rows_of merge them into one nonsense row without
+    the split ("AUGUSTACOTTON COTTONSEED FOR" was one such row, on the
+    real page)."""
+    lccn, date, ed, seq = "sn00000004", "1900-01-03", 1, 1
+    # ⚠️ image_h and the rule's own length are both sized deliberately,
+    # not just "big enough": PageInk's vrules() excludes any column
+    # averaging above EDGE_DARK(0.55) of the WHOLE page as "film edge"
+    # (a solid synthetic rule spanning most of a short page trips this --
+    # the real Augusta Herald rule this fixture is modelled on averaged
+    # only 0.20 dark despite a "run" 1655px long, because a real printed
+    # rule is thin and imperfectly inked at small-image resolution, so a
+    # short, solid stand-in rule must be sized to land in the same range
+    # a real one measures in, not merely long enough for MIN_VRULE), while
+    # column_bounds' own gutter detection needs the CONTENT column dark
+    # enough on average to read as ink at all (above GUTTER_DARK 0.10) --
+    # which is why there are a dozen body rows, not four: enough inked
+    # height for that average to clear the floor on a page tall enough
+    # to keep the rule's average under its own ceiling.
+    image_w, image_h = 1400, 1000
+    url = "https://example/lccn/sn00000004/1900-01-03/ed-1/seq-1/"
+    COL_X0, COL_X1 = 470, 940       # the banner's own full width
+    SPLIT_X = 705                    # the interior rule's OCR x
+    ROWS = 12
+
+    def __init__(self):
+        from PIL import Image, ImageDraw
+        im = Image.new("L", (1400, self.image_h), 210)
+        d = ImageDraw.Draw(im)
+        words = []
+
+        for cx in (0, 940):
+            for k, y in enumerate(range(20, self.image_h - 20, 20)):
+                jitter = (k * 4) % 9
+                for x in range(cx + 30 + jitter, cx + 430, 9):
+                    d.rectangle([x, y, x + 2, y + 10], fill=40)
+
+        def draw_row(x, y, h, text, x1=None):
+            d.rectangle([x, y, (x1 or self.COL_X1 - 10), y + h], fill=120)
+            cx = x
+            for tok in text.split():
+                w = max(20, len(tok) * 14)
+                d.rectangle([cx, y, cx + w, y + h], fill=30)
+                words.append((cx, y, w, h, tok))
+                cx += w + 8
+
+        HEAD_H = 40
+        BODY_H = 14
+
+        # the banner: one heading straddling both sub-columns
+        draw_row(self.COL_X0 + 20, 40, HEAD_H, "BANNER HEAD")
+
+        # the interior rule, well below the heading's own bottom and
+        # comfortably past the content zone, but not the whole page
+        d.rectangle([self.SPLIT_X, 100, self.SPLIT_X + 2, 400], fill=20)
+
+        # two unrelated streams at the SAME row y-positions either side
+        y = 95   # a proportionate heading-to-body gap: ~1.1x med (14), not
+                 # the 60px a literal "140" made -- 4.3x med, which tripped
+                 # block_around's own unconditional 2.2x hard gap cutoff
+        for i in range(self.ROWS):
+            draw_row(self.COL_X0 + 20, y, BODY_H, f"LEFT {i}", x1=self.SPLIT_X - 10)
+            draw_row(self.SPLIT_X + 20, y, BODY_H, f"RIGHT {i}", x1=self.COL_X1 - 10)
+            y += BODY_H + 6
+
+        self._im = im
+        self._words = words
+        self.scale = 1.0
+
+    def coords(self):
+        return {"width": 1400, "height": self.image_h, "words": list(self._words)}
+
+    def to_image(self, box):
+        x, y, w, h = box
+        if w <= 0 or h <= 0:
+            raise ValueError("empty box")
+        return (int(x), int(y), int(w), int(h))
+
+    def fetch_crop(self, image_box, width=1200):
+        import io
+        x, y, w, h = image_box
+        crop = self._im.crop((x, y, x + w, y + h))
+        if crop.width != width:
+            crop = crop.resize((width, max(1, int(crop.height * width / crop.width))))
+        buf = io.BytesIO(); crop.save(buf, format="JPEG", quality=92)
+        return buf.getvalue()
+
+
+class WideHeadingSplit(unittest.TestCase):
+    def setUp(self):
+        self.page = BannerHeadingPage()
+        self.coords = self.page.coords()
+        self.pi = rules.PageInk(self.page)
+        self.hit = clips.find_phrase(self.coords["words"], "banner head")
+        self.assertIsNotNone(self.hit)
+
+    def _seed_box(self):
+        x0 = min(w[0] for w in self.hit); x1 = max(w[0] + w[2] for w in self.hit)
+        y0 = min(w[1] for w in self.hit); y1 = max(w[1] + w[3] for w in self.hit)
+        return x0, y0, x1 - x0, y1 - y0
+
+    def test_wide_heading_split_finds_the_interior_rule(self):
+        x0, y0, w, h = self._seed_box()
+        cb = self.pi.column_bounds(self.pi.from_ocr((x0, y0, w, h)), mode="column")
+        split = clips.wide_heading_split(self.pi, cb, self.pi.y_small(y0), self.pi.y_small(y0 + h))
+        self.assertIsNotNone(split)
+        self.assertEqual(split[0], cb[0])
+        self.assertLess(split[1], cb[1])
+
+    def test_without_the_split_both_sides_merge_into_one_nonsense_row(self):
+        box = clips.block_around(self.pi, self.coords, self.hit, allow_display=False,
+                                 max_frac=clips.MARKET_MAX_FRAC)
+        # split_wide_headings defaults False: reproduces the bug
+        if box is not None:
+            words_in = clips.nameplate.words_in(self.coords["words"], box)
+            text = clips.ocr_text(words_in)
+            self.assertIn("RIGHT 0", text)         # both sides present...
+            self.assertIn("LEFT 0", text)
+            self.assertTrue(text.index("LEFT 0") < text.index("RIGHT 0") or
+                            "LEFT 0 RIGHT 0" in text or "RIGHT 0 LEFT 0" in text)
+
+    def test_with_the_split_only_the_left_columns_content_is_kept(self):
+        box = clips.block_around(self.pi, self.coords, self.hit, allow_display=False,
+                                 max_frac=clips.MARKET_MAX_FRAC, split_wide_headings=True)
+        self.assertIsNotNone(box)
+        words_in = clips.nameplate.words_in(self.coords["words"], box)
+        text = clips.ocr_text(words_in)
+        self.assertIn("BANNER", text)
+        self.assertIn("LEFT 0", text)
+        self.assertIn("LEFT 3", text)
+        self.assertNotIn("RIGHT", text)                # the unrelated column: gone entirely
+
+    def test_an_ordinary_single_column_heading_is_untouched_by_the_flag(self):
+        # split_wide_headings=True must be a no-op wherever there is
+        # nothing to split -- MarketSectionPage has no interior rule at
+        # all, so passing the flag must produce the identical box.
+        page = MarketSectionPage()
+        coords = page.coords()
+        pi = rules.PageInk(page)
+        hit = clips.find_phrase(coords["words"], "market one")
+        with_flag = clips.block_around(pi, coords, hit, allow_display=False,
+                                       max_frac=clips.MARKET_MAX_FRAC, split_wide_headings=True)
+        without_flag = clips.block_around(pi, coords, hit, allow_display=False,
+                                          max_frac=clips.MARKET_MAX_FRAC)
+        self.assertIsNotNone(with_flag)
+        self.assertEqual(with_flag, without_flag)
+
+
 class Policies(unittest.TestCase):
     def test_market_lane_has_the_ad_lanes_era_floor(self):
         self.assertEqual(gates.earliest("market"), gates.earliest("ad"))

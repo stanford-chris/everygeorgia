@@ -149,6 +149,26 @@ RULE_CANDIDATE_MIN_DARK = 0.30
                          # can safely drop: RULE_PAPER_MAX rejects a
                          # non-isolated candidate regardless of how dark
                          # its own row reads.
+RULE_MAX_RUN = 2         # a run of CONSECUTIVE candidate-dark rows longer
+                         # than this is not a printed rule, whatever sits
+                         # outside the run. ⚠️ Found the same day: the
+                         # rule under the left half of a split two-column
+                         # "COTTON MARKET" banner (13 September 2026, see
+                         # wide_heading_split() below) prints TWO rows
+                         # wide, and checking each of its rows against its
+                         # immediate ±RULE_ISOLATION neighbour made them
+                         # shadow each other -- row 1 of the pair sees row
+                         # 2 as a dark neighbour and fails isolation, and
+                         # row 2 sees row 1 the same way, so a real rule
+                         # was missed by the very isolation check meant to
+                         # find it. Checking the whole RUN's outside edges
+                         # instead fixes that -- but checked naively (no
+                         # run-length cap) it also wrongly reads the false
+                         # rule's own glyph cluster as one big rule, since
+                         # what sits OUTSIDE that whole 4-row cluster is
+                         # paper too. The two real rules measured here run
+                         # 1 and 2 rows; the false ones run 3 and 4 -- so
+                         # a cap of 2 keeps both without reopening that.
 
 
 def wordlike(tok):
@@ -656,8 +676,7 @@ def clip_ad(lccn, date, ed=1, seq=1, phrase=None, log=print):
         if not hit:
             raise npc.Refused(f"phrase {phrase!r} not found on the page's OCR")
         pi = rules.PageInk(page)
-        box = block_around(pi, c, hit, allow_display=True, log=log,
-                           rule_test=row_has_rule_legacy)
+        box = block_around(pi, c, hit, allow_display=True, log=log)
         if not box:
             raise npc.Refused("the advertisement could not be closed on the grid")
         inside = nameplate.words_in(c["words"], box)
@@ -717,39 +736,73 @@ def row_has_rule(pi, sx0, sx1, ya, yb):
     0.475 on the same page, in opposite directions, from one threshold.
     A rule is a thin, ISOLATED spike with paper close on both sides; tight
     body text is a multi-row cluster of glyph ink with no such isolation,
-    even where its darkest single row clears the threshold."""
+    even where its darkest single row clears the threshold.
+
+    ⚠️ Isolation is checked on the RUN of consecutive candidate-dark rows,
+    not row by row: see RULE_MAX_RUN above. A rule two rows wide has each
+    of its rows sitting right next to the other, so testing each row's
+    own ±RULE_ISOLATION neighbours in isolation makes the two rows shadow
+    each other and the rule vanishes. The run's OUTSIDE edges are what
+    isolation actually means; RULE_MAX_RUN is what stops that same test
+    reading a whole multi-row glyph cluster as one wide rule."""
     pad = 4 + RULE_ISOLATION
     a, b = max(0, pi.y_small(ya) - pad), pi.y_small(yb) + pad
     if b <= a:
         return False
     dark = pi.row_dark(sx0, sx1, a, b)
-    for i, d in enumerate(dark):
-        if d < RULE_CANDIDATE_MIN_DARK:
+    n = len(dark)
+    i = 0
+    while i < n:
+        if dark[i] < RULE_CANDIDATE_MIN_DARK:
+            i += 1
             continue
-        near = dark[max(0, i - RULE_ISOLATION):i] + dark[i + 1:i + 1 + RULE_ISOLATION]
-        if not near or max(near) <= RULE_PAPER_MAX:
-            return True
+        j = i
+        while j < n and dark[j] >= RULE_CANDIDATE_MIN_DARK:
+            j += 1
+        if j - i <= RULE_MAX_RUN:
+            before = dark[max(0, i - RULE_ISOLATION):i]
+            after = dark[j:j + RULE_ISOLATION]
+            if (not before or max(before) <= RULE_PAPER_MAX) and \
+               (not after or max(after) <= RULE_PAPER_MAX):
+                return True
+        i = j
     return False
 
 
-def row_has_rule_legacy(pi, sx0, sx1, ya, yb):
-    """The rule test `block_around` used before 13 September 2026, kept
-    verbatim (same padding, same bare threshold) for the AD lane, which
-    nobody asked to change: swapping it for row_has_rule() shifted which
-    advertisements closed cleanly on a 20-candidate spot check the same
-    day (six of twenty passed either way, but not the same six -- a real
-    behaviour change to a lane out of scope for the market-crop fix).
-    row_has_rule() is for the market lane; this is for the ad lane, until
-    someone measures whether isolation helps it too."""
-    a, b = pi.y_small(ya) - 4, pi.y_small(yb) + 4
-    if b <= a:
-        return False
-    dark = pi.row_dark(sx0, sx1, a, b)
-    return any(d >= rules.HRULE_MIN_DARK for d in dark)
+def wide_heading_split(pi, cb, y0_small, y1_small):
+    """If `cb` (small-image x0,x1) is a BANNER spanning two real, narrower
+    print columns -- straddled by a genuine interior vertical rule that
+    continues well past the heading's own bottom (`y1_small`) -- return
+    the LEFT half of `cb` to follow instead. None if there is no such
+    rule, or more than one candidate (ambiguous; leave `cb` alone).
+
+    "COTTON MARKET" on the Augusta Herald of 19 February 1918 is set as a
+    banner across two narrower columns whose CONTENT below it is two
+    unrelated streams: a cotton-price table on the left, an unrelated
+    advertisement then a different cotton report on the right.
+    nameplate.rows_of groups both sides' words into one "row" wherever
+    their y happens to line up, which reads as neither -- "AUGUSTACOTTON
+    COTTONSEED FOR" was one such row, the OCR of two unrelated columns'
+    words merged as if they were one line. `column_bounds` correctly
+    returns the banner's own OUTER bounds (it does not stop at an interior
+    rule the SEED itself crosses, by design -- a multi-column advertisement
+    or headline keeps going to the next gutter), so nothing upstream of
+    here ever sees the split.
+
+    LEFT, not a choice keyed to the search hit: ordinary reading order for
+    a multi-column layout under one banner is to read the first (leftmost)
+    column top to bottom before the next, exactly as `find_phrase`'s own
+    reading order already assumes elsewhere."""
+    candidates = [(x, t, b) for x, t, b in pi.vrules()
+                  if cb[0] + 4 < x < cb[1] - 4 and b > y1_small + rules.MIN_SPAN * pi.h]
+    if len(candidates) != 1:
+        return None
+    vx = candidates[0][0]
+    return (cb[0], vx)
 
 
 def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
-                 rule_test=row_has_rule):
+                 rule_test=row_has_rule, split_wide_headings=False):
     """The column block of set text around `seed` words: x from the page's
     gutters (rules.py), rows from the OCR, walking up and down from the
     seed's row while rows are close together and no printed rule lies
@@ -761,7 +814,11 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
     nothing to close on 17 of 40 market pages: body type is set with gaps
     smaller than any page-relative gap and the walk ran to its cap. Rows
     know where lines are; the pixels are asked only whether a rule sits
-    between two of them."""
+    between two of them.
+
+    `split_wide_headings`: narrow a banner heading to its left column
+    before building rows at all -- see wide_heading_split(). Market lane
+    only; scoped the same way rule_test is, for the same reason."""
     cw, ch = coords["width"], coords["height"]
     words = coords["words"]
     med = nameplate.page_median_height(words) or 1
@@ -770,6 +827,10 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
     cb = pi.column_bounds(pi.from_ocr((x0, y0, x1 - x0, y1 - y0)), mode="column")
     if cb is None or (cb[1] - cb[0]) > MAX_BLOCK_W * pi.w:
         return None
+    if split_wide_headings:
+        split = wide_heading_split(pi, cb, pi.y_small(y0), pi.y_small(y1))
+        if split is not None:
+            cb = split
     per = pi.page.scale * pi.scale                    # small px per OCR unit
     cx0, cx1 = int(cb[0] / per), int(cb[1] / per)
     incol = [w for w in words if cx0 <= w[0] + w[2] / 2.0 < cx1]
@@ -801,7 +862,20 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
     while lo > 0:
         j = lo - 1
         gap = row_top(lo) - row_bot(j)
-        if gap > 2.2 * med or rule_between(row_bot(j), row_top(lo)):
+        # ⚠️ An ad's own heading is admitted whatever the gap below it, not
+        # just up to the ordinary 2.2*med body-line ceiling: the whitespace
+        # a printer sets between a display headline and the body under it
+        # routinely dwarfs body-line leading, and this docstring already
+        # promises a display row is kept when allow_display. "Important to
+        # the Public" on the Daily Constitutionalist of 1 October 1872 (the
+        # Cooke's clothing ad, 14 September 2026, his flagged crop) sits 652
+        # units -- 6.9x the page median -- above "FOR CLOTHING AND HATS",
+        # and the plain gap test cut the heading off before allow_display
+        # ever got a say. rule_between() and the block-height cap below are
+        # still the backstops: a real printed rule, or the block simply
+        # growing too tall, still stops the climb.
+        display_head = allow_display and is_display(j)
+        if (gap > 2.2 * med and not display_head) or rule_between(row_bot(j), row_top(lo)):
             break
         if is_display(j) and not allow_display:
             break
@@ -889,7 +963,8 @@ def clip_market(lccn, date, ed=1, seq=1, phrase="cotton market", log=print):
     if not hit:
         raise npc.Refused(f"phrase {phrase!r} not found on the page's OCR")
     pi = rules.PageInk(page)
-    box = block_around(pi, c, hit, allow_display=False, log=log, max_frac=MARKET_MAX_FRAC)
+    box = block_around(pi, c, hit, allow_display=False, log=log, max_frac=MARKET_MAX_FRAC,
+                       split_wide_headings=True)
     if not box:
         raise npc.Refused("the market item could not be closed on the grid")
     inside = nameplate.words_in(c["words"], box)
