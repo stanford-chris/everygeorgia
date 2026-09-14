@@ -676,7 +676,8 @@ def clip_ad(lccn, date, ed=1, seq=1, phrase=None, log=print):
         if not hit:
             raise npc.Refused(f"phrase {phrase!r} not found on the page's OCR")
         pi = rules.PageInk(page)
-        box = block_around(pi, c, hit, allow_display=True, log=log)
+        box = block_around(pi, c, hit, allow_display=True, log=log,
+                           split_wide_headings=True)
         if not box:
             raise npc.Refused("the advertisement could not be closed on the grid")
         inside = nameplate.words_in(c["words"], box)
@@ -769,12 +770,30 @@ def row_has_rule(pi, sx0, sx1, ya, yb):
     return False
 
 
+MIN_SPLIT_FRAC = 0.30    # ⚠️ Added 15 September 2026, measuring the AD lane's
+                         # own candidates before turning this on there: a
+                         # boxed display ad's own decorative border rule
+                         # sits a few px inside its column's edge, and
+                         # without a width floor wide_heading_split() reads
+                         # it as a banner divider and returns a ~10px sliver
+                         # of the ad rather than declining. Measured on 5
+                         # real hits (all "sarsaparilla" on the same title,
+                         # a boxed patent-medicine ad), the false candidate's
+                         # own half ran 3.0-6.1% of cb's width; the two real
+                         # banner splits measured here (the Augusta Herald's
+                         # "COTTON MARKET" and a "sewing machines" ad on the
+                         # Union Recorder of 27 February 1906) both ran
+                         # 49-51%. 0.30 sits with a wide margin either side
+                         # of both real numbers seen so far.
+
+
 def wide_heading_split(pi, cb, y0_small, y1_small):
     """If `cb` (small-image x0,x1) is a BANNER spanning two real, narrower
     print columns -- straddled by a genuine interior vertical rule that
     continues well past the heading's own bottom (`y1_small`) -- return
     the LEFT half of `cb` to follow instead. None if there is no such
-    rule, or more than one candidate (ambiguous; leave `cb` alone).
+    rule, it is not roughly centred (MIN_SPLIT_FRAC on both sides), or
+    there is more than one candidate (ambiguous; leave `cb` alone).
 
     "COTTON MARKET" on the Augusta Herald of 19 February 1918 is set as a
     banner across two narrower columns whose CONTENT below it is two
@@ -798,6 +817,9 @@ def wide_heading_split(pi, cb, y0_small, y1_small):
     if len(candidates) != 1:
         return None
     vx = candidates[0][0]
+    width = cb[1] - cb[0]
+    if width <= 0 or min(vx - cb[0], cb[1] - vx) < MIN_SPLIT_FRAC * width:
+        return None
     return (cb[0], vx)
 
 
@@ -818,7 +840,11 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
 
     `split_wide_headings`: narrow a banner heading to its left column
     before building rows at all -- see wide_heading_split(). Market lane
-    only; scoped the same way rule_test is, for the same reason."""
+    since 13 September 2026; the ad lane's own phrase hits sit inside a
+    wide banner-style heading too (large display ads spanning most of the
+    page), and 15 September 2026 measured a real instance -- a "sewing
+    machines" ad merged with an unrelated LOCAL MENTION column of grocery
+    notices via exactly this shape -- so it is wired in there as well."""
     cw, ch = coords["width"], coords["height"]
     words = coords["words"]
     med = nameplate.page_median_height(words) or 1

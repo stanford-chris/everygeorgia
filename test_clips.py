@@ -791,6 +791,18 @@ class BannerHeadingPage:
         return buf.getvalue()
 
 
+class NearEdgeBannerHeadingPage(BannerHeadingPage):
+    """The same banner shape, but with its interior rule sitting close to
+    the LEFT edge of the banner's own bounds -- the shape of a boxed
+    display ad's own decorative border rule, not a genuine two-column
+    banner divider. "sarsaparilla" on the Augusta Chronicle of 10-18 May
+    1871 (the same title, five dates) measured this at 3.0-6.1% of the
+    banner's width; SPLIT_X here sits at 4.3% (20 of 470), comfortably
+    inside that range and MIN_SPLIT_FRAC's own 30% floor."""
+    lccn, date = "sn00000006", "1900-01-05"
+    SPLIT_X = 505    # 35 of 470 = 7.4% from COL_X0 -- a border, not a banner
+
+
 class WideHeadingSplit(unittest.TestCase):
     def setUp(self):
         self.page = BannerHeadingPage()
@@ -849,6 +861,35 @@ class WideHeadingSplit(unittest.TestCase):
                                           max_frac=clips.MARKET_MAX_FRAC)
         self.assertIsNotNone(with_flag)
         self.assertEqual(with_flag, without_flag)
+
+    def test_the_ad_lane_gets_the_same_split_when_allow_display_is_true(self):
+        # 15 September 2026: wired into clip_ad too, once measured. Same
+        # fixture, same assertion as the market-lane test above, just
+        # allow_display=True -- an ad's own banner heading merges an
+        # unrelated column exactly the way a market section's does.
+        box = clips.block_around(self.pi, self.coords, self.hit, allow_display=True,
+                                 split_wide_headings=True)
+        self.assertIsNotNone(box)
+        words_in = clips.nameplate.words_in(self.coords["words"], box)
+        text = clips.ocr_text(words_in)
+        self.assertIn("BANNER", text)
+        self.assertIn("LEFT 0", text)
+        self.assertNotIn("RIGHT", text)
+
+    def test_a_rule_near_the_edge_is_a_border_not_a_banner_divider(self):
+        # A boxed ad's own decorative border rule sits close to one edge
+        # of its column, not near the middle -- MIN_SPLIT_FRAC declines a
+        # candidate that lopsided rather than returning a sliver of the ad.
+        page = NearEdgeBannerHeadingPage()
+        coords = page.coords()
+        pi = rules.PageInk(page)
+        hit = clips.find_phrase(coords["words"], "banner head")
+        self.assertIsNotNone(hit)
+        x0 = min(w[0] for w in hit); x1 = max(w[0] + w[2] for w in hit)
+        y0 = min(w[1] for w in hit); y1 = max(w[1] + w[3] for w in hit)
+        cb = pi.column_bounds(pi.from_ocr((x0, y0, x1 - x0, y1 - y0)), mode="column")
+        split = clips.wide_heading_split(pi, cb, pi.y_small(y0), pi.y_small(y1))
+        self.assertIsNone(split)
 
 
 class Policies(unittest.TestCase):
