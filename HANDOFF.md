@@ -464,6 +464,9 @@ build first. Raise `INNER_SHARE` only with a measured yield behind it.
    post once before any posts twice. Without it the Atlanta Georgian's 14,185
    issues would be one post in fifteen. Within a title the date is a seeded
    shuffle keyed on the pass number, so pass 2 shows a different year.
+   ⚠️➡️✅ **This promise was broken for headline/article/cartoon from launch
+   until 14 September 2026 — see "The shared title order could collapse to a
+   lane's own subset" below, now fixed.**
 2. **The post is the GHN FAQ citation**, as promised on 21 August, with a
    bracketed description in the article slot and the sequence number as the
    page: `[Nameplate], “The Independent Press,” Eatonton, 13 January 1855,
@@ -488,6 +491,41 @@ build first. Raise `INNER_SHARE` only with a measured yield behind it.
    the everycarnegie reasoning: the audience is American. Ten minutes off
    everycarnegie's slots so two bots are not logging in at once. Not decided
    by Chris; change the plist if he wants otherwise.
+
+## ✅ The shared title order could collapse to a lane's own subset — fixed 14 September 2026
+
+The "OPEN FINDING" left in `~/Scripts/CLAUDE.md` on the night of 11 September
+(the title order not being as fixed as `title_order()` promises) is now
+**fixed**, not just diagnosed. It surfaced again on 14 September when Chris
+noticed the Griffin Daily News — one continuously-published paper split by
+Chronicling America into three LCCNs across its own title changes (1881-89,
+1889-1924, 1924-present) — posting three times in three days.
+
+**The mechanism, confirmed this time rather than guessed at.** `title_order()`
+maintains ONE shared `state["order"]` ledger, but headline/article/cartoon
+draw from their own narrow eligible-title subsets (19/19/13 of the full 843
+postable titles), and `title_order()`'s first line drops anything from the
+existing order that is not in whatever `titles` set it was just called with.
+A win by one of those narrow lanes therefore persisted the shared order down
+to that lane's tiny pool — measured live at exactly 19 on 14 September, right
+after a headline-lane post the evening before. Griffin occupies 3 of those 19
+slots, so once the order was stuck there Griffin had a genuine ~16% chance of
+being the next headline-lane post. Not a shuffle coincidence: a structural
+bias, and it would recur for any other town whose paper Chronicling America
+split the same way.
+
+**The fix.** `pick()` now always threads `sources["nameplate"]` (the
+unfiltered 843-title universe) through `choose()`/`next_titles()` as a
+separate `full_titles` argument, so `title_order()` is never called with
+anything narrower than the full set. Each lane still only WALKS its own
+eligible subset when picking a title to try; it just no longer prunes the
+shared ledger to it. Verified the fix self-heals the already-stuck state
+file (19 → 843) on the very next call, with no manual state edit needed, and
+mutation-tested the new regression tests against a scratch copy of the whole
+repo by reverting just the `pick()` wiring — confirmed to fail without the
+fix and pass with it. Commit `6b69564`; `test_everygeorgia_post.py` gained
+three tests pinning this shape (`Selection.test_a_narrow_lane_never_collapses_
+the_shared_order_when_full_titles_is_given` and its two neighbours).
 
 ⚠️ **The alt text lost a sentence.** It ended "Scanned from microfilm; the page
 is worn and the ink uneven", which was true of the one crop it was written
