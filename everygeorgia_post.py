@@ -284,7 +284,22 @@ def eligible(issues, lane):
 def title_order(state, titles):
     """Fixed shuffled order over the titles, appended never reshuffled, so a
     title that appears later (a re-run rights join) joins the tail and the
-    sequence already published is undisturbed. Same shape as everycarnegie."""
+    sequence already published is undisturbed. Same shape as everycarnegie.
+
+    ⚠️⚠️ `titles` MUST be the account's full postable-title universe, never a
+    lane's own narrower eligible set. The first line below drops anything in
+    the existing order not present in `titles` -- meant for a title the
+    rights join genuinely lost, but a lane-restricted set (headline/article's
+    19 dailies, cartoon's 13, against 843 overall) makes it drop everything
+    else too, and PERSISTS that collapse to `state["order"]` the moment that
+    lane's post wins the run. Found 14 September 2026, three days after
+    HANDOFF.md logged it as an open, unfixed finding: the Griffin Daily News
+    (three LCCNs for one continuously-published paper, one of Chronicling
+    America's title-change splits) occupies 3 of headline/article's 19
+    eligible slots, and a headline-lane post collapsed the persisted order
+    from 843 to 19 the same evening a reader noticed Griffin posting twice in
+    two days. `next_titles()` now threads a separate `full_titles` argument
+    through for exactly this reason -- call this only with that."""
     order = [t for t in state.get("order", []) if t in titles]
     known = set(order)
     fresh = sorted(t for t in titles if t not in known)
@@ -311,18 +326,28 @@ def posted_this_pass(state, lccn, lane="nameplate"):
                for p in state.get("posted", []))
 
 
-def next_titles(state, issues, lane="nameplate"):
+def next_titles(state, issues, lane="nameplate", full_titles=None):
     """Titles still owed a post this pass, in order. Rolls the pass over when
     every title has either posted or been exhausted. The pass counter is
-    shared; each title-order lane keeps its own tried map."""
-    order = title_order(state, issues)
-    # ⚠️ Each lane starts the shared order at its own point, or the lanes
-    # march through the same titles together: the first dozen posts carried
-    # the Cordele Dispatch three times in three lanes. The offset is the
-    # lane's place in LANES, so it is fixed and needs no state.
-    if order:
-        off = (LANES.index(lane) * len(order)) // len(LANES)
-        order = order[off:] + order[:off]
+    shared; each title-order lane keeps its own tried map.
+
+    ⚠️ `full_titles` is the account's full postable-title universe, and must
+    be the SAME object/set across every lane's call in one run -- `issues`
+    alone is a lane's own narrower eligible set for headline/article/cartoon
+    (19/19/13 of 843 titles). Defaults to `issues` only so a caller with
+    nothing broader to offer (a test, say) still gets the old single-set
+    behaviour; every real caller in `pick()` passes `sources["nameplate"]`,
+    which is always the unfiltered set. See `title_order()`'s own warning."""
+    master = title_order(state, full_titles if full_titles is not None else issues)
+    # ⚠️ Each lane starts the shared MASTER order at its own point, or the
+    # lanes march through the same titles together: the first dozen posts
+    # carried the Cordele Dispatch three times in three lanes. The offset is
+    # computed against the master's own length, which is now stable across
+    # every lane, rather than against a lane's own narrower eligible count.
+    if master:
+        off = (LANES.index(lane) * len(master)) // len(LANES)
+        master = master[off:] + master[:off]
+    order = [t for t in master if t in issues]
     for _ in range(2):
         tried = lane_tried(state, lane)
         owed = []
@@ -511,14 +536,14 @@ def log_review(r, state):
         f.write(json.dumps(line, ensure_ascii=False) + "\n")
 
 
-def choose(state, issues, log=print, lane="nameplate"):
+def choose(state, issues, log=print, lane="nameplate", full_titles=None):
     """Walk the owed titles and their dates until one clip PASSES. Returns
     (lccn, result) or (None, None). Every date looked at is recorded in
     state['tried'][lane] whether it passed or not, so a dry run that is then
     followed by a live run does not re-fetch, and a REVIEW is not re-offered
-    next run."""
+    next run. `full_titles` passes straight through to `next_titles()`."""
     tried = lane_tried(state, lane)
-    for lccn in next_titles(state, issues, lane)[:TITLES_PER_RUN]:
+    for lccn in next_titles(state, issues, lane, full_titles=full_titles)[:TITLES_PER_RUN]:
         seen = set(tried.get(lccn, []))
         used = {(q["lccn"], q["date"]) for q in state.get("posted", []) if q.get("pass") == state["pass"]}
         for date, ed in dates_for(lccn, issues[lccn], state["pass"], lane):
@@ -594,6 +619,13 @@ def next_lane(state):
 
 
 def pick(state, sources, lane, log=print):
+    # ⚠️ sources["nameplate"] is always the FULL postable-title universe
+    # (main() builds it that way), so it doubles as `full_titles` for every
+    # narrower lane -- see title_order()'s and next_titles()'s warnings.
+    # `.get()`, not `[]`: a caller testing one lane in isolation may build a
+    # `sources` dict with no "nameplate" key at all, and `choose()`/
+    # `next_titles()` already fall back to the lane's own set when
+    # `full_titles` is None.
     if lane in SEARCH_LANES:
         return choose_search(state, sources[lane], lane, log=log)
     if lane == "cartoon":
@@ -603,7 +635,7 @@ def pick(state, sources, lane, log=print):
         if r is not None:
             return lccn, r
         log("  cartoon: nothing from the credit-line search; the title order")
-    return choose(state, sources[lane], log=log, lane=lane)
+    return choose(state, sources[lane], log=log, lane=lane, full_titles=sources.get("nameplate"))
 
 
 # ------------------------------------------------------------------ profile

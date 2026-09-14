@@ -144,6 +144,52 @@ class Selection(unittest.TestCase):
         self.assertEqual(grown[:3], first)
         self.assertEqual(grown[3], "sn00000004")
 
+    def test_narrow_lane_without_full_titles_still_shrinks_the_order(self):
+        """The pre-fix, single-set behaviour is kept for a caller with
+        nothing broader to offer, so `full_titles` is genuinely optional
+        rather than a silent requirement."""
+        s = {"order": [], "pass": 1, "posted": [], "tried": {}}
+        ep.title_order(s, self.issues)   # seed the full order, 3 titles
+        narrow = {"sn00000001": self.issues["sn00000001"]}
+        ep.next_titles(s, narrow, lane="headline")
+        self.assertEqual(s["order"], ["sn00000001"])
+
+    def test_a_narrow_lane_never_collapses_the_shared_order_when_full_titles_is_given(self):
+        """14 September 2026: headline/article/cartoon draw from a narrow
+        eligible subset of the full title universe (in production, 19 or 13
+        of 843), and a narrow-lane win used to persist state["order"] down
+        to that subset -- discovered when a reader noticed the Griffin Daily
+        News (three separate LCCNs for one continuously-published paper,
+        a Chronicling America title-change split) posting three times in
+        three days, because Griffin occupied 3 of headline/article's 19
+        eligible slots and any headline-lane win collapsed the master order
+        to that 19. `full_titles` (always sources["nameplate"] from
+        `pick()`) is what keeps the master order at its full size regardless
+        of which lane's subset actually won the run."""
+        s = {"order": [], "pass": 1, "posted": [], "tried": {}}
+        narrow = {"sn00000001": self.issues["sn00000001"]}
+        owed = ep.next_titles(s, narrow, lane="headline", full_titles=self.issues)
+        self.assertEqual(owed, ["sn00000001"])
+        self.assertEqual(sorted(s["order"]), sorted(self.issues))   # NOT shrunk to 1
+        # A later nameplate-lane call still sees the same, undisturbed full order.
+        again = ep.next_titles(s, self.issues, lane="nameplate", full_titles=self.issues)
+        self.assertEqual(sorted(again), sorted(self.issues))
+        self.assertEqual(sorted(s["order"]), sorted(self.issues))
+
+    def test_pick_threads_sources_nameplate_as_full_titles(self):
+        """The wiring in `pick()`: a narrow-lane win must not shrink the
+        shared order, using the real call path rather than next_titles()
+        directly."""
+        ep.CLIP = lambda lane, l, d, e, seq=1, phrase=None: fake_result(l, d)
+        s = {"order": [], "pass": 1, "posted": [], "tried": {}}
+        for lane in ep.LANES + (ep.CARTOON_SEARCH,):
+            s["tried"].setdefault(lane, {})
+        sources = {"nameplate": self.issues,
+                   "headline": {"sn00000001": self.issues["sn00000001"]}}
+        lccn, r = ep.pick(s, sources, "headline", log=lambda *a: None)
+        self.assertIsNotNone(r)
+        self.assertEqual(sorted(s["order"]), sorted(self.issues))
+
     def test_dates_differ_between_passes(self):
         d1 = ep.dates_for("sn00000001", self.issues["sn00000001"], 1)
         d2 = ep.dates_for("sn00000001", self.issues["sn00000001"], 2)
