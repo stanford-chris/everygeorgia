@@ -1,25 +1,29 @@
 #!/usr/bin/env python3
 """
-crop_closure_check.py -- read-only sweep of the ad lane's own crops: did
-clips.block_around's row-walk stop with room to spare, or right at the edge
-of what it could safely justify?
+crop_closure_check.py -- read-only sweep of the ad and market lanes' own
+crops: did clips.block_around's row-walk stop with room to spare, or right
+at the edge of what it could safely justify?
 
 Why this exists. The Cooke's clothing ad, posted 14 September 2026, closed
 cleanly by every existing check (rights, vocabulary, ad_markers,
 legibility) and still shipped truncated at both ends: nothing here had
 ever asked whether the WALK's OWN stopping decision was a confident one,
 only whether the words it kept were clean. clips.closure_margins() (15
-September 2026) answers that for a single crop, already-returned box; this
-re-derives and checks every recent ad post against it.
+September 2026) answers that by running block_around ITSELF with its own
+instrumentation on, so the reason reported is always block_around's real
+one, never a reconstruction.
 
-⚠️ AD LANE ONLY, and that is not laziness. closure_margins() only models
-the walk's allow_display=True checks (a printed rule, the 2.2*med gap
-ceiling, the display-heading allowance); market's own
-PARA_GAP/MARKET_ROWS paragraph-break guard only ever fires when
-allow_display is False, and is not modelled. Feeding a market post
-through this would produce numbers that do not mean what they look like.
-Extend to market only once that guard is modelled too -- see
-closure_margins' own docstring in clips.py.
+⚠️ Both lanes since the same day this script itself was built, but market
+was DELIBERATELY held back at first: closure_margins originally tried to
+reconstruct the stop reason from the finished box's own y-range, and on a
+dense market table that reconstruction picked the wrong row as "included"
+(the box's own padding overlapped the next EXCLUDED row) and reported a
+phantom near miss with a zero gap. Fixed by having block_around record
+its OWN reason at the exact moment it stops, rather than guessing from
+the outside -- see closure_margins' own docstring in clips.py. Both
+lanes' searched phrases are read from data/post_state.json's own
+`tried[lane]` map, which is also what supplies `seed` for market's
+PARA_GAP grace-period check.
 
 ADVISORY ONLY. This gates nothing and posts nothing, changes nothing and
 deletes nothing: it reports a post that might be worth a second look, and
@@ -66,10 +70,22 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, "data", "post_state.json")
 SCRIPTS = os.path.join(os.path.expanduser("~"), "Scripts")
 
-# A ratio under this (or negative, or the should-have-been-included flag,
-# which reads as 0.0) is a near miss worth a look. The Cooke's ad, fixed,
+# Per-lane block_around() parameters, matching clip_ad()/clip_market()'s
+# own calls exactly -- see clips.py.
+LANES = {
+    "ad": {"allow_display": True, "max_frac": None},
+    "market": {"allow_display": False, "max_frac": "MARKET_MAX_FRAC"},   # resolved below
+}
+LANES["market"]["max_frac"] = clips.MARKET_MAX_FRAC
+
+# A ratio under this is a near miss worth a look. The Cooke's ad, fixed,
 # reads 0.41-0.60 on real content; comfortably above this floor.
 MARGIN_FLOOR = 0.15
+
+# Reasons closure_margins can report that are CONFIDENT, structural stops
+# -- never flagged regardless of ratio (most have none). Only "gap" and
+# "paragraph-gap" carry a ratio worth comparing to MARGIN_FLOOR.
+CONFIDENT_REASONS = {"rule", "display-boundary", "row-count-cap", "cap"}
 
 
 def load_state(path=STATE_FILE):
@@ -79,14 +95,14 @@ def load_state(path=STATE_FILE):
         return json.load(f)
 
 
-def recent_ad_posts(state, days, now=None):
-    """Posted ad-lane entries from the last `days` days, per their own
+def recent_posts(state, days, lanes=tuple(LANES), now=None):
+    """Posted entries in `lanes` from the last `days` days, per their own
     `at` timestamp. `now` is injectable for tests."""
     now = now or datetime.now(timezone.utc)
     cutoff = now - timedelta(days=days)
     out = []
     for p in state.get("posted", []):
-        if p.get("lane") != "ad":
+        if p.get("lane") not in lanes:
             continue
         try:
             at = datetime.fromisoformat(p["at"])
@@ -99,20 +115,18 @@ def recent_ad_posts(state, days, now=None):
 
 def phrase_for(state, post):
     key = f"{post['lccn']}:{post['date']}:{post['seq']}"
-    return state.get("tried", {}).get("ad", {}).get(key)
+    return state.get("tried", {}).get(post.get("lane"), {}).get(key)
 
 
 def flag_from_margins(margins, floor=MARGIN_FLOOR):
     """The findings a set of closure_margins() report on its own -- pure,
     no network, so this is the part covered by injected fixtures rather
-    than mocked HTTP. "rule" and "display-excluded-by-cap" are never
-    flagged (both are confident, structural stops); `None` (nothing
-    outside that edge) is never flagged; a "gap" or
-    "should-have-been-included" reading below `floor` is."""
-    CONFIDENT = {"rule", "display-excluded-by-cap"}
+    than mocked HTTP. A CONFIDENT_REASONS stop is never flagged; `None`
+    (nothing outside that edge) is never flagged; a "gap" or
+    "paragraph-gap" reading below `floor` is."""
     findings = []
     for side, info in (margins or {}).items():
-        if info is None or info["reason"] in CONFIDENT:
+        if info is None or info["reason"] in CONFIDENT_REASONS:
             continue
         ratio = info["ratio"]
         if ratio is None or ratio < floor:
@@ -122,9 +136,13 @@ def flag_from_margins(margins, floor=MARGIN_FLOOR):
 
 
 def check_post(post, phrase, floor=MARGIN_FLOOR, log=print):
-    """Re-derive the crop and its closure margins for one posted ad.
-    Returns a findings list (possibly empty, meaning clean), or None if
-    the page/phrase could not be re-derived at all (NOT CHECKED)."""
+    """Re-derive the crop and its closure margins for one posted ad or
+    market item. Returns a findings list (possibly empty, meaning clean),
+    or None if the page/phrase could not be re-derived at all, or the
+    lane isn't one closure_margins covers (NOT CHECKED either way)."""
+    lane_params = LANES.get(post.get("lane"))
+    if lane_params is None:
+        return None
     try:
         pages = ghn_api.issue_pages(post["lccn"], post["date"], post.get("edition", 1))
     except (ghn_api.FetchError, ValueError) as e:
@@ -139,10 +157,11 @@ def check_post(post, phrase, floor=MARGIN_FLOOR, log=print):
     if not hit:
         return None
     pi = rules.PageInk(page)
-    box = clips.block_around(pi, c, hit, allow_display=True, split_wide_headings=True)
-    if not box:
-        return None
-    margins = clips.closure_margins(pi, c, box, allow_display=True)
+    margins = clips.closure_margins(pi, c, hit, lane_params["allow_display"],
+                                    max_frac=lane_params["max_frac"],
+                                    split_wide_headings=True)
+    if margins is None:
+        return None      # block_around itself refused this crop
     return flag_from_margins(margins, floor)
 
 
@@ -204,13 +223,13 @@ def main():
             log_observe(f"post_state.json not found at {STATE_FILE}")
         return 0
 
-    posts = recent_ad_posts(state, args.days)
-    log(f"crop closure check: {len(posts)} ad post(s) in the last {args.days} day(s)")
+    posts = recent_posts(state, args.days)
+    log(f"crop closure check: {len(posts)} post(s) (ad + market) in the last {args.days} day(s)")
 
     flagged = not_checked = 0
     for post in posts:
         phrase = phrase_for(state, post)
-        label = f"{post['lccn']} {post['date']} p{post.get('seq')}"
+        label = f"{post.get('lane')} {post['lccn']} {post['date']} p{post.get('seq')}"
         if not phrase:
             not_checked += 1
             log(f"  {label}: NOT CHECKED (no phrase on record)")
@@ -229,7 +248,7 @@ def main():
 
     if not flagged and not not_checked:
         log("  clean")
-    log(f"\n{flagged} questionable, {not_checked} not checked, of {len(posts)} ad post(s)")
+    log(f"\n{flagged} questionable, {not_checked} not checked, of {len(posts)} post(s)")
 
     report = "\n".join(lines)
     print(report)
@@ -245,11 +264,11 @@ def main():
         n = flagged
         subject = f"[claude] everygeorgia: {n} questionable crop{'s' if n != 1 else ''}"
         send_mail(subject, report)
-        log_observe(f"{flagged} questionable ad crop(s) of {len(posts)} checked "
+        log_observe(f"{flagged} questionable crop(s) of {len(posts)} checked "
                    f"in the last {args.days} days")
     elif posts and not_checked == len(posts):
         send_mail("[claude] everygeorgia: crop closure check could not check any posts", report)
-        log_observe(f"could not re-derive any of {len(posts)} ad post(s) "
+        log_observe(f"could not re-derive any of {len(posts)} post(s) "
                    f"in the last {args.days} days")
 
     return 1 if flagged else 0

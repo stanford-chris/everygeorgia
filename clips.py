@@ -824,7 +824,7 @@ def wide_heading_split(pi, cb, y0_small, y1_small):
 
 
 def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
-                 rule_test=row_has_rule, split_wide_headings=False):
+                 rule_test=row_has_rule, split_wide_headings=False, diagnostics=None):
     """The column block of set text around `seed` words: x from the page's
     gutters (rules.py), rows from the OCR, walking up and down from the
     seed's row while rows are close together and no printed rule lies
@@ -844,7 +844,20 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
     wide banner-style heading too (large display ads spanning most of the
     page), and 15 September 2026 measured a real instance -- a "sewing
     machines" ad merged with an unrelated LOCAL MENTION column of grocery
-    notices via exactly this shape -- so it is wired in there as well."""
+    notices via exactly this shape -- so it is wired in there as well.
+
+    `diagnostics`: an optional dict this function fills IN PLACE (never
+    read) with {"top": info_or_None, "bottom": info_or_None} recording
+    exactly why each direction's walk stopped -- see closure_margins(),
+    which is the only real caller. Filled at the moment of the SAME break
+    or return this function already takes, so it can never drift out of
+    sync with the box actually returned the way a caller reconstructing
+    the reason from the finished box alone would risk doing (found the
+    hard way, 15 September 2026: on a dense market table, the finished
+    box's own +1-med padding routinely overlapped the very next EXCLUDED
+    row, so a reconstruction keyed on the box's y-range picked the wrong
+    row as "included" and reported a phantom near-miss with a zero
+    gap). No cost when omitted (`is not None` guards every write)."""
     cw, ch = coords["width"], coords["height"]
     words = coords["words"]
     med = nameplate.page_median_height(words) or 1
@@ -884,6 +897,10 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
     def is_display(i):
         return row_h(i) >= 1.6 * med
 
+    def _note(direction, j, reason, ratio):
+        if diagnostics is not None:
+            diagnostics[direction] = {"reason": reason, "text": ocr_text(rows[j]), "ratio": ratio}
+
     lo = hi = idx
     while lo > 0:
         j = lo - 1
@@ -901,9 +918,14 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
         # still the backstops: a real printed rule, or the block simply
         # growing too tall, still stops the climb.
         display_head = allow_display and is_display(j)
-        if (gap > 2.2 * med and not display_head) or rule_between(row_bot(j), row_top(lo)):
+        if gap > 2.2 * med and not display_head:
+            _note("top", j, "gap", (gap - 2.2 * med) / (2.2 * med))
+            break
+        if rule_between(row_bot(j), row_top(lo)):
+            _note("top", j, "rule", None)
             break
         if is_display(j) and not allow_display:
+            _note("top", j, "display-boundary", None)
             break
         # ⚠️ The down-walk's own paragraph-break guard, mirrored upward,
         # but WITHOUT its "j - idx > 3" grace period. Without a guard at
@@ -925,16 +947,24 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
         # 105-unit PARA_GAP threshold, dropped because it fell on the
         # very first row considered) before finally stopping four
         # sections later.
-        if not allow_display and (gap > PARA_GAP * med or idx - j > MARKET_ROWS):
+        if not allow_display and gap > PARA_GAP * med:
+            _note("top", j, "paragraph-gap", (gap - PARA_GAP * med) / (PARA_GAP * med))
+            break
+        if not allow_display and idx - j > MARKET_ROWS:
+            _note("top", j, "row-count-cap", None)
             break
         if row_bot(hi) - row_top(j) > cap:
             # ⚠️ The top is the cap, not a rule or a gap: the block begins
             # mid-item ("ment is seven days the longest", Savannah Morning
-            # News, 13 January 1871). Nothing to show.
+            # News, 13 January 1871). Nothing to show. Diagnostics are moot:
+            # there is no box for a caller to have asked about this one.
             return None
         lo = j
         if is_display(j) and allow_display:
             continue
+    else:
+        if diagnostics is not None:
+            diagnostics["top"] = None       # reached the column's own top; nothing outside
     paragraphs = 0
     while hi < len(rows) - 1:
         j = hi + 1
@@ -949,9 +979,14 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
         # caption for. Same backstops as the up-walk: rule_between() and
         # the height cap below still stop the walk.
         display_tail = allow_display and is_display(j)
-        if (gap > 2.2 * med and not display_tail) or rule_between(row_bot(hi), row_top(j)):
+        if gap > 2.2 * med and not display_tail:
+            _note("bottom", j, "gap", (gap - 2.2 * med) / (2.2 * med))
+            break
+        if rule_between(row_bot(hi), row_top(j)):
+            _note("bottom", j, "rule", None)
             break
         if is_display(j) and not allow_display and j > idx:
+            _note("bottom", j, "display-boundary", None)
             break
         # ⚠️ A market report is its heading and the paragraph under it. The
         # Marietta Journal of 21 November 1878 ran "Marietta Market Report"
@@ -959,11 +994,19 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
         # through the court week and a robbery. A paragraph break (a gap
         # over PARA_GAP of the body type) after at least three rows below
         # the seed ends the block when `allow_display` is off.
-        if not allow_display and (gap > PARA_GAP * med and j - idx > 3 or j - idx > MARKET_ROWS):
+        if not allow_display and gap > PARA_GAP * med and j - idx > 3:
+            _note("bottom", j, "paragraph-gap", (gap - PARA_GAP * med) / (PARA_GAP * med))
+            break
+        if not allow_display and j - idx > MARKET_ROWS:
+            _note("bottom", j, "row-count-cap", None)
             break
         if row_bot(j) - row_top(lo) > cap:
+            _note("bottom", j, "cap", None)
             break
         hi = j
+    else:
+        if diagnostics is not None:
+            diagnostics["bottom"] = None    # reached the column's own bottom; nothing outside
     top, bot = row_top(lo), row_bot(hi)
     # ⚠️ A block is at least MIN_BLOCK_ROWS rows and MIN_BLOCK_FRAC of the
     # page: "MOTT'S LIVER PILLS cure torpidity" came back as a two-line
@@ -975,108 +1018,60 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
     return (cx0, max(0, top - pad), cx1 - cx0, min(ch, bot + pad) - max(0, top - pad))
 
 
-def closure_margins(pi, coords, box, allow_display, rule_test=row_has_rule, max_frac=None):
-    """ADVISORY ONLY, never a gate: for a `box` already returned by
-    `block_around` over the same `coords`/`allow_display`/`max_frac`, how
-    marginal was the stop on each side? Built 15 September 2026 for a
+def closure_margins(pi, coords, seed, allow_display, log=print, max_frac=None,
+                    rule_test=row_has_rule, split_wide_headings=False):
+    """ADVISORY ONLY, never a gate: runs `block_around` ITSELF, with its
+    `diagnostics` instrumentation on, and returns just the diagnostics --
+    why did the walk stop on each side? Built 15 September 2026 for a
     periodic audit, after a crop that closed cleanly by every existing
     check (rights, vocabulary, ad_markers, legibility) still shipped
     truncated -- the walk's own stopping decision was never itself a
-    thing anyone asked about.
+    thing anyone asked about. Takes the SAME arguments as block_around
+    (not a pre-built box) and calls it directly, which is what makes the
+    answer trustworthy: the reason reported is the box's ACTUAL reason,
+    not a reconstruction that can drift out of sync with it.
 
-    Recomputes the row immediately outside each edge (rows, not pixels,
-    matching block_around's own reasoning) and reports why the walk
-    stopped there: a printed rule (a confident, structural stop), the
-    ordinary body-line gap ceiling (`ratio` is how far past it the actual
-    gap fell -- near 0 is a near miss, a large number is not), the block
-    already being as tall as `max_frac` of the page allows (also a
-    confident, structural stop -- see MAX_BLOCK_FRAC's own comment), or
-    -- a state the current code should not otherwise produce, so it is
-    flagged rather than silently treated as fine -- a display heading
-    that should have been admitted under `allow_display` and was not.
-    `None` on a side means either nothing sits outside that edge (the
-    block reached the column's own end) or there is nothing to recompute
-    (an empty column).
+    ⚠️ A reconstruction WAS tried first, keyed off the finished box's own
+    y-range, and it was wrong on real data: on a dense market table the
+    box's own +1-med padding routinely overlapped the very next EXCLUDED
+    row, so the reconstruction picked the wrong row as "included" and
+    reported a phantom near-miss with a zero gap on posts that were
+    actually fine. Reusing block_around's own walk instead of guessing
+    at its result from the outside closes that off by construction.
 
-    Read-only and approximate: it does not know whether MIN_BLOCK_ROWS or
-    MIN_BLOCK_FRAC were what actually stopped the walk before it ever
-    reached this neighbour, only what the neighbour itself looks like
-    now (the cap IS modelled, below, because 15 September 2026's own
-    first live run needed it: a Castoria ad's closing wordmark was
-    correctly admitted by the display-tail fix, and the UNRELATED item
-    below it, "Bringing Up Baby", was correctly excluded by the cap --
-    without checking the cap here that correct exclusion read as an
-    unexplained near miss). A person reading a flagged case decides;
-    this only narrows down what to look at.
+    Possible reasons, both lanes now (extended to market 15 September
+    2026, once this instrumented approach made it safe to):
 
-    ⚠️ TRUSTWORTHY FOR allow_display=True ONLY -- the ad lane. It models
-    the up- and down-walks' unconditional checks (a printed rule, the
-    2.2*med gap ceiling, the display-heading/tail allowance, the height
-    cap) but NOT market's own PARA_GAP/MARKET_ROWS paragraph-break guard,
-    which only ever fires when `not allow_display`. Fed a market box, a
-    stop the guard made correctly can read as an unexplained near miss
-    (or even a negative ratio) here, because the real reason it stopped
-    is a check this function does not know exists. Call it for market
-    only once that guard is modelled too; until then a caller must pass
-    allow_display and mean it."""
-    words = coords["words"]
-    med = nameplate.page_median_height(words) or 1
-    bx, by, bw, bh = box
-    cx0, cx1 = bx, bx + bw
-    incol = [w for w in words if cx0 <= w[0] + w[2] / 2.0 < cx1]
-    rows = _rows(incol)
-    if not rows:
-        return {"top": None, "bottom": None}
+      "rule"              a printed rule -- confident, structural
+      "gap"               the ordinary 2.2*med gap ceiling; `ratio` is
+                          how far past it the actual gap fell -- near 0
+                          is a near miss, large is confident
+      "display-boundary"  `not allow_display` only: a display row is
+                          NEVER admitted there by design (the next
+                          item's own heading ends a market table) --
+                          confident, not a miss of any kind
+      "paragraph-gap"     `not allow_display` only: PARA_GAP's own
+                          narrower ceiling (with the down-walk's 3-row
+                          grace period); `ratio` against PARA_GAP*med
+                          the same way "gap"'s is
+      "row-count-cap"     `not allow_display` only: MARKET_ROWS --
+                          confident, an 80-row backstop essentially
+                          never meant to be the real reason
+      "cap"               the block already as tall as `max_frac` of
+                          the page allows -- confident, structural
 
-    def row_top(r):
-        return min(w[1] for w in r)
-
-    def row_bot(r):
-        return max(w[1] + w[3] for w in r)
-
-    def is_display(r):
-        return max(w[3] for w in r) >= 1.6 * med
-
-    included = [r for r in rows if row_top(r) < by + bh and row_bot(r) > by]
-    if not included:
-        return {"top": None, "bottom": None}
-    top_row = min(included, key=row_top)
-    bot_row = max(included, key=row_bot)
-    per = pi.page.scale * pi.scale
-    sx0, sx1 = int(cx0 * per), int(cx1 * per)
-    cap = (max_frac or MAX_BLOCK_FRAC) * coords["height"]
-
-    def describe(neighbor, gap, direction):
-        stopped_by_rule = rule_test(pi, sx0, sx1, *((row_bot(neighbor), row_top(top_row))
-                                    if direction == "up" else (row_bot(bot_row), row_top(neighbor))))
-        if stopped_by_rule:
-            return {"reason": "rule", "text": ocr_text(neighbor), "ratio": None}
-        if allow_display and is_display(neighbor):
-            would_span = (row_bot(bot_row) - row_top(neighbor) if direction == "up"
-                         else row_bot(neighbor) - row_top(top_row))
-            if would_span > cap:
-                return {"reason": "display-excluded-by-cap", "text": ocr_text(neighbor), "ratio": None}
-            # ⚠️ The display-heading/tail gap allowance (15 September
-            # 2026) means this row should already be inside the box.
-            # Seeing it excluded anyway, and not for the cap either, is a
-            # state the current code should not reach -- flagged at
-            # ratio 0.0 (maximally marginal) rather than read as fine.
-            return {"reason": "should-have-been-included", "text": ocr_text(neighbor), "ratio": 0.0}
-        cutoff = 2.2 * med
-        ratio = (gap - cutoff) / cutoff if cutoff else None
-        return {"reason": "gap", "text": ocr_text(neighbor), "ratio": ratio}
-
-    above = [r for r in rows if row_bot(r) <= row_top(top_row)]
-    up_neighbor = max(above, key=row_bot) if above else None
-    top_info = describe(up_neighbor, row_top(top_row) - row_bot(up_neighbor), "up") \
-        if up_neighbor is not None else None
-
-    below = [r for r in rows if row_top(r) >= row_bot(bot_row)]
-    down_neighbor = min(below, key=row_top) if below else None
-    bottom_info = describe(down_neighbor, row_top(down_neighbor) - row_bot(bot_row), "down") \
-        if down_neighbor is not None else None
-
-    return {"top": top_info, "bottom": bottom_info}
+    `None` on a side means the walk reached the column's own edge with
+    nothing outside it. The whole result is `None` (not a dict) if
+    `block_around` itself refused the crop -- there is no box for a
+    caller to have asked about. A person reading a flagged case decides;
+    this only narrows down what to look at."""
+    diagnostics = {}
+    box = block_around(pi, coords, seed, allow_display, log=log, max_frac=max_frac,
+                       rule_test=rule_test, split_wide_headings=split_wide_headings,
+                       diagnostics=diagnostics)
+    if box is None:
+        return None
+    return diagnostics
 
 
 def find_phrase(words, phrase):

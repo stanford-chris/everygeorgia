@@ -963,96 +963,215 @@ class AdWithNeighborsPage:
         return buf.getvalue()
 
 
+class MarketNeighborsPage:
+    """One market column: a display heading immediately above with only a
+    SMALL gap and no rule (market's own display-boundary case -- a
+    display row the up-walk excludes purely because allow_display is
+    False, whatever the gap), then the seed row and three more body rows,
+    then a further row spaced just past PARA_GAP*med with the down-walk's
+    own 3-row grace period satisfied (market's paragraph-gap case)."""
+    lccn, date, ed, seq = "sn00000010", "1900-01-09", 1, 1
+    image_w, image_h = 1400, 700
+    url = "https://example/lccn/sn00000010/1900-01-09/ed-1/seq-1/"
+    COL_X0, COL_X1 = 470, 940
+
+    def __init__(self):
+        from PIL import Image, ImageDraw
+        im = Image.new("L", (1400, self.image_h), 210)
+        d = ImageDraw.Draw(im)
+        words = []
+
+        for cx in (0, 940):
+            for k, y in enumerate(range(20, self.image_h - 20, 20)):
+                jitter = (k * 4) % 9
+                for x in range(cx + 30 + jitter, cx + 430, 9):
+                    d.rectangle([x, y, x + 2, y + 10], fill=40)
+
+        def draw_row(x, y, h, text):
+            d.rectangle([self.COL_X0 + 10, y, self.COL_X1 - 10, y + h], fill=120)
+            cx = x
+            for tok in text.split():
+                w = max(20, len(tok) * 14)
+                d.rectangle([cx, y, cx + w, y + h], fill=30)
+                words.append((cx, y, w, h, tok))
+                cx += w + 8
+
+        HEAD_H, BODY_H, SMALL_GAP = 40, 14, 10   # SMALL_GAP << 2.2 * a 14-unit median
+        draw_row(self.COL_X0 + 20, 40, HEAD_H, "PREV HEADING")
+        y = 40 + HEAD_H + SMALL_GAP
+        draw_row(self.COL_X0 + 20, y, BODY_H, "MARKET BODY ZERO")   # the seed row
+        y += BODY_H + 6
+        for i in (1, 2, 3):
+            draw_row(self.COL_X0 + 20, y, BODY_H, f"MARKET BODY {i}")
+            y += BODY_H + 6
+        y += 16   # total gap to the next row: 22, between PARA_GAP*med (18.2) and 2.2*med (30.8)
+        draw_row(self.COL_X0 + 20, y, BODY_H, "NEXT ITEM HEAD")
+
+        self._im = im
+        self._words = words
+        self.scale = 1.0
+
+    def coords(self):
+        return {"width": 1400, "height": self.image_h, "words": list(self._words)}
+
+    def to_image(self, box):
+        x, y, w, h = box
+        if w <= 0 or h <= 0:
+            raise ValueError("empty box")
+        return (int(x), int(y), int(w), int(h))
+
+    def fetch_crop(self, image_box, width=1200):
+        import io
+        x, y, w, h = image_box
+        crop = self._im.crop((x, y, x + w, y + h))
+        if crop.width != width:
+            crop = crop.resize((width, max(1, int(crop.height * width / crop.width))))
+        buf = io.BytesIO(); crop.save(buf, format="JPEG", quality=92)
+        return buf.getvalue()
+
+
 class ClosureMargins(unittest.TestCase):
-    """closure_margins() is advisory-only and never gates a post; these
-    pin what it reports for the shapes a periodic audit needs to tell
-    apart. allow_display=True throughout, per the function's own
-    "ad lane only" warning."""
+    """closure_margins() is advisory-only and never gates a post. Since
+    15 September 2026 it runs block_around ITSELF (with instrumentation
+    on) rather than reconstructing a reason from an already-finished box
+    -- these pin what it reports for the shapes a periodic audit needs to
+    tell apart, in both lanes."""
 
     def test_a_confidently_excluded_neighbor_reports_a_healthy_positive_ratio(self):
         page = AdWithNeighborsPage()
         coords = page.coords()
         pi = rules.PageInk(page)
         hit = clips.find_phrase(coords["words"], "ad body line 0")
-        box = clips.block_around(pi, coords, hit, allow_display=True)
-        self.assertIsNotNone(box)
-        margins = clips.closure_margins(pi, coords, box, allow_display=True)
+        margins = clips.closure_margins(pi, coords, hit, allow_display=True)
+        self.assertIsNotNone(margins)
         self.assertEqual(margins["top"]["reason"], "gap")
         self.assertGreater(margins["top"]["ratio"], 0.5)
         self.assertEqual(margins["bottom"]["reason"], "gap")
         self.assertGreater(margins["bottom"]["ratio"], 0.5)
 
     def test_a_neighbor_across_a_printed_rule_reports_rule_not_gap(self):
-        # A gap alone is enough to stop MarketSectionPage's own walk before
-        # ever reaching its printed rule (Python's `or` short-circuits, so
-        # block_around's real run never even calls rule_test there) -- this
-        # test is about closure_margins' OWN wiring, not pixel-level rule
-        # detection (RuleIsolation already covers that), so rule_test is
-        # injected directly rather than chasing a fixture where the real
-        # gap happens to stay under 2.2*med too.
-        page = MarketSectionPage()
+        # A gap over 2.2*med is checked FIRST in block_around's own real
+        # precedence (short-circuit: rule_test is never even called once
+        # the gap alone is enough to stop it), so a "rule" reason can only
+        # be reached where the gap itself is small -- MarketNeighborsPage's
+        # own top boundary (a 10-unit gap, well under 2.2*med) is exactly
+        # that shape. A forced-True stub keyed on that gap's own width (no
+        # other gap in this fixture is 10 units) fires ONLY there, so the
+        # rest of the walk still runs on its real gaps and produces a real
+        # box rather than refusing outright the way an unconditional
+        # forced-True stub does (it stops every direction on its very
+        # first candidate).
+        page = MarketNeighborsPage()
         coords = page.coords()
         pi = rules.PageInk(page)
-        hit = clips.find_phrase(coords["words"], "market one")
-        box = clips.block_around(pi, coords, hit, allow_display=False,
-                                 max_frac=clips.MARKET_MAX_FRAC)
-        self.assertIsNotNone(box)
-        margins = clips.closure_margins(pi, coords, box, allow_display=False,
-                                        rule_test=lambda *a, **k: True)
-        self.assertEqual(margins["bottom"]["reason"], "rule")
-        self.assertIsNone(margins["bottom"]["ratio"])
-        self.assertIn("MARKET TWO", margins["bottom"]["text"])
+        hit = clips.find_phrase(coords["words"], "market body zero")
+        margins = clips.closure_margins(
+            pi, coords, hit, allow_display=False, max_frac=clips.MARKET_MAX_FRAC,
+            rule_test=lambda pi, sx0, sx1, ya, yb: (yb - ya) == 10)
+        self.assertIsNotNone(margins)
+        self.assertEqual(margins["top"]["reason"], "rule")
+        self.assertIsNone(margins["top"]["ratio"])
+        self.assertIn("PREV HEADING", margins["top"]["text"])
 
     def test_no_neighbor_reports_none_rather_than_a_fabricated_ratio(self):
         page = AdHeadingGapPage()
         coords = page.coords()
         pi = rules.PageInk(page)
         hit = clips.find_phrase(coords["words"], "body line 0")
-        box = clips.block_around(pi, coords, hit, allow_display=True)
-        self.assertIsNotNone(box)
-        margins = clips.closure_margins(pi, coords, box, allow_display=True)
+        margins = clips.closure_margins(pi, coords, hit, allow_display=True)
+        self.assertIsNotNone(margins)
         self.assertIsNone(margins["top"])       # AD HEADING is INSIDE the box
         self.assertIsNone(margins["bottom"])    # nothing below BODY LINE 3
 
-    def test_a_display_row_wrongly_left_outside_is_flagged_not_hidden(self):
-        # Feeds a box the CURRENT code can no longer produce (the
-        # pre-fix Cooke's ad crop, missing its own "Important to the
-        # Public" heading) to confirm the diagnostic would have caught
-        # exactly this shape of bug rather than reading it as healthy.
-        page = AdHeadingGapPage()
+    def test_none_is_returned_when_the_crop_itself_is_refused(self):
+        # An empty page: block_around finds no rows at all and refuses,
+        # so closure_margins has no box to have diagnosed anything about.
+        page = MarketSectionPage()
         coords = page.coords()
+        coords["words"] = []
         pi = rules.PageInk(page)
-        # body rows only, heading excluded -- what block_around(allow_display=False)
-        # returns on this same fixture, i.e. the pre-fix shape exactly.
-        hit = clips.find_phrase(coords["words"], "body line 0")
-        truncated_box = clips.block_around(pi, coords, hit, allow_display=False)
-        self.assertIsNotNone(truncated_box)
-        margins = clips.closure_margins(pi, coords, truncated_box, allow_display=True)
-        self.assertEqual(margins["top"]["reason"], "should-have-been-included")
-        self.assertEqual(margins["top"]["ratio"], 0.0)
-        self.assertIn("AD HEADING", margins["top"]["text"])
+        margins = clips.closure_margins(pi, coords, [(0, 0, 10, 10, "x")], allow_display=True)
+        self.assertIsNone(margins)
 
-    def test_a_display_row_excluded_by_the_cap_is_told_apart_from_an_oversight(self):
-        # Found on closure_margins' own first live run, 15 September 2026:
-        # a Castoria ad's closing wordmark was correctly admitted by the
-        # down-walk fix, and the UNRELATED item below it was correctly
-        # excluded by the block-height cap -- but closure_margins didn't
-        # know the cap existed yet, and read that correct exclusion as an
-        # unexplained near miss. A tiny max_frac forces the same shape
-        # here: admitting "AD SIGNATURE" would exceed it, so it must read
-        # as a confident, structural stop, not a should-have-been-included
-        # flag with ratio 0.0.
+    def test_the_ad_lanes_own_display_tail_admission_leaves_nothing_to_flag(self):
+        # The REAL, correct call (allow_display=True): AD SIGNATURE is
+        # already inside the box via the display-tail allowance, so there
+        # is nothing outside that edge to report at all -- the shape the
+        # 15 September Castoria fix produces on a real post.
         page = AdTailGapPage()
         coords = page.coords()
         pi = rules.PageInk(page)
         hit = clips.find_phrase(coords["words"], "body line 0")
-        truncated_box = clips.block_around(pi, coords, hit, allow_display=False)
-        self.assertIsNotNone(truncated_box)
-        margins = clips.closure_margins(pi, coords, truncated_box, allow_display=True,
-                                        max_frac=0.001)
-        self.assertEqual(margins["bottom"]["reason"], "display-excluded-by-cap")
+        margins = clips.closure_margins(pi, coords, hit, allow_display=True)
+        self.assertIsNotNone(margins)
+        self.assertIsNone(margins["bottom"])
+
+    def test_a_display_row_excluded_by_the_cap_reports_cap_not_a_near_miss(self):
+        # Found on closure_margins' own first live run, 15 September 2026:
+        # a Castoria ad's closing wordmark was correctly admitted by the
+        # down-walk fix, and the UNRELATED item below it was correctly
+        # excluded by the block-height cap. A tiny max_frac forces the
+        # same shape here: admitting "AD SIGNATURE" would exceed it, so
+        # the walk itself stops there and reports "cap" directly -- no
+        # separate "display-excluded-by-cap" category is needed once the
+        # reason comes from the walk itself rather than a reconstruction.
+        page = AdTailGapPage()
+        coords = page.coords()
+        pi = rules.PageInk(page)
+        hit = clips.find_phrase(coords["words"], "body line 0")
+        # 0.08: small enough to exclude "AD SIGNATURE" via the cap, large
+        # enough that the four body rows themselves still clear
+        # MIN_BLOCK_ROWS and the walk doesn't refuse outright.
+        margins = clips.closure_margins(pi, coords, hit, allow_display=True, max_frac=0.08)
+        self.assertIsNotNone(margins)
+        self.assertEqual(margins["bottom"]["reason"], "cap")
         self.assertIsNone(margins["bottom"]["ratio"])
         self.assertIn("AD SIGNATURE", margins["bottom"]["text"])
+
+    def test_market_excludes_a_close_display_heading_as_a_boundary_not_a_near_miss(self):
+        page = MarketNeighborsPage()
+        coords = page.coords()
+        pi = rules.PageInk(page)
+        hit = clips.find_phrase(coords["words"], "market body zero")
+        margins = clips.closure_margins(pi, coords, hit, allow_display=False,
+                                        max_frac=clips.MARKET_MAX_FRAC)
+        self.assertIsNotNone(margins)
+        self.assertEqual(margins["top"]["reason"], "display-boundary")
+        self.assertIsNone(margins["top"]["ratio"])
+        self.assertIn("PREV HEADING", margins["top"]["text"])
+
+    def test_market_stops_at_its_own_narrower_paragraph_gap_ceiling(self):
+        page = MarketNeighborsPage()
+        coords = page.coords()
+        pi = rules.PageInk(page)
+        hit = clips.find_phrase(coords["words"], "market body zero")
+        margins = clips.closure_margins(pi, coords, hit, allow_display=False,
+                                        max_frac=clips.MARKET_MAX_FRAC)
+        self.assertIsNotNone(margins)
+        self.assertEqual(margins["bottom"]["reason"], "paragraph-gap")
+        self.assertGreater(margins["bottom"]["ratio"], 0)
+        self.assertIn("NEXT ITEM HEAD", margins["bottom"]["text"])
+
+    def test_market_row_count_cap_is_confident_not_flagged(self):
+        # MARKET_ROWS is an 80-row backstop, impractical to reach with a
+        # real pixel fixture -- lowered here just for this test (with
+        # MIN_BLOCK_ROWS too, so the smaller box it produces still clears
+        # the floor rather than refusing outright), the cheapest way to
+        # exercise the branch directly.
+        page = MarketNeighborsPage()
+        coords = page.coords()
+        pi = rules.PageInk(page)
+        hit = clips.find_phrase(coords["words"], "market body zero")
+        orig_rows, orig_min = clips.MARKET_ROWS, clips.MIN_BLOCK_ROWS
+        clips.MARKET_ROWS, clips.MIN_BLOCK_ROWS = 2, 1
+        try:
+            margins = clips.closure_margins(pi, coords, hit, allow_display=False,
+                                            max_frac=clips.MARKET_MAX_FRAC)
+        finally:
+            clips.MARKET_ROWS, clips.MIN_BLOCK_ROWS = orig_rows, orig_min
+        self.assertIsNotNone(margins)
+        self.assertEqual(margins["bottom"]["reason"], "row-count-cap")
+        self.assertIsNone(margins["bottom"]["ratio"])
 
 
 class WideHeadingSplit(unittest.TestCase):
