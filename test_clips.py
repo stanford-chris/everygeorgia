@@ -697,6 +697,101 @@ class AdHeadingGap(unittest.TestCase):
         self.assertIn("BODY LINE 0", text)
 
 
+class AdTailGapPage:
+    """Mirror of AdHeadingGapPage for the DOWN-walk: plain body rows, then
+    a gap far wider than any ordinary body-line leading, then a display
+    CLOSING signature -- the shape of "Children Cry For / K CASTORIA" at
+    the foot of a Castoria ad (sn89053972, 15 September 1919), found by
+    crop_closure_check.py's own first live run the same day the up-walk
+    fix shipped. Same image_h=1000 constraint as AdHeadingGapPage, same
+    reason."""
+    lccn, date, ed, seq = "sn00000008", "1900-01-07", 1, 1
+    image_w, image_h = 1400, 1000
+    url = "https://example/lccn/sn00000008/1900-01-07/ed-1/seq-1/"
+    COL_X0, COL_X1 = 470, 940
+
+    def __init__(self):
+        from PIL import Image, ImageDraw
+        im = Image.new("L", (1400, self.image_h), 210)
+        d = ImageDraw.Draw(im)
+        words = []
+
+        for cx in (0, 940):
+            for k, y in enumerate(range(20, self.image_h - 20, 20)):
+                jitter = (k * 4) % 9
+                for x in range(cx + 30 + jitter, cx + 430, 9):
+                    d.rectangle([x, y, x + 2, y + 10], fill=40)
+
+        def draw_row(x, y, h, text):
+            d.rectangle([self.COL_X0 + 10, y, self.COL_X1 - 10, y + h], fill=120)
+            cx = x
+            for tok in text.split():
+                w = max(20, len(tok) * 14)
+                d.rectangle([cx, y, cx + w, y + h], fill=30)
+                words.append((cx, y, w, h, tok))
+                cx += w + 8
+
+        TAIL_H, BODY_H, TAIL_GAP = 40, 14, 100   # TAIL_GAP >> 2.2 * a 14-unit median
+        y = 40
+        for i in range(4):
+            draw_row(self.COL_X0 + 20, y, BODY_H, f"BODY LINE {i}")
+            y += BODY_H + 6
+        y += TAIL_GAP
+        draw_row(self.COL_X0 + 20, y, TAIL_H, "AD SIGNATURE")
+
+        self._im = im
+        self._words = words
+        self.scale = 1.0
+
+    def coords(self):
+        return {"width": 1400, "height": self.image_h, "words": list(self._words)}
+
+    def to_image(self, box):
+        x, y, w, h = box
+        if w <= 0 or h <= 0:
+            raise ValueError("empty box")
+        return (int(x), int(y), int(w), int(h))
+
+    def fetch_crop(self, image_box, width=1200):
+        import io
+        x, y, w, h = image_box
+        crop = self._im.crop((x, y, x + w, y + h))
+        if crop.width != width:
+            crop = crop.resize((width, max(1, int(crop.height * width / crop.width))))
+        buf = io.BytesIO(); crop.save(buf, format="JPEG", quality=92)
+        return buf.getvalue()
+
+
+class AdTailGap(unittest.TestCase):
+    """block_around's down-walk, allow_display=True: an ad's own CLOSING
+    signature must be admitted whatever the gap above it, mirroring
+    AdHeadingGap. Before this fix (15 September 2026, same day as the
+    up-walk one) the Castoria ad's "K CASTORIA" wordmark shipped cut off
+    the same way "Important to the Public" had."""
+    def setUp(self):
+        self.page = AdTailGapPage()
+        self.coords = self.page.coords()
+        self.pi = rules.PageInk(self.page)
+        self.hit = clips.find_phrase(self.coords["words"], "body line 0")
+        self.assertIsNotNone(self.hit)
+
+    def test_the_signature_is_admitted_across_the_wide_gap_when_allow_display(self):
+        box = clips.block_around(self.pi, self.coords, self.hit, allow_display=True)
+        self.assertIsNotNone(box)
+        words_in = clips.nameplate.words_in(self.coords["words"], box)
+        text = clips.ocr_text(words_in)
+        self.assertIn("AD SIGNATURE", text)
+        self.assertIn("BODY LINE 0", text)
+
+    def test_the_same_wide_gap_still_stops_the_climb_without_allow_display(self):
+        box = clips.block_around(self.pi, self.coords, self.hit, allow_display=False)
+        self.assertIsNotNone(box)
+        words_in = clips.nameplate.words_in(self.coords["words"], box)
+        text = clips.ocr_text(words_in)
+        self.assertNotIn("AD SIGNATURE", text)
+        self.assertIn("BODY LINE 0", text)
+
+
 class BannerHeadingPage:
     """A banner heading ("BANNER HEAD") set across two narrower columns,
     each holding its OWN unrelated content at the SAME row heights, split
@@ -801,6 +896,163 @@ class NearEdgeBannerHeadingPage(BannerHeadingPage):
     inside that range and MIN_SPLIT_FRAC's own 30% floor."""
     lccn, date = "sn00000006", "1900-01-05"
     SPLIT_X = 505    # 35 of 470 = 7.4% from COL_X0 -- a border, not a banner
+
+
+class AdWithNeighborsPage:
+    """One column: a confidently-excluded row well above the ad (a large,
+    over-2.2x-median gap, no rule), four ad-body rows, then a
+    confidently-excluded row well below -- for closure_margins()'s
+    healthy, non-flagged case. image_h stays at 700, the same "not too
+    tall to dilute the column's own ink density" constraint as
+    AdHeadingGapPage and BannerHeadingPage."""
+    lccn, date, ed, seq = "sn00000007", "1900-01-06", 1, 1
+    image_w, image_h = 1400, 700
+    url = "https://example/lccn/sn00000007/1900-01-06/ed-1/seq-1/"
+    COL_X0, COL_X1 = 470, 940
+
+    def __init__(self):
+        from PIL import Image, ImageDraw
+        im = Image.new("L", (1400, self.image_h), 210)
+        d = ImageDraw.Draw(im)
+        words = []
+
+        for cx in (0, 940):
+            for k, y in enumerate(range(20, self.image_h - 20, 20)):
+                jitter = (k * 4) % 9
+                for x in range(cx + 30 + jitter, cx + 430, 9):
+                    d.rectangle([x, y, x + 2, y + 10], fill=40)
+
+        def draw_row(x, y, h, text):
+            d.rectangle([self.COL_X0 + 10, y, self.COL_X1 - 10, y + h], fill=120)
+            cx = x
+            for tok in text.split():
+                w = max(20, len(tok) * 14)
+                d.rectangle([cx, y, cx + w, y + h], fill=30)
+                words.append((cx, y, w, h, tok))
+                cx += w + 8
+
+        BODY_H, GAP = 14, 60   # GAP >> 2.2 * a 14-unit median
+        draw_row(self.COL_X0 + 20, 40, BODY_H, "EARLIER ITEM TAIL")
+        y = 40 + BODY_H + GAP
+        for i in range(4):
+            draw_row(self.COL_X0 + 20, y, BODY_H, f"AD BODY LINE {i}")
+            y += BODY_H + 6
+        y += GAP
+        draw_row(self.COL_X0 + 20, y, BODY_H, "LATER ITEM HEAD")
+
+        self._im = im
+        self._words = words
+        self.scale = 1.0
+
+    def coords(self):
+        return {"width": 1400, "height": self.image_h, "words": list(self._words)}
+
+    def to_image(self, box):
+        x, y, w, h = box
+        if w <= 0 or h <= 0:
+            raise ValueError("empty box")
+        return (int(x), int(y), int(w), int(h))
+
+    def fetch_crop(self, image_box, width=1200):
+        import io
+        x, y, w, h = image_box
+        crop = self._im.crop((x, y, x + w, y + h))
+        if crop.width != width:
+            crop = crop.resize((width, max(1, int(crop.height * width / crop.width))))
+        buf = io.BytesIO(); crop.save(buf, format="JPEG", quality=92)
+        return buf.getvalue()
+
+
+class ClosureMargins(unittest.TestCase):
+    """closure_margins() is advisory-only and never gates a post; these
+    pin what it reports for the shapes a periodic audit needs to tell
+    apart. allow_display=True throughout, per the function's own
+    "ad lane only" warning."""
+
+    def test_a_confidently_excluded_neighbor_reports_a_healthy_positive_ratio(self):
+        page = AdWithNeighborsPage()
+        coords = page.coords()
+        pi = rules.PageInk(page)
+        hit = clips.find_phrase(coords["words"], "ad body line 0")
+        box = clips.block_around(pi, coords, hit, allow_display=True)
+        self.assertIsNotNone(box)
+        margins = clips.closure_margins(pi, coords, box, allow_display=True)
+        self.assertEqual(margins["top"]["reason"], "gap")
+        self.assertGreater(margins["top"]["ratio"], 0.5)
+        self.assertEqual(margins["bottom"]["reason"], "gap")
+        self.assertGreater(margins["bottom"]["ratio"], 0.5)
+
+    def test_a_neighbor_across_a_printed_rule_reports_rule_not_gap(self):
+        # A gap alone is enough to stop MarketSectionPage's own walk before
+        # ever reaching its printed rule (Python's `or` short-circuits, so
+        # block_around's real run never even calls rule_test there) -- this
+        # test is about closure_margins' OWN wiring, not pixel-level rule
+        # detection (RuleIsolation already covers that), so rule_test is
+        # injected directly rather than chasing a fixture where the real
+        # gap happens to stay under 2.2*med too.
+        page = MarketSectionPage()
+        coords = page.coords()
+        pi = rules.PageInk(page)
+        hit = clips.find_phrase(coords["words"], "market one")
+        box = clips.block_around(pi, coords, hit, allow_display=False,
+                                 max_frac=clips.MARKET_MAX_FRAC)
+        self.assertIsNotNone(box)
+        margins = clips.closure_margins(pi, coords, box, allow_display=False,
+                                        rule_test=lambda *a, **k: True)
+        self.assertEqual(margins["bottom"]["reason"], "rule")
+        self.assertIsNone(margins["bottom"]["ratio"])
+        self.assertIn("MARKET TWO", margins["bottom"]["text"])
+
+    def test_no_neighbor_reports_none_rather_than_a_fabricated_ratio(self):
+        page = AdHeadingGapPage()
+        coords = page.coords()
+        pi = rules.PageInk(page)
+        hit = clips.find_phrase(coords["words"], "body line 0")
+        box = clips.block_around(pi, coords, hit, allow_display=True)
+        self.assertIsNotNone(box)
+        margins = clips.closure_margins(pi, coords, box, allow_display=True)
+        self.assertIsNone(margins["top"])       # AD HEADING is INSIDE the box
+        self.assertIsNone(margins["bottom"])    # nothing below BODY LINE 3
+
+    def test_a_display_row_wrongly_left_outside_is_flagged_not_hidden(self):
+        # Feeds a box the CURRENT code can no longer produce (the
+        # pre-fix Cooke's ad crop, missing its own "Important to the
+        # Public" heading) to confirm the diagnostic would have caught
+        # exactly this shape of bug rather than reading it as healthy.
+        page = AdHeadingGapPage()
+        coords = page.coords()
+        pi = rules.PageInk(page)
+        # body rows only, heading excluded -- what block_around(allow_display=False)
+        # returns on this same fixture, i.e. the pre-fix shape exactly.
+        hit = clips.find_phrase(coords["words"], "body line 0")
+        truncated_box = clips.block_around(pi, coords, hit, allow_display=False)
+        self.assertIsNotNone(truncated_box)
+        margins = clips.closure_margins(pi, coords, truncated_box, allow_display=True)
+        self.assertEqual(margins["top"]["reason"], "should-have-been-included")
+        self.assertEqual(margins["top"]["ratio"], 0.0)
+        self.assertIn("AD HEADING", margins["top"]["text"])
+
+    def test_a_display_row_excluded_by_the_cap_is_told_apart_from_an_oversight(self):
+        # Found on closure_margins' own first live run, 15 September 2026:
+        # a Castoria ad's closing wordmark was correctly admitted by the
+        # down-walk fix, and the UNRELATED item below it was correctly
+        # excluded by the block-height cap -- but closure_margins didn't
+        # know the cap existed yet, and read that correct exclusion as an
+        # unexplained near miss. A tiny max_frac forces the same shape
+        # here: admitting "AD SIGNATURE" would exceed it, so it must read
+        # as a confident, structural stop, not a should-have-been-included
+        # flag with ratio 0.0.
+        page = AdTailGapPage()
+        coords = page.coords()
+        pi = rules.PageInk(page)
+        hit = clips.find_phrase(coords["words"], "body line 0")
+        truncated_box = clips.block_around(pi, coords, hit, allow_display=False)
+        self.assertIsNotNone(truncated_box)
+        margins = clips.closure_margins(pi, coords, truncated_box, allow_display=True,
+                                        max_frac=0.001)
+        self.assertEqual(margins["bottom"]["reason"], "display-excluded-by-cap")
+        self.assertIsNone(margins["bottom"]["ratio"])
+        self.assertIn("AD SIGNATURE", margins["bottom"]["text"])
 
 
 class WideHeadingSplit(unittest.TestCase):

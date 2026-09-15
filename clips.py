@@ -939,7 +939,17 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
     while hi < len(rows) - 1:
         j = hi + 1
         gap = row_top(j) - row_bot(hi)
-        if gap > 2.2 * med or rule_between(row_bot(hi), row_top(j)):
+        # ⚠️ Mirrors the up-walk's own display_head allowance (15 September
+        # 2026): an ad's own CLOSING signature is set in display type with
+        # oversized leading above it, exactly as its opening heading is
+        # below it. Found by crop_closure_check.py's first live run, on a
+        # Castoria ad (sn89053972, 15 September 1919) whose crop ended
+        # "...Philadelphia Bulletin Children Cry For" -- cut off one row
+        # short of the stylized "CASTORIA" wordmark that line is the
+        # caption for. Same backstops as the up-walk: rule_between() and
+        # the height cap below still stop the walk.
+        display_tail = allow_display and is_display(j)
+        if (gap > 2.2 * med and not display_tail) or rule_between(row_bot(hi), row_top(j)):
             break
         if is_display(j) and not allow_display and j > idx:
             break
@@ -963,6 +973,110 @@ def block_around(pi, coords, seed, allow_display, log=print, max_frac=None,
     pad = int(1.0 * med)                 # 0.6 cut the top line of a Savannah
                                          # produce column through its figures
     return (cx0, max(0, top - pad), cx1 - cx0, min(ch, bot + pad) - max(0, top - pad))
+
+
+def closure_margins(pi, coords, box, allow_display, rule_test=row_has_rule, max_frac=None):
+    """ADVISORY ONLY, never a gate: for a `box` already returned by
+    `block_around` over the same `coords`/`allow_display`/`max_frac`, how
+    marginal was the stop on each side? Built 15 September 2026 for a
+    periodic audit, after a crop that closed cleanly by every existing
+    check (rights, vocabulary, ad_markers, legibility) still shipped
+    truncated -- the walk's own stopping decision was never itself a
+    thing anyone asked about.
+
+    Recomputes the row immediately outside each edge (rows, not pixels,
+    matching block_around's own reasoning) and reports why the walk
+    stopped there: a printed rule (a confident, structural stop), the
+    ordinary body-line gap ceiling (`ratio` is how far past it the actual
+    gap fell -- near 0 is a near miss, a large number is not), the block
+    already being as tall as `max_frac` of the page allows (also a
+    confident, structural stop -- see MAX_BLOCK_FRAC's own comment), or
+    -- a state the current code should not otherwise produce, so it is
+    flagged rather than silently treated as fine -- a display heading
+    that should have been admitted under `allow_display` and was not.
+    `None` on a side means either nothing sits outside that edge (the
+    block reached the column's own end) or there is nothing to recompute
+    (an empty column).
+
+    Read-only and approximate: it does not know whether MIN_BLOCK_ROWS or
+    MIN_BLOCK_FRAC were what actually stopped the walk before it ever
+    reached this neighbour, only what the neighbour itself looks like
+    now (the cap IS modelled, below, because 15 September 2026's own
+    first live run needed it: a Castoria ad's closing wordmark was
+    correctly admitted by the display-tail fix, and the UNRELATED item
+    below it, "Bringing Up Baby", was correctly excluded by the cap --
+    without checking the cap here that correct exclusion read as an
+    unexplained near miss). A person reading a flagged case decides;
+    this only narrows down what to look at.
+
+    ⚠️ TRUSTWORTHY FOR allow_display=True ONLY -- the ad lane. It models
+    the up- and down-walks' unconditional checks (a printed rule, the
+    2.2*med gap ceiling, the display-heading/tail allowance, the height
+    cap) but NOT market's own PARA_GAP/MARKET_ROWS paragraph-break guard,
+    which only ever fires when `not allow_display`. Fed a market box, a
+    stop the guard made correctly can read as an unexplained near miss
+    (or even a negative ratio) here, because the real reason it stopped
+    is a check this function does not know exists. Call it for market
+    only once that guard is modelled too; until then a caller must pass
+    allow_display and mean it."""
+    words = coords["words"]
+    med = nameplate.page_median_height(words) or 1
+    bx, by, bw, bh = box
+    cx0, cx1 = bx, bx + bw
+    incol = [w for w in words if cx0 <= w[0] + w[2] / 2.0 < cx1]
+    rows = _rows(incol)
+    if not rows:
+        return {"top": None, "bottom": None}
+
+    def row_top(r):
+        return min(w[1] for w in r)
+
+    def row_bot(r):
+        return max(w[1] + w[3] for w in r)
+
+    def is_display(r):
+        return max(w[3] for w in r) >= 1.6 * med
+
+    included = [r for r in rows if row_top(r) < by + bh and row_bot(r) > by]
+    if not included:
+        return {"top": None, "bottom": None}
+    top_row = min(included, key=row_top)
+    bot_row = max(included, key=row_bot)
+    per = pi.page.scale * pi.scale
+    sx0, sx1 = int(cx0 * per), int(cx1 * per)
+    cap = (max_frac or MAX_BLOCK_FRAC) * coords["height"]
+
+    def describe(neighbor, gap, direction):
+        stopped_by_rule = rule_test(pi, sx0, sx1, *((row_bot(neighbor), row_top(top_row))
+                                    if direction == "up" else (row_bot(bot_row), row_top(neighbor))))
+        if stopped_by_rule:
+            return {"reason": "rule", "text": ocr_text(neighbor), "ratio": None}
+        if allow_display and is_display(neighbor):
+            would_span = (row_bot(bot_row) - row_top(neighbor) if direction == "up"
+                         else row_bot(neighbor) - row_top(top_row))
+            if would_span > cap:
+                return {"reason": "display-excluded-by-cap", "text": ocr_text(neighbor), "ratio": None}
+            # ⚠️ The display-heading/tail gap allowance (15 September
+            # 2026) means this row should already be inside the box.
+            # Seeing it excluded anyway, and not for the cap either, is a
+            # state the current code should not reach -- flagged at
+            # ratio 0.0 (maximally marginal) rather than read as fine.
+            return {"reason": "should-have-been-included", "text": ocr_text(neighbor), "ratio": 0.0}
+        cutoff = 2.2 * med
+        ratio = (gap - cutoff) / cutoff if cutoff else None
+        return {"reason": "gap", "text": ocr_text(neighbor), "ratio": ratio}
+
+    above = [r for r in rows if row_bot(r) <= row_top(top_row)]
+    up_neighbor = max(above, key=row_bot) if above else None
+    top_info = describe(up_neighbor, row_top(top_row) - row_bot(up_neighbor), "up") \
+        if up_neighbor is not None else None
+
+    below = [r for r in rows if row_top(r) >= row_bot(bot_row)]
+    down_neighbor = min(below, key=row_top) if below else None
+    bottom_info = describe(down_neighbor, row_top(down_neighbor) - row_bot(bot_row), "down") \
+        if down_neighbor is not None else None
+
+    return {"top": top_info, "bottom": bottom_info}
 
 
 def find_phrase(words, phrase):
