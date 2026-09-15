@@ -238,6 +238,83 @@ class Banners(unittest.TestCase):
         self.assertEqual([" ".join(w[4] for w in seg) for _, seg in out], ["FRENCH DESTROY", "MEMORIAL DAY"])
 
 
+class BoxWithDeckDiagnostics(unittest.TestCase):
+    """box_with_deck's own "bottom" diagnostic, added 15 September 2026 for
+    crop_closure_check.py's headline-lane audit. Only "gap" carries a
+    ratio worth a floor; every other stop here is confident and structural
+    -- see items.box_with_deck's own docstring. Reuses Banners.head() (a
+    three-word, 230-unit-wide headline) rather than a narrower fixture of
+    its own: several of these cases need the wider column span to hold a
+    partial-overlap or a split-piece candidate at all."""
+
+    def head(self):
+        return Banners.head(self)                # y0=100 y1=130 h=30, x0=20 x1=250
+
+    def test_a_real_line_just_past_the_window_is_reported_as_a_near_miss(self):
+        # DECK_GAP*h = 1.5*30 = 45, so the window closes at cur+45 = 175;
+        # a real line at 200 is 25 units past it.
+        body = DisplayRows.body(self)
+        words = body + self.head() + [(20, 200, 60, 18, "BLAZE")]
+        seg = items.display_rows(words, 1000)[0]
+        diag = {}
+        items.box_with_deck(seg, words, 700, 1000, diagnostics=diag)
+        info = diag["bottom"]
+        self.assertEqual(info["reason"], "gap")
+        self.assertAlmostEqual(info["ratio"], (70 - 45) / 45.0, places=4)
+        self.assertIn("BLAZE", info["text"])
+
+    def test_nothing_at_all_below_reports_none_not_a_miss(self):
+        seg = words = self.head()                 # no body text anywhere at all
+        diag = {}
+        items.box_with_deck(seg, words, 700, 1000, diagnostics=diag)
+        self.assertIsNone(diag["bottom"])
+
+    def test_a_different_item_is_a_confident_stop_not_a_near_miss(self):
+        """The Americus Times-Recorder shape: a taller line (a nameplate)
+        stops the climb, and that stop is never in doubt."""
+        body = DisplayRows.body(self)
+        words = body + self.head() + [(20, 140, 100, 42, "AMERICUS"), (130, 140, 120, 42, "TIMES")]
+        seg = items.display_rows(words, 1000)[0]
+        diag = {}
+        items.box_with_deck(seg, words, 700, 1000, diagnostics=diag)
+        self.assertEqual(diag["bottom"]["reason"], "different-item")
+        self.assertIsNone(diag["bottom"]["ratio"])
+
+    def test_a_same_size_line_under_half_the_span_is_a_boundary_not_a_miss(self):
+        """A same-height line that only partly overlaps the head's own
+        span (under the 0.6 rule) is the next column's headline, not a
+        continuation -- and that is exactly as confident a stop as a
+        taller line is."""
+        body = DisplayRows.body(self)
+        words = body + self.head() + [(200, 140, 40, 30, "OTHER")]   # overlap 40/230
+        seg = items.display_rows(words, 1000)[0]
+        diag = {}
+        items.box_with_deck(seg, words, 700, 1000, diagnostics=diag)
+        self.assertEqual(diag["bottom"]["reason"], "boundary")
+        self.assertIsNone(diag["bottom"]["ratio"])
+
+    def test_a_tier_of_column_heads_is_a_confident_stop_not_a_miss(self):
+        body = DisplayRows.body(self)
+        tier = [(20, 140, 60, 18, "CAPITAL"), (85, 140, 60, 18, "WOULD"),
+                (200, 140, 60, 18, "MEXICO"), (265, 140, 60, 18, "SENDS")]
+        words = body + self.head() + tier
+        seg = items.display_rows(words, 1000)[0]
+        diag = {}
+        items.box_with_deck(seg, words, 700, 1000, diagnostics=diag)
+        self.assertEqual(diag["bottom"]["reason"], "tier")
+        self.assertIsNone(diag["bottom"]["ratio"])
+
+    def test_diagnostics_none_by_default_costs_nothing_and_changes_nothing(self):
+        """The hot posting path never passes diagnostics; box_with_deck's
+        own return value must be identical whether it does or not."""
+        body = DisplayRows.body(self)
+        words = body + self.head() + [(20, 200, 60, 18, "BLAZE")]
+        seg = items.display_rows(words, 1000)[0]
+        plain = items.box_with_deck(seg, words, 700, 1000)
+        instrumented = items.box_with_deck(seg, words, 700, 1000, diagnostics={})
+        self.assertEqual(plain, instrumented)
+
+
 class FakePage:
     """A page whose image is a synthetic newspaper: three columns of grey
     text blocks separated by paper gutters, a rule under one block."""
@@ -1172,6 +1249,117 @@ class ClosureMargins(unittest.TestCase):
         self.assertIsNotNone(margins)
         self.assertEqual(margins["bottom"]["reason"], "row-count-cap")
         self.assertIsNone(margins["bottom"]["ratio"])
+
+
+class HeadlineArticlePage:
+    """A single column: a display headline, then a paragraph of seven tight
+    body lines, the last separated from the rest by a gap just over
+    TIGHT_GAP*med -- one fixture exercising both headline_closure_margins
+    (the headline item's own down-walk stops at the first line, too short
+    to be a deck: "boundary") and article_closure_margins (the paragraph
+    closes at the seventh line: a real "gap" near miss). Same geometry as
+    AdHeadingGapPage, for the same reasons given there."""
+    lccn, date, ed, seq = "sn00000011", "1900-01-10", 1, 1
+    image_w, image_h = 1400, 1000
+    url = "https://example/lccn/sn00000011/1900-01-10/ed-1/seq-1/"
+    COL_X0, COL_X1 = 470, 940
+
+    def __init__(self):
+        from PIL import Image, ImageDraw
+        im = Image.new("L", (1400, self.image_h), 210)
+        d = ImageDraw.Draw(im)
+        words = []
+
+        for cx in (0, 940):
+            for k, y in enumerate(range(20, self.image_h - 20, 20)):
+                jitter = (k * 4) % 9
+                for x in range(cx + 30 + jitter, cx + 430, 9):
+                    d.rectangle([x, y, x + 2, y + 10], fill=40)
+
+        def draw_row(x, y, h, text):
+            # ⚠️ NO solid backing bar under the row, unlike the other
+            # fixtures in this file: rules.snap's own mode="paper" column
+            # search (items.snapped -> rules.snap, which headline_closure_
+            # margins/article_closure_margins go through, unlike block_
+            # around's own gutter-based, row-height-only column test) reads
+            # PAPER BETWEEN THE WORDS within the row's own y-band, and a
+            # solid bar (right for the row-height fixtures elsewhere in
+            # this file) leaves it none to find.
+            cx = x
+            for tok in text.split():
+                w = max(20, len(tok) * 14)
+                d.rectangle([cx, y, cx + w, y + h], fill=30)
+                words.append((cx, y, w, h, tok))
+                cx += w + 8
+
+        HEAD_H, BODY_H = 40, 14
+        LEFT = self.COL_X0 + 20
+        draw_row(LEFT, 40, HEAD_H, "CITY IN UPROAR")
+        y = 90
+        for i in range(6):                     # six tight lines: 6-unit gaps
+            draw_row(LEFT, y, BODY_H, f"PARAGRAPH LINE {i}")
+            y += BODY_H + 6
+        y += 3                                  # 9-unit gap: just over TIGHT_GAP*med (8.4)
+        draw_row(LEFT, y, BODY_H, "SEPARATE ITEM")
+
+        self._im = im
+        self._words = words
+        self.scale = 1.0
+
+    def coords(self):
+        return {"width": 1400, "height": self.image_h, "words": list(self._words)}
+
+    def to_image(self, box):
+        x, y, w, h = box
+        if w <= 0 or h <= 0:
+            raise ValueError("empty box")
+        return (int(x), int(y), int(w), int(h))
+
+    def fetch_crop(self, image_box, width=1200):
+        import io
+        x, y, w, h = image_box
+        crop = self._im.crop((x, y, x + w, y + h))
+        if crop.width != width:
+            crop = crop.resize((width, max(1, int(crop.height * width / crop.width))))
+        buf = io.BytesIO(); crop.save(buf, format="JPEG", quality=92)
+        return buf.getvalue()
+
+
+class HeadlineArticleClosureMargins(unittest.TestCase):
+    """headline_closure_margins/article_closure_margins wire the same
+    "diagnose the SAME walk this lane already runs" contract as
+    ClosureMargins does for the ad/market lanes -- see items.box_with_deck
+    and clips._article_span's own docstrings for what each reason means."""
+
+    def setUp(self):
+        self.page = HeadlineArticlePage()
+        self.coords = self.page.coords()
+
+    def test_headline_stops_at_the_first_too_short_line_as_a_boundary(self):
+        margins = clips.headline_closure_margins(self.coords, self.page)
+        self.assertIsNotNone(margins)
+        self.assertEqual(margins["bottom"]["reason"], "boundary")
+        self.assertIsNone(margins["bottom"]["ratio"])
+
+    def test_article_reports_the_seventh_line_as_a_near_miss_gap(self):
+        margins = clips.article_closure_margins(self.coords, self.page)
+        self.assertIsNotNone(margins)
+        info = margins["bottom"]
+        self.assertEqual(info["reason"], "gap")
+        # (9 - 8.4) / 8.4: a real near miss, well under crop_closure_check's
+        # own 0.15 flagging floor.
+        self.assertGreater(info["ratio"], 0)
+        self.assertLess(info["ratio"], 0.15)
+        self.assertIn("SEPARATE ITEM", info["text"])
+
+    def test_article_and_headline_agree_with_clip_articles_own_box(self):
+        # The diagnostics function must describe the SAME box clip_article
+        # itself would produce, not a lookalike -- re-derive both and
+        # compare the geometry (not the transcription, which needs a
+        # model and network this test has neither of).
+        hbox, box = clips._article_span(self.coords, self.page)
+        self.assertEqual(box[1], hbox[1])                 # starts at the headline's own top
+        self.assertGreater(box[3], hbox[3])                # taller than the headline alone
 
 
 class WideHeadingSplit(unittest.TestCase):

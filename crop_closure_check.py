@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-crop_closure_check.py -- read-only sweep of the ad and market lanes' own
-crops: did clips.block_around's row-walk stop with room to spare, or right
-at the edge of what it could safely justify?
+crop_closure_check.py -- read-only sweep of every lane's own crop: did the
+lane's own closing walk stop with room to spare, or right at the edge of
+what it could safely justify?
 
 Why this exists. The Cooke's clothing ad, posted 14 September 2026, closed
 cleanly by every existing check (rights, vocabulary, ad_markers,
@@ -13,17 +13,32 @@ September 2026) answers that by running block_around ITSELF with its own
 instrumentation on, so the reason reported is always block_around's real
 one, never a reconstruction.
 
-⚠️ Both lanes since the same day this script itself was built, but market
-was DELIBERATELY held back at first: closure_margins originally tried to
-reconstruct the stop reason from the finished box's own y-range, and on a
-dense market table that reconstruction picked the wrong row as "included"
-(the box's own padding overlapped the next EXCLUDED row) and reported a
-phantom near miss with a zero gap. Fixed by having block_around record
-its OWN reason at the exact moment it stops, rather than guessing from
-the outside -- see closure_margins' own docstring in clips.py. Both
-lanes' searched phrases are read from data/post_state.json's own
-`tried[lane]` map, which is also what supplies `seed` for market's
-PARA_GAP grace-period check.
+⚠️ The ad and market lanes came first, and market was DELIBERATELY held
+back at first: closure_margins originally tried to reconstruct the stop
+reason from the finished box's own y-range, and on a dense market table
+that reconstruction picked the wrong row as "included" (the box's own
+padding overlapped the next EXCLUDED row) and reported a phantom near
+miss with a zero gap. Fixed by having block_around record its OWN reason
+at the exact moment it stops, rather than guessing from the outside --
+see closure_margins' own docstring in clips.py. Both lanes' searched
+phrases are read from data/post_state.json's own `tried[lane]` map,
+which is also what supplies `seed` for market's PARA_GAP grace-period
+check.
+
+⚠️ The other four lanes were added 15 September 2026, each with its OWN
+closing mechanism -- none reusable via closure_margins as it stands --
+instrumented the SAME way, live at the moment of its own stop, never
+reconstructed: headline_closure_margins/article_closure_margins in
+clips.py (items.box_with_deck's down-walk, and the article paragraph's
+own tight-line loop), pictures.cartoon_closure_margins (frame()'s
+caption-line walk), and nameplate_crop.nameplate_closure_margins
+(ink_bottom()'s own "already clear" short-circuit -- the one place in
+that lane a wrong call is never re-examined by anything downstream).
+Neither headline nor article needs a search phrase at all: both pick
+their item deterministically from the page, so `tried[lane]` is only
+ever consulted for "ad" and "market". See LANES below for which kind
+each lane is and CONFIDENT_REASONS for which of each lane's own reasons
+are structural stops rather than near misses.
 
 ADVISORY ONLY. This gates nothing and posts nothing, changes nothing and
 deletes nothing: it reports a post that might be worth a second look, and
@@ -64,17 +79,25 @@ from datetime import datetime, timedelta, timezone
 
 import clips
 import ghn_api
+import nameplate_crop as npc
+import pictures
 import rules
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, "data", "post_state.json")
 SCRIPTS = os.path.join(os.path.expanduser("~"), "Scripts")
 
-# Per-lane block_around() parameters, matching clip_ad()/clip_market()'s
-# own calls exactly -- see clips.py.
+# Per-lane re-derivation. "search" (ad, market) re-finds the block around a
+# recorded search phrase via clips.closure_margins/block_around; the other
+# four pick their own item deterministically from the page and need no
+# phrase at all -- see check_post() below for how each "kind" is dispatched.
 LANES = {
-    "ad": {"allow_display": True, "max_frac": None},
-    "market": {"allow_display": False, "max_frac": "MARKET_MAX_FRAC"},   # resolved below
+    "ad": {"kind": "search", "allow_display": True, "max_frac": None},
+    "market": {"kind": "search", "allow_display": False, "max_frac": "MARKET_MAX_FRAC"},
+    "headline": {"kind": "headline"},
+    "article": {"kind": "article"},
+    "cartoon": {"kind": "cartoon"},
+    "nameplate": {"kind": "nameplate"},
 }
 LANES["market"]["max_frac"] = clips.MARKET_MAX_FRAC
 
@@ -82,10 +105,22 @@ LANES["market"]["max_frac"] = clips.MARKET_MAX_FRAC
 # reads 0.41-0.60 on real content; comfortably above this floor.
 MARGIN_FLOOR = 0.15
 
-# Reasons closure_margins can report that are CONFIDENT, structural stops
-# -- never flagged regardless of ratio (most have none). Only "gap" and
-# "paragraph-gap" carry a ratio worth comparing to MARGIN_FLOOR.
-CONFIDENT_REASONS = {"rule", "display-boundary", "row-count-cap", "cap"}
+# Reasons any lane's closure diagnostics can report that are CONFIDENT,
+# structural stops -- never flagged regardless of ratio (most have none).
+# Only "gap", "paragraph-gap", "caption-count-cap" and "clear" carry a
+# ratio worth comparing to MARGIN_FLOOR; everything else here is a fixed
+# rule, a different item, a tier, a reach bound or a cap this script has
+# no business second-guessing. See each producing function's own
+# docstring (clips.block_around, items.box_with_deck, clips._article_span,
+# pictures._caption_edge, nameplate_crop.ink_bottom) for what each reason
+# means in its own lane.
+CONFIDENT_REASONS = {
+    "rule", "display-boundary", "row-count-cap", "cap",       # ad / market
+    "different-item", "boundary", "tier", "height-cap", "iteration-cap",   # headline
+    "indent",                                                  # article
+    "reach",                                                   # cartoon
+    "walked",                                                  # nameplate
+}
 
 
 def load_state(path=STATE_FILE):
@@ -136,13 +171,32 @@ def flag_from_margins(margins, floor=MARGIN_FLOOR):
 
 
 def check_post(post, phrase, floor=MARGIN_FLOOR, log=print):
-    """Re-derive the crop and its closure margins for one posted ad or
-    market item. Returns a findings list (possibly empty, meaning clean),
-    or None if the page/phrase could not be re-derived at all, or the
-    lane isn't one closure_margins covers (NOT CHECKED either way)."""
+    """Re-derive the crop and its closure margins for one posted item, in
+    whatever lane it is. Returns a findings list (possibly empty, meaning
+    clean), or None if the page/phrase could not be re-derived at all, the
+    lane's own closing walk itself refused the crop, or the lane isn't one
+    this script covers (NOT CHECKED either way)."""
     lane_params = LANES.get(post.get("lane"))
     if lane_params is None:
         return None
+    kind = lane_params["kind"]
+
+    if kind == "nameplate":
+        # ⚠️ The one lane that fetches its own page: nameplate_closure_
+        # margins() re-derives the band from lccn/date/edition directly
+        # (it needs a real image fetch that the other lanes' OCR-only
+        # re-derivation never does), so there is no shared `pages` lookup
+        # to do first the way the other five lanes share below.
+        try:
+            margins = npc.nameplate_closure_margins(post["lccn"], post["date"],
+                                                     post.get("edition", 1))
+        except (ghn_api.FetchError, ValueError) as e:
+            log(f"  {post['lccn']} {post['date']}: could not refetch ({e})")
+            return None
+        if margins is None:
+            return None
+        return flag_from_margins(margins, floor)
+
     try:
         pages = ghn_api.issue_pages(post["lccn"], post["date"], post.get("edition", 1))
     except (ghn_api.FetchError, ValueError) as e:
@@ -153,15 +207,27 @@ def check_post(post, phrase, floor=MARGIN_FLOOR, log=print):
         return None
     page = pages[seq - 1]
     c = page.coords()
-    hit = clips.find_phrase(c["words"], phrase)
-    if not hit:
+
+    if kind == "search":
+        hit = clips.find_phrase(c["words"], phrase)
+        if not hit:
+            return None
+        pi = rules.PageInk(page)
+        margins = clips.closure_margins(pi, c, hit, lane_params["allow_display"],
+                                        max_frac=lane_params["max_frac"],
+                                        split_wide_headings=True)
+    elif kind == "headline":
+        margins = clips.headline_closure_margins(c, page)
+    elif kind == "article":
+        margins = clips.article_closure_margins(c, page)
+    elif kind == "cartoon":
+        pi = rules.PageInk(page)
+        margins = pictures.cartoon_closure_margins(pi, c, page)
+    else:                                            # pragma: no cover
         return None
-    pi = rules.PageInk(page)
-    margins = clips.closure_margins(pi, c, hit, lane_params["allow_display"],
-                                    max_frac=lane_params["max_frac"],
-                                    split_wide_headings=True)
+
     if margins is None:
-        return None      # block_around itself refused this crop
+        return None      # the lane's own closing walk refused this crop
     return flag_from_margins(margins, floor)
 
 
@@ -224,16 +290,23 @@ def main():
         return 0
 
     posts = recent_posts(state, args.days)
-    log(f"crop closure check: {len(posts)} post(s) (ad + market) in the last {args.days} day(s)")
+    log(f"crop closure check: {len(posts)} post(s) (all six lanes) in the last {args.days} day(s)")
 
     flagged = not_checked = 0
     for post in posts:
-        phrase = phrase_for(state, post)
+        lane_params = LANES.get(post.get("lane"), {})
         label = f"{post.get('lane')} {post['lccn']} {post['date']} p{post.get('seq')}"
-        if not phrase:
-            not_checked += 1
-            log(f"  {label}: NOT CHECKED (no phrase on record)")
-            continue
+        # ⚠️ Only the "search" lanes (ad, market) need a phrase on record --
+        # headline, article, cartoon and nameplate all pick their own item
+        # deterministically from the page, so a missing phrase there is not
+        # a reason to skip them.
+        phrase = None
+        if lane_params.get("kind") == "search":
+            phrase = phrase_for(state, post)
+            if not phrase:
+                not_checked += 1
+                log(f"  {label}: NOT CHECKED (no phrase on record)")
+                continue
         findings = check_post(post, phrase, args.margin, log=log)
         if findings is None:
             not_checked += 1
@@ -241,7 +314,8 @@ def main():
             continue
         if findings:
             flagged += 1
-            log(f"  QUESTIONABLE {label} ({phrase!r}) {post_url(post)}")
+            suffix = f" ({phrase!r})" if phrase else ""
+            log(f"  QUESTIONABLE {label}{suffix} {post_url(post)}")
             for f in findings:
                 ratio = "n/a" if f["ratio"] is None else f"{f['ratio']:.2f}"
                 log(f"    {f['side']}: {f['reason']} (ratio {ratio}) -- excluded: {f['text']!r}")

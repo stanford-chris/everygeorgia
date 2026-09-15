@@ -253,6 +253,73 @@ class Caption(unittest.TestCase):
         self.assertEqual(extent, (None, None))
 
 
+class CaptionDiagnostics(unittest.TestCase):
+    """_caption_edge's own diagnostics, added 15 September 2026 for
+    crop_closure_check.py's cartoon-lane audit -- filled at the exact
+    break this function already takes, mirroring clips.block_around's
+    own contract. Every row here carries two real words (CAPTION_REAL_
+    WORDS): a one-word row, like Caption's own gap/reach fixtures used
+    above, is filtered out before any of this is even reached."""
+
+    def test_a_line_just_past_the_gap_ceiling_is_a_near_miss(self):
+        # CAPTION_GAP*hgt = 1.5*15 = 22.5; the second line's own gap (25)
+        # clears it by 2.5, a near miss.
+        line0 = _row(1000, 15, [(400, 80), (500, 90)])
+        line1 = _row(1040, 15, [(400, 80), (500, 90)])
+        diag = {}
+        pictures._caption_edge(line0 + line1, 1, 1000, 1, 200, 10,
+                               diagnostics=diag, direction="bottom")
+        info = diag["bottom"]
+        self.assertEqual(info["reason"], "gap")
+        self.assertAlmostEqual(info["ratio"], (25 - 22.5) / 22.5, places=4)
+
+    def test_a_line_outside_reach_is_a_confident_stop_not_a_miss(self):
+        # A tiny `reach` (2) smaller than the function's own fixed
+        # pre-filter tolerance (4) is what lets a line past the pre-
+        # filter and into the in-loop reach check itself -- see the
+        # test's own comment in the production code's docstring.
+        line0 = _row(997, 15, [(400, 80), (500, 90)])
+        diag = {}
+        pictures._caption_edge(line0, 1, 1000, 1, 2, 10,
+                               diagnostics=diag, direction="bottom")
+        self.assertEqual(diag["bottom"]["reason"], "reach")
+        self.assertIsNone(diag["bottom"]["ratio"])
+
+    def test_a_real_fifth_line_past_caption_lines_is_a_near_miss(self):
+        # Five lines, five-unit gaps throughout (well inside CAPTION_GAP):
+        # the cap alone excludes the fifth, not any gap of its own -- a
+        # negative ratio, the clearest possible near miss.
+        lines = []
+        for i in range(5):
+            lines += _row(1000 + i * 20, 15, [(400, 80), (500, 90)])
+        diag = {}
+        with mock.patch.object(pictures, "CAPTION_LINES", 4):
+            pictures._caption_edge(lines, 1, 1000, 1, 200, 10,
+                                   diagnostics=diag, direction="bottom")
+        info = diag["bottom"]
+        self.assertEqual(info["reason"], "caption-count-cap")
+        self.assertLess(info["ratio"], 0)
+
+    def test_exactly_caption_lines_with_nothing_further_reports_none(self):
+        diag = {}
+        pictures._caption_edge(self.Caption_span(), 1, 1000, 1, 200, 10,
+                               diagnostics=diag, direction="bottom")
+        self.assertIsNone(diag["bottom"])
+
+    def Caption_span(self):
+        title = _row(1010, 15, [(400, 80), (500, 90)])
+        cap1 = _row(1030, 18, [(350, 90), (460, 90), (560, 90)])
+        cap2 = _row(1052, 18, [(350, 90), (460, 90), (680, 100)])
+        cap3 = _row(1074, 18, [(350, 90), (460, 90), (560, 90)])
+        return title + cap1 + cap2 + cap3
+
+    def test_diagnostics_none_by_default_costs_nothing_and_changes_nothing(self):
+        span = self.Caption_span()
+        plain = pictures._caption_edge(span, 1, 1000, 1, 200, 10)
+        instrumented = pictures._caption_edge(span, 1, 1000, 1, 200, 10, diagnostics={})
+        self.assertEqual(plain, instrumented)
+
+
 class Reply(unittest.TestCase):
     GOOD = ("KIND: comic-strip\nTITLE: Penny Ante\nWORDS: HA! HA! | OH BOY | NEVER MIND.\n"
             "PICTURE: Five men sit around a card table.\nCARICATURE: no")
@@ -389,6 +456,54 @@ class Lane(unittest.TestCase):
         self.assertNotIn("cartoon", ep.SEARCH_LANES)
         import gates
         self.assertEqual(gates.earliest("cartoon"), "1900-01-01")
+
+
+class CartoonClosureMargins(unittest.TestCase):
+    """cartoon_closure_margins(), crop_closure_check.py's own entry point
+    for this lane. `candidates`/`clear_share`/`frame` are mocked, since
+    what this dispatch function owns is picking the SAME single survivor
+    clip_cartoon would hand the model first, and refusing to guess when
+    there is more than one -- not the geometry inside frame() itself,
+    which CaptionDiagnostics above already covers."""
+
+    class Page:
+        seq = 3
+
+    class PI:
+        """Just enough of rules.PageInk for cartoon_closure_margins' own
+        dispatch code: from_ocr() is called before clear_share()/frame()
+        run (both mocked below), so it needs a real, if trivial, method."""
+        def from_ocr(self, box):
+            return box
+
+    def test_one_survivor_gets_framed_with_diagnostics_on(self):
+        with mock.patch.object(pictures, "candidates",
+                               return_value=[(0.05, (100, 100, 200, 200))]), \
+             mock.patch.object(pictures, "clear_share", return_value=0.1), \
+             mock.patch.object(pictures, "frame", return_value=(90, 90, 220, 220)) as fr:
+            margins = pictures.cartoon_closure_margins(self.PI(), {"words": []}, self.Page())
+        self.assertIsInstance(margins, dict)
+        fr.assert_called_once()
+        self.assertEqual(fr.call_args[1].get("diagnostics"), margins)
+
+    def test_no_candidate_at_all_reports_none(self):
+        with mock.patch.object(pictures, "candidates", return_value=[]):
+            self.assertIsNone(pictures.cartoon_closure_margins(self.PI(), {"words": []}, self.Page()))
+
+    def test_every_candidate_reading_as_type_reports_none(self):
+        with mock.patch.object(pictures, "candidates",
+                               return_value=[(0.05, (100, 100, 200, 200))]), \
+             mock.patch.object(pictures, "clear_share", return_value=0.9):   # > TYPE_CLEAR_MAX
+            self.assertIsNone(pictures.cartoon_closure_margins(self.PI(), {"words": []}, self.Page()))
+
+    def test_more_than_one_survivor_reports_none_rather_than_guess(self):
+        with mock.patch.object(pictures, "candidates",
+                               return_value=[(0.05, (100, 100, 200, 200)),
+                                            (0.03, (500, 500, 150, 150))]), \
+             mock.patch.object(pictures, "clear_share", return_value=0.1), \
+             mock.patch.object(pictures, "frame") as fr:
+            self.assertIsNone(pictures.cartoon_closure_margins(self.PI(), {"words": []}, self.Page()))
+        fr.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -495,7 +495,7 @@ def candidates(coords, pi=None, seq=1):
     return out
 
 
-def frame(pi, coords, box_ocr):
+def frame(pi, coords, box_ocr, diagnostics=None):
     """The crop for a picture box: out to the nearest column boundary the
     picture does not cross on each side, and above and below to the nearest
     gap or rule within CAPTION_REACH, so a title line above or a caption
@@ -503,6 +503,18 @@ def frame(pi, coords, box_ocr):
     to the picture's own edge: a walk that only stopped at a gap would run
     through the body text under an editorial cartoon, whose line gaps are
     narrower than any gap this looks for.
+
+    `diagnostics`: an optional dict filled IN PLACE with {"top": info_or_
+    None, "bottom": info_or_None}, the same shape and the same "filled at
+    the moment of the SAME decision this function already takes" contract
+    as clips.block_around's own -- see closure_margins() there for why a
+    reconstruction from the outside is the wrong way to build this. "rule"
+    (a printed rule closed this side) is confident and structural, like its
+    namesake in block_around; only "gap" and "caption-count-cap" (there was a
+    real next caption line, past CAPTION_LINES, that this did not take)
+    carry a ratio worth comparing to a floor. "reach" (CAPTION_REACH itself)
+    is confident too -- a fixed structural bound, like block_around's own
+    "cap". No cost when omitted.
 
     ⚠️ A CAPTION LINE CAN BE WIDER THAN THE PICTURE, AND THE CROP MUST WIDEN
     FOR IT. `x0`/`x1` are set from the picture's own OCR box before any
@@ -562,20 +574,27 @@ def frame(pi, coords, box_ocr):
     ruled_bot = yb is not None and rule[max(0, min(len(rule) - 1, yb + 1))]
     y0 = top_lim + yt if ruled_top else max(0, y - pad)
     y1 = top_lim + yb + 1 if ruled_bot else min(pi.h, y + h + pad)
+    if diagnostics is not None:
+        if ruled_top:
+            diagnostics["top"] = {"reason": "rule", "ratio": None, "text": None}
+        if ruled_bot:
+            diagnostics["bottom"] = {"reason": "rule", "ratio": None, "text": None}
     # else whole OCR lines, a few, set close together
     per = pi.page.scale * pi.scale                 # small px per OCR unit
     span = [w for w in coords["words"] if x0 <= (w[0] + w[2] / 2.0) * per < x1]
     med = (nameplate.page_median_height(coords["words"]) or 1) * per
     x_lo = x_hi = None
     if not ruled_top:
-        top_edge, (lo, hi) = _caption_edge(span, per, y, -1, reach, med)
+        top_edge, (lo, hi) = _caption_edge(span, per, y, -1, reach, med,
+                                           diagnostics=diagnostics, direction="top")
         y0 = min(y0, top_edge)
         if lo is not None:
             x_lo = lo if x_lo is None else min(x_lo, lo)
         if hi is not None:
             x_hi = hi if x_hi is None else max(x_hi, hi)
     if not ruled_bot:
-        bot_edge, (lo, hi) = _caption_edge(span, per, y + h, 1, reach, med)
+        bot_edge, (lo, hi) = _caption_edge(span, per, y + h, 1, reach, med,
+                                           diagnostics=diagnostics, direction="bottom")
         y1 = max(y1, bot_edge)
         if lo is not None:
             x_lo = lo if x_lo is None else min(x_lo, lo)
@@ -755,7 +774,7 @@ def thin_rules(dark, max_rows=RULE_MAX_ROWS):
     return out
 
 
-def _caption_edge(span, per, edge, step, reach, med):
+def _caption_edge(span, per, edge, step, reach, med, diagnostics=None, direction=None):
     """The far edge (small px) of up to CAPTION_LINES OCR lines beyond
     `edge` in direction `step`, each within CAPTION_GAP line heights of the
     last and inside `reach`; a line the edge itself cuts is the first. The
@@ -765,7 +784,22 @@ def _caption_edge(span, per, edge, step, reach, med):
     the word centres `span` was already filtered on) of the accepted lines,
     or (None, None) when none were. A caption or title set to the full
     column width can run past a narrower picture's own edges -- see frame()'s
-    own docstring -- and the caller widens the crop to match."""
+    own docstring -- and the caller widens the crop to match.
+
+    `diagnostics`/`direction`: see frame()'s own docstring. Filled at the
+    exact break this function already takes -- including the for loop's own
+    natural end, which is where CAPTION_LINES itself can be the reason a
+    real caption line was left out (see CAPTION_LINES' own history: it was
+    3 until a title-over-joke caption measured four lines deep and shipped
+    cut off). That case gets a real "caption-count-cap" ratio, computed the
+    same way "gap" is, against whatever line sits just past the cap -- not
+    folded into the confident, ratio-less reasons, because unlike
+    block_around's MARKET_ROWS this cap is regularly close enough to bite."""
+    def _note(reason, ratio=None, text=None):
+        if diagnostics is not None and direction is not None:
+            diagnostics[direction] = None if reason is None else \
+                {"reason": reason, "ratio": ratio, "text": text}
+
     lines = []
     for rw in nameplate.rows_of(sorted(span, key=lambda w: (w[1], w[0])), row_tol=0.5):
         if sum(1 for w in rw if sum(ch.isalpha() for ch in w[4]) >= 3) < CAPTION_REAL_WORDS:
@@ -788,9 +822,12 @@ def _caption_edge(span, per, edge, step, reach, med):
         hgt = max(1.0, b - t)
         gap = (last - b) if step < 0 else (t - last)
         if i and gap > CAPTION_GAP * hgt:
+            _note("gap", (gap - CAPTION_GAP * hgt) / (CAPTION_GAP * hgt),
+                 " ".join(w[4] for w in sorted(rw, key=lambda w: w[0])))
             break
         near_side = b if step < 0 else t              # the side facing the picture
         if near_side < edge - reach or near_side > edge + reach:
+            _note("reach", None, " ".join(w[4] for w in sorted(rw, key=lambda w: w[0])))
             break
         out = (t if step < 0 else b) + step * 2
         last = t if step < 0 else b
@@ -798,7 +835,38 @@ def _caption_edge(span, per, edge, step, reach, med):
         row_hi = max(w[0] + w[2] for w in rw) * per
         lo = row_lo if lo is None else min(lo, row_lo)
         hi = row_hi if hi is None else max(hi, row_hi)
+    else:
+        if len(lines) > CAPTION_LINES:
+            nt, nb, nrw = lines[CAPTION_LINES]
+            hgt = max(1.0, nb - nt)
+            gap = (last - nb) if step < 0 else (nt - last)
+            _note("caption-count-cap", (gap - CAPTION_GAP * hgt) / (CAPTION_GAP * hgt),
+                 " ".join(w[4] for w in sorted(nrw, key=lambda w: w[0])))
+        else:
+            _note(None)          # nothing further out there to have missed
     return out, (lo, hi)
+
+
+def cartoon_closure_margins(pi, c, page):
+    """ADVISORY ONLY: crop_closure_check.py's own entry point for this
+    lane, mirroring clips.headline_closure_margins/article_closure_margins.
+    Re-picks candidates on THIS page exactly as clip_cartoon() does (its
+    own TYPE_CLEAR_MAX filter, largest first) and reports frame()'s own
+    diagnostics for the one surviving candidate -- the one clip_cartoon
+    would hand the model first.
+
+    `None` when there is no picture-sized hole on this page at all, OR when
+    more than one candidate survives the filter: a second candidate means
+    which one the model actually picked cannot be reproduced without
+    spending the call this audit exists to avoid (see pictures.py's own
+    "cost" paragraph), so this reports NOT CHECKED rather than guess."""
+    cands = [b for _, b in candidates(c, pi, page.seq)]
+    survivors = [b for b in cands if clear_share(pi, pi.from_ocr(b)) <= TYPE_CLEAR_MAX]
+    if len(survivors) != 1:
+        return None
+    diagnostics = {}
+    frame(pi, c, survivors[0], diagnostics=diagnostics)
+    return diagnostics
 
 
 # =============================================================== the model ==

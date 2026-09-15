@@ -1,13 +1,19 @@
 #!/usr/bin/env python3
 """
 Tests for crop_closure_check.py. No network: the network-touching half
-(check_post) is a thin wrapper around ghn_api/clips calls already covered
-by test_clips.py's ClosureMargins and AdHeadingGap/AdTailGap classes, so
-what is pinned here is the part unique to this script -- state-file
-reading, date filtering, the URL builder, and the pure classification
-flag_from_margins() applies to an already-computed margins dict.
+(check_post) is a thin wrapper around ghn_api/clips/pictures/nameplate_crop
+calls already covered by test_clips.py's ClosureMargins/AdHeadingGap/
+AdTailGap classes and the box_with_deck/_article_span/_caption_edge/
+ink_bottom diagnostics tests in test_clips.py, test_pictures.py and
+test_nameplate.py, so what is pinned here is the part unique to this
+script -- state-file reading, date filtering, the URL builder, the pure
+classification flag_from_margins() applies to an already-computed margins
+dict, and CheckPostDispatch below, which checks only that check_post()
+calls the RIGHT re-derivation function for each of the six lanes (mocked),
+never the geometry those functions themselves compute.
 """
 import unittest
+import unittest.mock as mock
 from datetime import datetime, timezone
 
 import crop_closure_check as ccc
@@ -16,14 +22,26 @@ import crop_closure_check as ccc
 class RecentPosts(unittest.TestCase):
     NOW = datetime(2026, 9, 15, 12, 0, tzinfo=timezone.utc)
 
-    def test_both_ad_and_market_are_kept_by_default(self):
+    def test_all_six_lanes_are_kept_by_default(self):
         state = {"posted": [
             {"lane": "ad", "at": "2026-09-14T14:10:22+00:00"},
             {"lane": "market", "at": "2026-09-14T14:10:22+00:00"},
+            {"lane": "headline", "at": "2026-09-14T14:10:22+00:00"},
+            {"lane": "article", "at": "2026-09-14T14:10:22+00:00"},
             {"lane": "cartoon", "at": "2026-09-14T14:10:22+00:00"},
+            {"lane": "nameplate", "at": "2026-09-14T14:10:22+00:00"},
         ]}
         out = ccc.recent_posts(state, 7, now=self.NOW)
-        self.assertEqual({p["lane"] for p in out}, {"ad", "market"})
+        self.assertEqual({p["lane"] for p in out},
+                         {"ad", "market", "headline", "article", "cartoon", "nameplate"})
+
+    def test_an_unknown_lane_is_not_kept(self):
+        state = {"posted": [
+            {"lane": "ad", "at": "2026-09-14T14:10:22+00:00"},
+            {"lane": "some-future-lane", "at": "2026-09-14T14:10:22+00:00"},
+        ]}
+        out = ccc.recent_posts(state, 7, now=self.NOW)
+        self.assertEqual({p["lane"] for p in out}, {"ad"})
 
     def test_a_lanes_argument_narrows_it(self):
         state = {"posted": [
@@ -79,6 +97,86 @@ class PhraseFor(unittest.TestCase):
     def test_a_missing_tried_section_entirely_returns_none_not_a_crash(self):
         post = {"lane": "ad", "lccn": "sn00000000", "date": "1900-01-01", "seq": 1}
         self.assertIsNone(ccc.phrase_for({}, post))
+
+
+class CheckPostDispatch(unittest.TestCase):
+    """check_post() must call the RIGHT lane's own re-derivation function,
+    and only that one -- everything below the dispatch (the actual walk,
+    the actual pixel reads) is someone else's test. Every lane's own
+    functions are mocked; a FakePage stands in for ghn_api's real one."""
+
+    class FakePage:
+        def coords(self):
+            return {"width": 100, "height": 100, "words": []}
+
+    def _pages(self):
+        return [self.FakePage()]
+
+    def test_ad_calls_closure_margins_with_its_own_phrase(self):
+        post = {"lane": "ad", "lccn": "sn1", "date": "1900-01-01", "seq": 1}
+        hit = [(0, 0, 1, 1, "x")]
+        with mock.patch.object(ccc.ghn_api, "issue_pages", return_value=self._pages()), \
+             mock.patch.object(ccc.clips, "find_phrase", return_value=hit), \
+             mock.patch.object(ccc.rules, "PageInk", return_value="PI"), \
+             mock.patch.object(ccc.clips, "closure_margins", return_value={}) as cm:
+            ccc.check_post(post, "clothing and hats")
+        cm.assert_called_once()
+        args = cm.call_args[0]
+        self.assertEqual(args[0], "PI")
+        self.assertEqual(args[2], hit)
+        self.assertTrue(args[3])                 # allow_display=True for the ad lane
+
+    def test_headline_calls_headline_closure_margins_with_no_phrase_needed(self):
+        post = {"lane": "headline", "lccn": "sn1", "date": "1900-01-01", "seq": 1}
+        with mock.patch.object(ccc.ghn_api, "issue_pages", return_value=self._pages()), \
+             mock.patch.object(ccc.clips, "headline_closure_margins", return_value={}) as hcm:
+            findings = ccc.check_post(post, None)
+        hcm.assert_called_once()
+        self.assertEqual(findings, [])
+
+    def test_article_calls_article_closure_margins(self):
+        post = {"lane": "article", "lccn": "sn1", "date": "1900-01-01", "seq": 1}
+        with mock.patch.object(ccc.ghn_api, "issue_pages", return_value=self._pages()), \
+             mock.patch.object(ccc.clips, "article_closure_margins", return_value=None) as acm:
+            findings = ccc.check_post(post, None)
+        acm.assert_called_once()
+        self.assertIsNone(findings)      # the lane's own walk refused the crop
+
+    def test_cartoon_calls_cartoon_closure_margins_with_a_pageink(self):
+        post = {"lane": "cartoon", "lccn": "sn1", "date": "1900-01-01", "seq": 1}
+        with mock.patch.object(ccc.ghn_api, "issue_pages", return_value=self._pages()), \
+             mock.patch.object(ccc.rules, "PageInk", return_value="PI"), \
+             mock.patch.object(ccc.pictures, "cartoon_closure_margins", return_value={}) as ccm:
+            ccc.check_post(post, None)
+        ccm.assert_called_once()
+        self.assertEqual(ccm.call_args[0][0], "PI")
+
+    def test_nameplate_calls_its_own_entry_point_and_never_fetches_pages(self):
+        post = {"lane": "nameplate", "lccn": "sn1", "date": "1900-01-01",
+                "edition": 1, "seq": 1}
+        with mock.patch.object(ccc.ghn_api, "issue_pages") as issue_pages, \
+             mock.patch.object(ccc.npc, "nameplate_closure_margins",
+                               return_value={}) as ncm:
+            ccc.check_post(post, None)
+        issue_pages.assert_not_called()
+        ncm.assert_called_once_with("sn1", "1900-01-01", 1)
+
+    def test_nameplate_fetch_failure_reports_not_checked_not_a_crash(self):
+        post = {"lane": "nameplate", "lccn": "sn1", "date": "1900-01-01", "seq": 1}
+        with mock.patch.object(ccc.npc, "nameplate_closure_margins",
+                               side_effect=ccc.ghn_api.FetchError("boom")):
+            self.assertIsNone(ccc.check_post(post, None))
+
+    def test_an_out_of_range_seq_returns_none_not_a_crash(self):
+        post = {"lane": "headline", "lccn": "sn1", "date": "1900-01-01", "seq": 9}
+        with mock.patch.object(ccc.ghn_api, "issue_pages", return_value=self._pages()):
+            self.assertIsNone(ccc.check_post(post, None))
+
+    def test_a_search_lane_with_no_phrase_hit_returns_none(self):
+        post = {"lane": "ad", "lccn": "sn1", "date": "1900-01-01", "seq": 1}
+        with mock.patch.object(ccc.ghn_api, "issue_pages", return_value=self._pages()), \
+             mock.patch.object(ccc.clips, "find_phrase", return_value=None):
+            self.assertIsNone(ccc.check_post(post, "never on the page"))
 
 
 class FlagFromMargins(unittest.TestCase):

@@ -96,10 +96,40 @@ def is_tier(line, pi):
     return bool(inside) and len(straddled) <= len(inside) - len(straddled)
 
 
-def box_with_deck(seg, words, page_width, page_height, pi=None):
+def _next_line(words, x0, x1, cur):
+    """The nearest line below `cur` in [x0, x1), whatever its size -- what
+    box_with_deck's own "gap" diagnostic looks at when its window comes up
+    empty. (None, None) when nothing lies below at all: the page truly ends
+    there, and box_with_deck's "not cands" is a genuine edge, not a miss."""
+    below = sorted((w for w in words if w[0] + w[2] > x0 and w[0] < x1 and w[1] > cur),
+                   key=lambda w: (w[1], w[0]))
+    if not below:
+        return None, None
+    line = nameplate.rows_of(below)[0]
+    return min(w[1] for w in line), line
+
+
+def box_with_deck(seg, words, page_width, page_height, pi=None, diagnostics=None):
     """The segment's box plus the smaller-but-not-body lines directly under
     it in the same horizontal span (lanes._box_of, minus its padding: the
-    snap supplies the real edges)."""
+    snap supplies the real edges).
+
+    `diagnostics`: an optional dict this function fills IN PLACE with
+    {"bottom": info_or_None}, mirroring clips.block_around's own
+    `diagnostics` -- filled at the moment of the SAME break this function
+    already takes, never reconstructed afterward (see closure_margins' own
+    docstring in clips.py for why that distinction matters). There is no
+    "top" here: a headline item's own top is the seed row itself, never
+    walked. `info` is {"reason", "ratio", "text"}; only "gap" carries a
+    ratio worth comparing to a floor -- every other reason is a confident,
+    structural stop (a different item, a tier of column heads, the height
+    or iteration cap) and is never a near miss of anything. No cost when
+    omitted, as block_around's own diagnostics are."""
+    def _note(reason, ratio=None, text=None):
+        if diagnostics is not None:
+            diagnostics["bottom"] = None if reason is None else \
+                {"reason": reason, "ratio": ratio, "text": text}
+
     x0 = min(w[0] for w in seg)
     x1 = max(w[0] + w[2] for w in seg)
     y0 = min(w[1] for w in seg)
@@ -132,6 +162,13 @@ def box_with_deck(seg, words, page_width, page_height, pi=None):
                  if top_prev + 0.5 * h_prev < w[1] <= cur + DECK_GAP * h
                  and w[0] + w[2] > x0 and w[0] < x1]
         if not cands:
+            top, line = _next_line(words, x0, x1, cur)
+            if top is None:
+                _note(None)
+            else:
+                gap = top - cur
+                _note("gap", (gap - DECK_GAP * h) / (DECK_GAP * h),
+                     " ".join(w[4] for w in sorted(line, key=lambda w: w[0])))
             break
         # ⚠️ ONE LINE AT A TIME, judged by its tallest word. Judged per word,
         # the second banner on the 1919 Cordele page came out seven deck
@@ -150,10 +187,12 @@ def box_with_deck(seg, words, page_width, page_height, pi=None):
             if (min(hi, x1) - max(lo, x0)) / span >= 0.6:
                 take = line
         elif hl > SAME_MAX * h:
+            _note("different-item", None, " ".join(w[4] for w in sorted(line, key=lambda w: w[0])))
             break
         elif max(DECK_MIN * h, 1.6 * med) <= hl:
             take = line
         if not take:
+            _note("boundary", None, " ".join(w[4] for w in sorted(line, key=lambda w: w[0])))
             break
         # ⚠️ A tier of SEVERAL items under a banner is the next row of column
         # headlines, not the banner's deck. Under "U. S. TO ADD 15 MILLIONS
@@ -162,11 +201,15 @@ def box_with_deck(seg, words, page_width, page_height, pi=None):
         # crop into the columns and their words into the alt. A deck is one
         # line: gap-split as display_rows does, and two real pieces end it.
         if is_tier(take, pi):
+            _note("tier", None, " ".join(w[4] for w in sorted(take, key=lambda w: w[0])))
             break
         cur = max(w[1] + w[3] for w in take)
         top_prev, h_prev = min(w[1] for w in take), max(w[3] for w in take)
         if cur - y0 > 6 * h:
+            _note("height-cap")
             break
+    else:
+        _note("iteration-cap")
     y1 = cur
     if (y1 - y0) > MAX_ITEM_FRAC * page_height:
         return None

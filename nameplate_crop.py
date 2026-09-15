@@ -371,7 +371,7 @@ def _is_body(seg, tall, film, min_big=3):
 
 def ink_bottom(rows, band_rows, page_rows, cluster_rows=None, gap_frac=GAP_FRAC,
                edge_frac=EDGE_FRAC, margin=CLEAR_MARGIN, big=BIG_INK,
-               cross_frac=CROSS_FRAC):
+               cross_frac=CROSS_FRAC, diagnostics=None):
     """Gate 4. `rows` is row_crossing() of a probe crop of the top of the
     page, `band_rows` the detected band's bottom in that crop's rows,
     `page_rows` the whole page height in the same units.
@@ -393,7 +393,19 @@ def ink_bottom(rows, band_rows, page_rows, cluster_rows=None, gap_frac=GAP_FRAC,
     where the clear run began and the Independent Press of 13 January 1855
     came back with the feet of its letters cut off. So the edge is judged
     `stride` rows up, and the end returned is the gap's start plus `stride`,
-    which is where the ink actually stops."""
+    which is where the ink actually stops.
+
+    `diagnostics`: an optional dict filled IN PLACE with {"bottom":
+    info_or_None}, the crop_closure_check.py-facing counterpart of clips.
+    block_around's own. ⚠️ Only the SHORT-CIRCUIT at the top -- the band
+    already reads clear, no walk needed -- gets a real ratio: it is the one
+    branch nothing downstream re-examines once it fires, so a row that just
+    barely cleared `margin` is a genuine near miss. The walked extension
+    below returns the INSTANT its run of clear rows reaches `gap`, by
+    construction, so "how much slack did the walk have" is always exactly
+    zero there and not worth reporting; that path, and every refusal this
+    function or refine_band() around it can raise, are confident and
+    structural, like block_around's own "rule"/"cap" reasons."""
     n = len(rows)
     band_rows = max(0, min(int(band_rows), n))
     if band_rows == 0 or n == 0:
@@ -405,8 +417,17 @@ def ink_bottom(rows, band_rows, page_rows, cluster_rows=None, gap_frac=GAP_FRAC,
     stride = max(4, int(round(page_rows * cross_frac)))
     probe = max(0, band_rows - stride)
 
-    if all(clear[max(0, probe - edge):probe]):
+    window = rows[max(0, probe - edge):probe]
+    if all(v <= base + margin for v in window):
+        if diagnostics is not None:
+            headroom = (base + margin) - max(window) if window else None
+            diagnostics["bottom"] = {
+                "reason": "clear",
+                "ratio": (headroom / margin) if (headroom is not None and margin) else None,
+                "text": None}
         return band_rows
+    if diagnostics is not None:
+        diagnostics["bottom"] = {"reason": "walked", "ratio": None, "text": None}
     # ⚠️ A band whose own edge is IN large ink is cutting the masthead itself
     # (large ink after a gap inside the band was refused before this was
     # called), so the walk may continue through that ink until paper: the
@@ -438,11 +459,15 @@ def ink_bottom(rows, band_rows, page_rows, cluster_rows=None, gap_frac=GAP_FRAC,
     return None
 
 
-def refine_band(page, box, coords, width=CROP_WIDTH):
+def refine_band(page, box, coords, width=CROP_WIDTH, diagnostics=None):
     """Apply gate 4 to an OCR-space band. Returns (band, jpeg_bytes) or raises
     Refused. One image fetch: the probe is the top MAX_BAND_FRAC of the page
     at the final width, and the crop is cut from it locally, so a candidate
-    page costs manifest + coordinates + one image, never two images."""
+    page costs manifest + coordinates + one image, never two images.
+
+    `diagnostics`: threaded straight through to ink_bottom() -- see its own
+    docstring. Every refusal in this function stays a refusal either way;
+    there is no cost to a caller that never passes it."""
     ch, cw = coords["height"], coords["width"]
     probe_h_ocr = int(round(ch * nameplate.MAX_BAND_FRAC))
     probe_box = page.to_image((0, 0, cw, probe_h_ocr))
@@ -471,7 +496,7 @@ def refine_band(page, box, coords, width=CROP_WIDTH):
     if large_objects(rows, int(band_rows), ch * per_ocr) > 1:
         raise Refused("ink edge: two bodies of large type inside the band, "
                       "and the OCR read only one of them")
-    end = ink_bottom(rows, band_rows, ch * per_ocr, cluster_rows)
+    end = ink_bottom(rows, band_rows, ch * per_ocr, cluster_rows, diagnostics=diagnostics)
     if end == BIG:
         raise Refused("ink edge: the band ends in ink and the next clear gap "
                       "is beyond large type the OCR did not read")
@@ -532,6 +557,29 @@ def refine_band(page, box, coords, width=CROP_WIDTH):
     buf = io.BytesIO()
     crop.convert("RGB").save(buf, format="JPEG", quality=90, optimize=True)
     return band, buf.getvalue()
+
+
+def nameplate_closure_margins(lccn, date, ed=1):
+    """ADVISORY ONLY: crop_closure_check.py's entry point for this lane,
+    mirroring clips.py's headline_closure_margins/article_closure_margins
+    (and closure_margins() there, for the ad/market lanes). Re-derives the
+    band geometry and runs refine_band() with diagnostics on -- skipping
+    gates.check() entirely, since a POSTED item already cleared it and this
+    only asks about the ink-edge gate's own closing decision. `None` when
+    there is no geometry at all, or when refine_band() itself refuses (a
+    confident, structural outcome in every one of its own raises -- see its
+    docstring -- never a near miss this should quantify)."""
+    page = ghn_api.front_page(lccn, date, ed)
+    c = page.coords()
+    box = nameplate.nameplate_box(c["words"], c["width"], c["height"])
+    if box is None:
+        return None
+    diagnostics = {}
+    try:
+        refine_band(page, box, c, diagnostics=diagnostics)
+    except Refused:
+        return None
+    return diagnostics
 
 
 def clip(lccn, date, ed=1, width=CROP_WIDTH, lane="nameplate", refine=True):

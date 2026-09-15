@@ -449,10 +449,19 @@ def choose_page(lccn, date, ed, seq=None):
     return pages[rng.randint(2, min(len(pages), INNER_MAX_SEQ)) - 1]
 
 
-def _headline_item(c, page):
+def _headline_item(c, page, diagnostics=None):
     """(box, words inside) of the topmost display item below the nameplate
     that is not itself an advertisement, or None. On an inner page there is
-    no nameplate, and the running head at the top is skipped instead."""
+    no nameplate, and the running head at the top is skipped instead.
+
+    `diagnostics`: passed through to items.box_with_deck() for crop_closure_
+    check.py's own use -- see closure_margins() below. items.snapped()
+    already ran box_with_deck once, undiagnosed, to build the candidate
+    list this walks; the winning candidate's own `seg` is run through it a
+    SECOND time, with diagnostics on, rather than instrumenting the first
+    pass for every candidate this never returns. Pure and cheap (no
+    network, no image fetch), so the redundant call costs nothing on the
+    hot posting path, where no caller ever passes diagnostics."""
     floor = RUNNING_HEAD * c["height"] if page.seq > 1 else 0
     # ⚠️ "Below the nameplate" is now literal. On the Atlanta Georgian and
     # News of 3 July 1907 the topmost display item was the nameplate's own
@@ -470,8 +479,24 @@ def _headline_item(c, page):
         inside = nameplate.words_in(c["words"], s)
         if len(ad_markers(ocr_text(inside))) >= AD_MARKERS:
             continue
+        if diagnostics is not None:
+            pi = rules.PageInk(page)
+            items.box_with_deck(seg, c["words"], c["width"], c["height"], pi,
+                                diagnostics=diagnostics)
         return s, inside
     return None
+
+
+def headline_closure_margins(c, page):
+    """ADVISORY ONLY, mirroring closure_margins() below but for the headline
+    item's own down-walk (items.box_with_deck): why did it stop growing the
+    item past its heading and deck lines? `None` if there is no headline
+    item on this page at all -- nothing for a caller to have asked about."""
+    diagnostics = {}
+    chosen = _headline_item(c, page, diagnostics=diagnostics)
+    if chosen is None:
+        return None
+    return diagnostics
 
 
 def strong_ad_markers(text):
@@ -583,9 +608,13 @@ def _lines(rows, med):
     return out
 
 
-def clip_article(lccn, date, ed=1, seq=None, log=print):
-    """The headline item plus its first paragraph. His ask, 11 September
-    2026: "a headline and first graf."
+def _article_span(c, page, diagnostics=None):
+    """The headline item's box plus the row range of its first paragraph, as
+    clip_article() builds it -- factored out so crop_closure_check.py can
+    re-derive just the geometry, with `diagnostics` on, without spending a
+    model call (the same reasoning closure_margins() below has for block_
+    around). Raises npc.Refused exactly as clip_article() would when there
+    is nothing to find. Returns (hbox, box).
 
     ⚠️ Decks and body are told apart by SPACING, not size. On the Macon
     Telegraph of 15 January 1897 the decks are bold body-height lines set
@@ -593,11 +622,20 @@ def clip_article(lccn, date, ed=1, seq=None, log=print):
     a height rule ended the crop inside the decks. So: everything under the
     headline down to the first run of three tight lines is furniture and
     is kept; the run is the paragraph; it ends at the next indented line
-    (a new paragraph), a wider gap, or ARTICLE_LINES. Transcribed whole by
-    the model."""
-    meta = _meta(lccn, date, "article")
-    page = choose_page(lccn, date, ed, seq)
-    c = page.coords()
+    (a new paragraph), a wider gap, or ARTICLE_LINES.
+
+    `diagnostics`, filled the same way block_around's own is (at the SAME
+    break this already takes, never reconstructed): only "gap" -- the
+    paragraph's own closing line spacing, TIGHT_GAP*med -- carries a ratio
+    worth comparing to a floor. "indent" (the next paragraph starting),
+    "cap" (ARTICLE_MAX_FRAC) and "row-count-cap" (ARTICLE_LINES) are
+    confident, structural stops, exactly as their namesakes are for
+    block_around."""
+    def _note(reason, ratio=None, text=None):
+        if diagnostics is not None:
+            diagnostics["bottom"] = None if reason is None else \
+                {"reason": reason, "ratio": ratio, "text": text}
+
     chosen = _headline_item(c, page)
     if chosen is None:
         raise npc.Refused("no headline item below the nameplate")
@@ -629,18 +667,50 @@ def clip_article(lccn, date, ed=1, seq=None, log=print):
     end = start
     for i in range(start + 1, len(lines)):
         if not tight(i):
+            ratio = (gaps[i] - TIGHT_GAP * med) / (TIGHT_GAP * med)
+            _note("gap", ratio, ocr_text(lines[i][3]))
             break
         if i - start >= 2 and lines[i][2] > left_mode + INDENT * med:
+            _note("indent", None, ocr_text(lines[i][3]))
             break                               # an indented line: the next paragraph
         if lines[i][1] - hbox[1] > ARTICLE_MAX_FRAC * ch:
+            _note("cap")
             break
         end = i
         if end - start + 1 >= ARTICLE_LINES:
+            _note("row-count-cap")
             break
+    else:
+        _note(None)      # ran out of lines on the page; nothing outside
     if end - start + 1 < 3:
         raise npc.Refused("paragraph under the headline is under three lines")
     bottom = lines[end][1]
     box = (hbox[0], hbox[1], hbox[2], int(bottom + 0.6 * med) - hbox[1])
+    return hbox, box
+
+
+def article_closure_margins(c, page):
+    """ADVISORY ONLY, mirroring closure_margins() below but for the article
+    lane's own paragraph-closing loop (_article_span). `None` if there is
+    no article to be had on this page at all -- nothing for a caller to
+    have asked about (the same npc.Refused cases _article_span itself
+    raises)."""
+    diagnostics = {}
+    try:
+        _article_span(c, page, diagnostics=diagnostics)
+    except npc.Refused:
+        return None
+    return diagnostics
+
+
+def clip_article(lccn, date, ed=1, seq=None, log=print):
+    """The headline item plus its first paragraph. His ask, 11 September
+    2026: "a headline and first graf." See _article_span() above for how
+    the paragraph itself is found and closed."""
+    meta = _meta(lccn, date, "article")
+    page = choose_page(lccn, date, ed, seq)
+    c = page.coords()
+    hbox, box = _article_span(c, page)
     words_in = nameplate.words_in(c["words"], box)
     verdict, page_hits = _verdict("article", lccn, date, words_in, c["words"], True)
     _, tight = _fetch(page, box)

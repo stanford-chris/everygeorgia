@@ -615,10 +615,52 @@ class InkEdge(unittest.TestCase):
         rows = self.profile([(40, 0.3), (60, 0.0)])
         self.assertEqual(npc.ink_bottom(rows, 60, self.PAGE, cluster_rows=40), 60)
 
+    def test_a_confidently_clear_edge_reports_full_headroom(self):
+        """The same fixture as test_edge_in_paper_is_left_alone, with
+        diagnostics on: the edge window is solid paper (0.0 against a
+        0.005 margin), so the ratio reads a full 1.0 -- nothing near
+        about it."""
+        rows = self.profile([(40, 0.3), (60, 0.0)])
+        diag = {}
+        self.assertEqual(npc.ink_bottom(rows, 60, self.PAGE, cluster_rows=40,
+                                        diagnostics=diag), 60)
+        info = diag["bottom"]
+        self.assertEqual(info["reason"], "clear")
+        self.assertAlmostEqual(info["ratio"], 1.0, places=4)
+
+    def test_an_edge_barely_under_the_clear_margin_is_a_near_miss(self):
+        """The window's own rows read 0.0049 against a 0.005 margin: this
+        still passes the "already clear" test (0.0049 <= 0.005), exactly
+        as it must to reproduce a real posted nameplate, but with almost
+        no headroom -- the near-miss case nothing downstream of ink_
+        bottom's short-circuit ever re-examines."""
+        rows = self.profile([(40, 0.3), (7, 0.0), (4, 0.0049), (49, 0.0)])
+        diag = {}
+        self.assertEqual(npc.ink_bottom(rows, 60, self.PAGE, cluster_rows=40,
+                                        diagnostics=diag), 60)
+        info = diag["bottom"]
+        self.assertEqual(info["reason"], "clear")
+        self.assertAlmostEqual(info["ratio"], 0.02, places=4)
+
     def test_edge_in_small_ink_walks_to_the_next_gap(self):
         rows = self.profile([(40, 0.3), (5, 0.0), (12, 0.03), (30, 0.0)])
         # the gap starts at 57; plus the stride (9), where the ink really ends
         self.assertEqual(npc.ink_bottom(rows, 50, self.PAGE, cluster_rows=40), 66)
+
+    def test_a_walked_extension_is_confident_not_a_near_miss(self):
+        # Same fixture as test_edge_in_small_ink_walks_to_the_next_gap:
+        # once the walk itself runs, there is nothing left to quantify --
+        # see ink_bottom's own docstring for why.
+        rows = self.profile([(40, 0.3), (5, 0.0), (12, 0.03), (30, 0.0)])
+        diag = {}
+        npc.ink_bottom(rows, 50, self.PAGE, cluster_rows=40, diagnostics=diag)
+        self.assertEqual(diag["bottom"], {"reason": "walked", "ratio": None, "text": None})
+
+    def test_diagnostics_none_by_default_costs_nothing_and_changes_nothing(self):
+        rows = self.profile([(40, 0.3), (60, 0.0)])
+        plain = npc.ink_bottom(rows, 60, self.PAGE, cluster_rows=40)
+        instrumented = npc.ink_bottom(rows, 60, self.PAGE, cluster_rows=40, diagnostics={})
+        self.assertEqual(plain, instrumented)
 
     def test_small_edge_then_large_ink_is_refused(self):
         """The Georgian: dateline, no wide gap, then an unread headline."""
@@ -680,6 +722,42 @@ class InkEdge(unittest.TestCase):
         Image.new("RGB", (1500, 200), "white").save(buf2, format="JPEG")
         with self.assertRaises(npc.Refused):
             npc.check_image(buf2.getvalue(), 1600)
+
+
+class NameplateClosureMargins(unittest.TestCase):
+    """nameplate_closure_margins(), crop_closure_check.py's own entry point
+    for this lane: does it find the band and call refine_band() with
+    diagnostics on, skip gates.check() entirely (a posted item already
+    cleared it), and read a refusal as NOT CHECKED rather than a crash?
+    ink_bottom's own diagnostics are InkEdge's job above; this is only the
+    wiring around it."""
+
+    class Page:
+        def coords(self):
+            return {"width": 1400, "height": 2000, "words": []}
+
+    def test_a_found_band_calls_refine_band_with_diagnostics_on(self):
+        import unittest.mock as mock
+        with mock.patch.object(npc.ghn_api, "front_page", return_value=self.Page()), \
+             mock.patch.object(npc.nameplate, "nameplate_box", return_value=(0, 0, 100, 40)), \
+             mock.patch.object(npc, "refine_band", return_value=((0, 0, 100, 40), b"x")) as rb:
+            margins = npc.nameplate_closure_margins("sn1", "1900-01-01")
+        self.assertIsInstance(margins, dict)
+        rb.assert_called_once()
+        self.assertIs(rb.call_args[1].get("diagnostics"), margins)
+
+    def test_no_geometry_at_all_reports_none(self):
+        import unittest.mock as mock
+        with mock.patch.object(npc.ghn_api, "front_page", return_value=self.Page()), \
+             mock.patch.object(npc.nameplate, "nameplate_box", return_value=None):
+            self.assertIsNone(npc.nameplate_closure_margins("sn1", "1900-01-01"))
+
+    def test_refine_band_refusing_reports_none_not_a_crash(self):
+        import unittest.mock as mock
+        with mock.patch.object(npc.ghn_api, "front_page", return_value=self.Page()), \
+             mock.patch.object(npc.nameplate, "nameplate_box", return_value=(0, 0, 100, 40)), \
+             mock.patch.object(npc, "refine_band", side_effect=npc.Refused("no clear gap")):
+            self.assertIsNone(npc.nameplate_closure_margins("sn1", "1900-01-01"))
 
 
 if __name__ == "__main__":
