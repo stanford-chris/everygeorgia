@@ -34,14 +34,27 @@ be re-derived is reported NOT CHECKED, never as a pass -- the dangerous
 state (a real near miss) and the healthy one must not look the same on a
 source this script could not read.
 
+Scheduled weekly (Friday 10:00, com.chrisstanford.everygeorgiacropclosure,
+~/Library/LaunchAgents, no mirror in ~/Scripts -- see the general estate's
+own warning on why a job bootstrapped anywhere else does not survive a
+reboot). Silent on a clean run, same as every other audit in this estate:
+mails only when something is flagged, or when the check could not run at
+all for the whole window (the "dangerous state and the healthy one must
+not look the same" rule applied to the check's own health, not just a
+crop's). Reuses ~/Scripts/estate_mail.py and ~/Scripts/observe.py rather
+than a second copy of either, the same way permission_followup.py does in
+this same repo.
+
 Usage:
-    python3 crop_closure_check.py                 # last 7 days
+    python3 crop_closure_check.py                 # last 7 days, mails if warranted
     python3 crop_closure_check.py --days 14
     python3 crop_closure_check.py --margin 0.20    # the flagging floor
+    python3 crop_closure_check.py --stdout         # print only, mail nothing
 """
 import argparse
 import json
 import os
+import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -51,6 +64,7 @@ import rules
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 STATE_FILE = os.path.join(HERE, "data", "post_state.json")
+SCRIPTS = os.path.join(os.path.expanduser("~"), "Scripts")
 
 # A ratio under this (or negative, or the should-have-been-included flag,
 # which reads as 0.0) is a near miss worth a look. The Cooke's ad, fixed,
@@ -137,22 +151,61 @@ def post_url(post):
     return f"https://bsky.app/profile/georgianewspapers.bsky.social/post/{rkey}"
 
 
+def send_mail(subject, body):
+    """Best-effort, matching permission_followup.py in this same repo: a
+    failed send must not be silent (it prints to stderr, caught in the
+    log), but it also must not crash the run -- a mail that could not go
+    out is not a reason to also lose the exit code the caller relies on."""
+    try:
+        r = subprocess.run([sys.executable, os.path.join(SCRIPTS, "estate_mail.py"), subject],
+                           input=body.encode(), capture_output=True, timeout=60)
+        if r.returncode != 0:
+            print(f"mail failed: {r.stderr.decode().strip()}", file=sys.stderr)
+    except (OSError, subprocess.SubprocessError) as e:
+        print(f"mail failed: {e}", file=sys.stderr)
+
+
+def log_observe(text):
+    """One line in the shared log, so the Sunday estate-review sees a
+    recurring pattern. Best-effort, same as permission_followup.py's own
+    observe() -- a failure here must not change this script's exit status."""
+    try:
+        subprocess.run(
+            [sys.executable, os.path.join(SCRIPTS, "observe.py"), "add",
+             "--source", "crop-closure-check", "--kind", "finding",
+             "--key", "everygeorgia-crop-closure", "--quiet", text],
+            check=False, capture_output=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        pass
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__,
                                  formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--days", type=int, default=7)
     ap.add_argument("--margin", type=float, default=MARGIN_FLOOR)
+    ap.add_argument("--stdout", action="store_true", help="print only, mail nothing")
     args, unknown = ap.parse_known_args()
     if unknown:
         sys.exit(f"unrecognised argument(s): {' '.join(unknown)}")
 
+    lines = []
+
+    def log(msg=""):
+        lines.append(msg)
+
     state = load_state()
     if state is None:
-        print(f"crop closure check: NOT CHECKED -- {STATE_FILE} not found")
+        log(f"crop closure check: NOT CHECKED -- {STATE_FILE} not found")
+        report = "\n".join(lines)
+        print(report)
+        if not args.stdout:
+            send_mail("[claude] everygeorgia: crop closure check could not run", report)
+            log_observe(f"post_state.json not found at {STATE_FILE}")
         return 0
 
     posts = recent_ad_posts(state, args.days)
-    print(f"crop closure check: {len(posts)} ad post(s) in the last {args.days} day(s)")
+    log(f"crop closure check: {len(posts)} ad post(s) in the last {args.days} day(s)")
 
     flagged = not_checked = 0
     for post in posts:
@@ -160,23 +213,45 @@ def main():
         label = f"{post['lccn']} {post['date']} p{post.get('seq')}"
         if not phrase:
             not_checked += 1
-            print(f"  {label}: NOT CHECKED (no phrase on record)")
+            log(f"  {label}: NOT CHECKED (no phrase on record)")
             continue
-        findings = check_post(post, phrase, args.margin)
+        findings = check_post(post, phrase, args.margin, log=log)
         if findings is None:
             not_checked += 1
-            print(f"  {label}: NOT CHECKED (could not re-derive the crop)")
+            log(f"  {label}: NOT CHECKED (could not re-derive the crop)")
             continue
         if findings:
             flagged += 1
-            print(f"  QUESTIONABLE {label} ({phrase!r}) {post_url(post)}")
+            log(f"  QUESTIONABLE {label} ({phrase!r}) {post_url(post)}")
             for f in findings:
                 ratio = "n/a" if f["ratio"] is None else f"{f['ratio']:.2f}"
-                print(f"    {f['side']}: {f['reason']} (ratio {ratio}) -- excluded: {f['text']!r}")
+                log(f"    {f['side']}: {f['reason']} (ratio {ratio}) -- excluded: {f['text']!r}")
 
     if not flagged and not not_checked:
-        print("  clean")
-    print(f"\n{flagged} questionable, {not_checked} not checked, of {len(posts)} ad post(s)")
+        log("  clean")
+    log(f"\n{flagged} questionable, {not_checked} not checked, of {len(posts)} ad post(s)")
+
+    report = "\n".join(lines)
+    print(report)
+
+    if args.stdout:
+        return 1 if flagged else 0
+
+    # ⚠️ A fully-unreadable window mails too, not just a flagged crop: a
+    # week where nothing could be re-derived must not look like a clean
+    # week to whoever reads the mailbox, same reasoning as every other
+    # NOT-CHECKED-is-not-a-pass rule in this estate.
+    if flagged:
+        n = flagged
+        subject = f"[claude] everygeorgia: {n} questionable crop{'s' if n != 1 else ''}"
+        send_mail(subject, report)
+        log_observe(f"{flagged} questionable ad crop(s) of {len(posts)} checked "
+                   f"in the last {args.days} days")
+    elif posts and not_checked == len(posts):
+        send_mail("[claude] everygeorgia: crop closure check could not check any posts", report)
+        log_observe(f"could not re-derive any of {len(posts)} ad post(s) "
+                   f"in the last {args.days} days")
+
     return 1 if flagged else 0
 
 

@@ -129,5 +129,59 @@ class LoadState(unittest.TestCase):
         self.assertIsNone(ccc.load_state("/nonexistent/path/post_state.json"))
 
 
+class MainMailsOnlyWhenWarranted(unittest.TestCase):
+    """The scheduled run's whole point: silent on a clean week, mailed
+    when there is a real crop to look at OR the check could not read
+    anything at all this week (the two states must not look the same)."""
+
+    def setUp(self):
+        self.state = {
+            "posted": [
+                {"lane": "ad", "lccn": "sn1", "date": "2026-09-14",
+                 "seq": 3, "at": datetime.now(timezone.utc).isoformat(),
+                 "uri": "at://did:x/app.bsky.feed.post/abc"},
+            ],
+            "tried": {"ad": {"sn1:2026-09-14:3": "clothing and hats"}},
+        }
+
+    def _run(self, findings_return, argv=None):
+        import unittest.mock as mock
+        with mock.patch.object(ccc, "load_state", return_value=self.state), \
+             mock.patch.object(ccc, "check_post", return_value=findings_return), \
+             mock.patch.object(ccc, "send_mail") as mail, \
+             mock.patch.object(ccc, "log_observe") as observe, \
+             mock.patch("sys.argv", ["crop_closure_check.py"] + (argv or [])):
+            rc = ccc.main()
+        return rc, mail, observe
+
+    def test_a_clean_week_mails_nothing(self):
+        rc, mail, observe = self._run([])
+        self.assertEqual(rc, 0)
+        mail.assert_not_called()
+        observe.assert_not_called()
+
+    def test_a_flagged_crop_mails_and_logs(self):
+        findings = [{"side": "top", "reason": "gap", "ratio": 0.01, "text": "x"}]
+        rc, mail, observe = self._run(findings)
+        self.assertEqual(rc, 1)
+        mail.assert_called_once()
+        self.assertIn("questionable", mail.call_args[0][0])
+        observe.assert_called_once()
+
+    def test_an_unreadable_week_mails_too_even_with_no_findings(self):
+        rc, mail, observe = self._run(None)   # check_post returning None = not checked
+        self.assertEqual(rc, 0)
+        mail.assert_called_once()
+        self.assertIn("could not check", mail.call_args[0][0])
+        observe.assert_called_once()
+
+    def test_stdout_mode_mails_nothing_regardless(self):
+        findings = [{"side": "top", "reason": "gap", "ratio": 0.01, "text": "x"}]
+        rc, mail, observe = self._run(findings, argv=["--stdout"])
+        self.assertEqual(rc, 1)
+        mail.assert_not_called()
+        observe.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
