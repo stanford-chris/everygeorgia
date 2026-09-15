@@ -124,7 +124,17 @@ CAPTION_REACH = 0.05     # the crop may grow this far above and below the
                          # line; a caption under an editorial cartoon); a
                          # story column under the picture is set closer than
                          # that but is cut at the line count, never mid-line
-CAPTION_LINES = 3
+CAPTION_LINES = 4        # ⚠️ was 3 until 15 September 2026, and one too few:
+                         # a title over a joke caption is commonly FOUR lines
+                         # (a one-line title, then a two-to-three-line joke),
+                         # and at 3 the Athens Banner's "FEMINISMS" cartoon of
+                         # 20 August 1921 shipped with its whole third caption
+                         # line ("pump 'em up to catch his train in the
+                         # morning!") cut off at the crop's bottom edge --
+                         # CAPTION_GAP and CAPTION_REACH both still had room,
+                         # the count alone stopped it short. Bumped by one,
+                         # not removed: the backstop against running into a
+                         # genuine story column (see above) still applies
 CAPTION_GAP = 1.5        # a line further than this many line heights from
                          # the last is not part of the caption
 PAD_FRAC = 0.006
@@ -492,7 +502,21 @@ def frame(pi, coords, box_ocr):
     beneath comes with it. ⚠️ The vertical reach is bounded and falls back
     to the picture's own edge: a walk that only stopped at a gap would run
     through the body text under an editorial cartoon, whose line gaps are
-    narrower than any gap this looks for."""
+    narrower than any gap this looks for.
+
+    ⚠️ A CAPTION LINE CAN BE WIDER THAN THE PICTURE, AND THE CROP MUST WIDEN
+    FOR IT. `x0`/`x1` are set from the picture's own OCR box before any
+    caption is pulled in, and a title or caption typeset to the full column
+    width runs past a narrower picture's edges. On the Athens Banner's
+    "FEMINISMS" cartoon of 20 August 1921 that shipped the byline ("By
+    Annette Bradshaw") and two caption words ("exercise", "to") each cut off
+    mid-glyph at the crop's own edge -- every check that gates the crop
+    passed, because none of them asked whether the box was wide enough for
+    what it had just decided to include. `_caption_edge` now also returns the
+    full word extent (not just the centre `span` was already filtered on) of
+    the lines it accepted, and `x0`/`x1` widen to cover them, bounded to
+    `near` beyond the picture's own edge so one wildly mis-OCR'd box cannot
+    balloon the crop into a neighbouring column."""
     sbox = trim_by_gaps(pi, pi.from_ocr(box_ocr))
     x, y, w, h = sbox
     pad = max(2, int(pi.w * PAD_FRAC))
@@ -542,10 +566,25 @@ def frame(pi, coords, box_ocr):
     per = pi.page.scale * pi.scale                 # small px per OCR unit
     span = [w for w in coords["words"] if x0 <= (w[0] + w[2] / 2.0) * per < x1]
     med = (nameplate.page_median_height(coords["words"]) or 1) * per
+    x_lo = x_hi = None
     if not ruled_top:
-        y0 = min(y0, _caption_edge(span, per, y, -1, reach, med))
+        top_edge, (lo, hi) = _caption_edge(span, per, y, -1, reach, med)
+        y0 = min(y0, top_edge)
+        if lo is not None:
+            x_lo = lo if x_lo is None else min(x_lo, lo)
+        if hi is not None:
+            x_hi = hi if x_hi is None else max(x_hi, hi)
     if not ruled_bot:
-        y1 = max(y1, _caption_edge(span, per, y + h, 1, reach, med))
+        bot_edge, (lo, hi) = _caption_edge(span, per, y + h, 1, reach, med)
+        y1 = max(y1, bot_edge)
+        if lo is not None:
+            x_lo = lo if x_lo is None else min(x_lo, lo)
+        if hi is not None:
+            x_hi = hi if x_hi is None else max(x_hi, hi)
+    if x_lo is not None:
+        x0 = max(0, x0 - near, min(x0, int(x_lo) - pad))
+    if x_hi is not None:
+        x1 = min(pi.w, x1 + near, max(x1, int(x_hi) + pad))
     y0, y1 = max(0, min(y0, y)), min(pi.h, max(y1, y + h))
     return pi.to_ocr((x0, y0, x1 - x0, y1 - y0))
 
@@ -720,7 +759,13 @@ def _caption_edge(span, per, edge, step, reach, med):
     """The far edge (small px) of up to CAPTION_LINES OCR lines beyond
     `edge` in direction `step`, each within CAPTION_GAP line heights of the
     last and inside `reach`; a line the edge itself cuts is the first. The
-    edge unchanged when there is no such line."""
+    edge unchanged when there is no such line.
+
+    Also returns (lo, hi): the full left/right extent (small px, not just
+    the word centres `span` was already filtered on) of the accepted lines,
+    or (None, None) when none were. A caption or title set to the full
+    column width can run past a narrower picture's own edges -- see frame()'s
+    own docstring -- and the caller widens the crop to match."""
     lines = []
     for rw in nameplate.rows_of(sorted(span, key=lambda w: (w[1], w[0])), row_tol=0.5):
         if sum(1 for w in rw if sum(ch.isalpha() for ch in w[4]) >= 3) < CAPTION_REAL_WORDS:
@@ -728,17 +773,18 @@ def _caption_edge(span, per, edge, step, reach, med):
         top = min(w[1] for w in rw) * per; bot = max(w[1] + w[3] for w in rw) * per
         if bot - top > (CAPTION_ABOVE_H if step < 0 else CAPTION_BELOW_H) * med:
             continue                                   # a headline, not a caption
-        lines.append((top, bot))
+        lines.append((top, bot, rw))
     # ⚠️ Outside the picture, whole: a row reaching into it is a balloon
     tol = 4
     if step < 0:
-        lines = [(t, b) for t, b in lines if b <= edge + tol and b > edge - reach]
+        lines = [(t, b, rw) for t, b, rw in lines if b <= edge + tol and b > edge - reach]
         lines.sort(key=lambda l: -l[1])
     else:
-        lines = [(t, b) for t, b in lines if t >= edge - tol and t < edge + reach]
+        lines = [(t, b, rw) for t, b, rw in lines if t >= edge - tol and t < edge + reach]
         lines.sort(key=lambda l: l[0])
     out, last = edge, edge
-    for i, (t, b) in enumerate(lines[:CAPTION_LINES]):
+    lo = hi = None
+    for i, (t, b, rw) in enumerate(lines[:CAPTION_LINES]):
         hgt = max(1.0, b - t)
         gap = (last - b) if step < 0 else (t - last)
         if i and gap > CAPTION_GAP * hgt:
@@ -748,7 +794,11 @@ def _caption_edge(span, per, edge, step, reach, med):
             break
         out = (t if step < 0 else b) + step * 2
         last = t if step < 0 else b
-    return out
+        row_lo = min(w[0] for w in rw) * per
+        row_hi = max(w[0] + w[2] for w in rw) * per
+        lo = row_lo if lo is None else min(lo, row_lo)
+        hi = row_hi if hi is None else max(hi, row_hi)
+    return out, (lo, hi)
 
 
 # =============================================================== the model ==

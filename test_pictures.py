@@ -205,6 +205,54 @@ class Trim(unittest.TestCase):
         self.assertEqual(pictures.trim_by_gaps(PI(), (10, 0, 100, 300)), (10, 0, 100, 300))
 
 
+def _row(y, h, spans):
+    """A synthetic OCR row: one word per (x, w) span, all real (3+ letters)."""
+    return [(x, y, w, h, "word") for x, w in spans]
+
+
+class Caption(unittest.TestCase):
+    """The Athens Banner's "FEMINISMS" cartoon of 20 August 1921 shipped with
+    its whole third caption line cut off (CAPTION_LINES was one short of a
+    title-plus-three-line joke) and its byline and two caption words cut off
+    mid-glyph on the right (the crop never widened for a caption wider than
+    the picture). Both bugs, and the fix, in one shape: a title line and
+    three joke-caption lines below the picture, the second caption line
+    carrying one word that runs wider than every other row."""
+
+    def _span(self):
+        # title, then three caption lines; heights/gaps modelled on the real
+        # page's own numbers (med=10, well inside CAPTION_BELOW_H/CAPTION_GAP)
+        title = _row(1010, 15, [(400, 80), (500, 90)])
+        cap1 = _row(1030, 18, [(350, 90), (460, 90), (560, 90)])
+        cap2 = _row(1052, 18, [(350, 90), (460, 90), (680, 100)])   # runs to 780
+        cap3 = _row(1074, 18, [(350, 90), (460, 90), (560, 90)])
+        return title + cap1 + cap2 + cap3
+
+    def test_a_title_plus_three_line_caption_is_not_cut_at_the_third_line(self):
+        out, extent = pictures._caption_edge(self._span(), 1, 1000, 1, 200, 10)
+        self.assertGreaterEqual(out, 1074 + 18)         # the third line's own bottom
+        self.assertIsNotNone(extent[1])
+
+    def test_at_the_old_line_count_the_third_line_was_dropped(self):
+        # pins the regression: at CAPTION_LINES=3 the walk stopped after the
+        # second caption line, well short of the third's bottom (1092)
+        with mock.patch.object(pictures, "CAPTION_LINES", 3):
+            out, _ = pictures._caption_edge(self._span(), 1, 1000, 1, 200, 10)
+        self.assertLess(out, 1074)
+
+    def test_a_word_wider_than_the_picture_widens_the_reported_extent(self):
+        # the picture's own x-range was (350, 700); "exercise"/"to" on the
+        # real page ran past it the same way this synthetic word (680-780) does
+        _, (lo, hi) = pictures._caption_edge(self._span(), 1, 1000, 1, 200, 10)
+        self.assertEqual(lo, 350)
+        self.assertEqual(hi, 780)
+
+    def test_no_accepted_line_reports_no_extent(self):
+        out, extent = pictures._caption_edge([], 1, 1000, 1, 200, 10)
+        self.assertEqual(out, 1000)
+        self.assertEqual(extent, (None, None))
+
+
 class Reply(unittest.TestCase):
     GOOD = ("KIND: comic-strip\nTITLE: Penny Ante\nWORDS: HA! HA! | OH BOY | NEVER MIND.\n"
             "PICTURE: Five men sit around a card table.\nCARICATURE: no")
