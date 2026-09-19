@@ -24,6 +24,10 @@ AD_LO, AD_HI = 0.5, 1.0
 MAX_ITEM_FRAC = 0.30     # deeper than this of the page is a runaway, refused
 SAME_MAX = 1.25          # a continuation line is at most this much taller than
                          # the head; taller is another item (a nameplate)
+DECK_GROW_TOL = 1.05     # a deck line taller than this multiple of the deck
+                         # line just accepted is a different headline, not a
+                         # further line of this one's own decks -- see the
+                         # comment at its use in box_with_deck()
 
 
 def _y_overlap_groups(row):
@@ -131,15 +135,62 @@ def gutter_counts(row, pi):
     return inside, straddled, cols
 
 
+def _gutter_pieces(seg, pi):
+    """The items a gutter split of `seg` would actually produce, as
+    [(words, ...), ...] sorted by x -- or `[seg]` unchanged when the row's
+    own straddle/clear ratio says it is one banner. Shared by
+    split_at_gutters() (which acts on the pieces) and is_tier() (which only
+    needs to judge whether they are trustworthy), so the two can never
+    disagree about what a split would even look like."""
+    per = pi.page.scale * pi.scale
+    seg = sorted(seg, key=lambda w: w[0])
+    inside, straddled, cols = gutter_counts(seg, pi)
+    if not inside or len(straddled) > len(inside) - len(straddled):
+        return [seg]
+    bounds = sorted(g[0] for g in pi.gutters()
+                    if min(cols[g[0]:g[1]] or [1]) <= rules.GUTTER_CROSSED)
+    pieces, cur = [], [seg[0]]
+    for w in seg[1:]:
+        prev = cur[-1]
+        a, z = (prev[0] + prev[2]) * per, w[0] * per
+        if any(a < gx < z for gx in bounds):
+            pieces.append(cur); cur = [w]
+        else:
+            cur.append(w)
+    pieces.append(cur)
+    return pieces
+
+
 def is_tier(line, pi):
     """Several items side by side, not one line: split by word gaps, or
-    clearing at least as many gutters as it straddles."""
+    clearing at least as many gutters as it straddles.
+
+    ⚠️ A gutter-based split into a piece of ONE word is refused, and the
+    line reads as NOT a tier. On the Atlanta Georgian of 27 September 1918
+    "HAIG IS SMASHING; BULGARIA STAGGERING" reads this way: this page's
+    body-column gutters, measured over the whole page for text several
+    thousand units further down, happen to land mostly in this banner's
+    own ordinary word-gaps by coincidence (only 1 of 4 nearby gutters is
+    crossed by ink on this specific row), so the straddle/clear ratio
+    alone reads it as a tier -- at only 4 gutters in span, one coincidental
+    alignment is enough to flip a ratio calibrated on real tiers and
+    banners with 9-29 gutters in span. A piece of one word ("HAIG") could
+    never independently pass clips._check_transcription's own floor (at
+    least 3 transcribed tokens) as a headline of its own, so treating it as
+    a genuine second item is never useful -- it only ever robs its
+    neighbour of its subject. A real multi-item tier, including the
+    Cordele Dispatch's own "FRENCH DESTROY | MEMORIAL DAY" pair this
+    function is calibrated on, still splits: every piece there carries two
+    words. (Its third, real piece, "TWO", is not: a one-word piece
+    genuinely set apart in a tier is rarer than a coincidental gutter
+    alignment in a banner's word-gap, and this is the safer trade -- there
+    is no test pinning that third piece to weigh against it.)"""
     if len(_pieces(line)) > 1:
         return True
     if pi is None:
         return False
-    inside, straddled, _ = gutter_counts(line, pi)
-    return bool(inside) and len(straddled) <= len(inside) - len(straddled)
+    pieces = _gutter_pieces(line, pi)
+    return len(pieces) > 1 and all(len(p) >= 2 for p in pieces)
 
 
 def _next_line(words, x0, x1, cur):
@@ -236,6 +287,25 @@ def box_with_deck(seg, words, page_width, page_height, pi=None, diagnostics=None
             _note("different-item", None, " ".join(w[4] for w in sorted(line, key=lambda w: w[0])))
             break
         elif max(DECK_MIN * h, 1.6 * med) <= hl:
+            # ⚠️ A deck line TALLER than the one just accepted is the start
+            # of a different headline, not a further line of this one's own
+            # decks: real decks shrink or hold steady as they go down, never
+            # grow back up. On the Atlanta Georgian of 27 September 1918,
+            # once is_tier()'s own false positive (see its docstring) was
+            # fixed, "HAIG IS SMASHING; BULGARIA STAGGERING" (height ~1058)
+            # was correctly accepted as the first deck line under "VICTORIES
+            # EVERYWHERE!" -- and the walk then also reached "FRENCH AND
+            # AMERICANS TAKE 12,000" (height ~1295, a different, heavier
+            # typeface), which passed the SAME generic deck test relative to
+            # the head and would have been swallowed into the same crop:
+            # 19% of the page, over HEADLINE_MAX_FRAC's 16% cap and
+            # uncomfortably close to the ~20% the Banner-Herald crop this
+            # file already documents as a genuine over-inclusion bug. A
+            # small margin (DECK_GROW_TOL) allows ordinary OCR height noise
+            # between two lines that are visually "the same size."
+            if hl > DECK_GROW_TOL * h_prev:
+                _note("deck-grew", None, " ".join(w[4] for w in sorted(line, key=lambda w: w[0])))
+                break
             take = line
         if not take:
             _note("boundary", None, " ".join(w[4] for w in sorted(line, key=lambda w: w[0])))
@@ -284,49 +354,39 @@ def split_at_gutters(cands, words, cw, ch, pi):
     between two of its words. The gap test misses column headlines set
     close either side of a rule: "FRENCH DESTROY | MEMORIAL DAY | TWO"
     on the Cordele Dispatch of 26 April 1918 was one row to the OCR and
-    three headlines to a reader."""
-    per = pi.page.scale * pi.scale                 # small px per OCR unit
+    three headlines to a reader.
+
+    ⚠️ Only a gutter that is clear on THIS segment's rows splits it. A
+    page-level gutter can run under a headline from a table lower down the
+    column, and it cut "REESE IS ON THE RACK" in two.
+    ⚠️ ...and "this segment's rows" means the display row itself, NOT the
+    box with its deck. The box reaches down into the tier beneath, where
+    every gutter is clear, and judged there a banner is cut at the first
+    gutter: the Cordele Dispatch of 10 October 1919 shipped "U. S. TO" out
+    of "U. S. TO ADD 15 MILLIONS FOR GREAT WORLD AIR ROUTES" that way
+    (found 11 September 2026).
+    ⚠️ And a word space is white top to bottom, so on the row itself a
+    gutter under a word space reads as clear whether the row is one banner
+    or two column headlines: "TO ADD" and "FRENCH DESTROY | MEMORIAL" both
+    measure 0.000 dark there, at gaps of 0.35h and 0.55h. What tells them
+    apart is INK ACROSS A GUTTER: a banner's letters straddle the gutters
+    between its word spaces, and column headlines straddle one only by
+    accident of the grid ("MEMORIAL DAY" on the 1918 page sits over a
+    gutter the columns below it do not share). So it is a count: banners
+    measured 9, 10 and 21 straddled against 5, 4 and 8 clear; the column
+    tier 3 against 6. See _gutter_pieces() and is_tier()'s own docstring
+    for the further guard against a piece of one word -- the two functions
+    share the exact same piece computation so they can never disagree
+    about what a split produces."""
     out = []
     for b, seg in cands:
         seg = sorted(seg, key=lambda w: w[0])
-        # ⚠️ Only a gutter that is clear on THIS segment's rows splits it. A
-        # page-level gutter can run under a headline from a table lower
-        # down the column, and it cut "REESE IS ON THE RACK" in two.
-        # ⚠️ ...and "this segment's rows" means the display row itself, NOT
-        # the box with its deck. The box reaches down into the tier beneath,
-        # where every gutter is clear, and judged there a banner is cut at
-        # the first gutter: the Cordele Dispatch of 10 October 1919 shipped
-        # "U. S. TO" out of "U. S. TO ADD 15 MILLIONS FOR GREAT WORLD AIR
-        # ROUTES" that way (found 11 September 2026).
-        inside, straddled, cols = gutter_counts(seg, pi)
-        # ⚠️ And a word space is white top to bottom, so on the row itself a
-        # gutter under a word space reads as clear whether the row is one
-        # banner or two column headlines: "TO ADD" and "FRENCH DESTROY |
-        # MEMORIAL" both measure 0.000 dark there, at gaps of 0.35h and
-        # 0.55h. What tells them apart is INK ACROSS A GUTTER: a banner's
-        # letters straddle the gutters between its word spaces, and column
-        # headlines straddle one only by accident of the grid ("MEMORIAL
-        # DAY" on the 1918 page sits over a gutter the columns below it do
-        # not share). So it is a count: banners measured 9, 10 and 21
-        # straddled against 5, 4 and 8 clear; the column tier 3 against 6.
-        # A row that straddles more gutters than it clears spans columns
-        # and is not split at all.
-        if len(straddled) > len(inside) - len(straddled):
+        pieces = _gutter_pieces(seg, pi)
+        if len(pieces) < 2 or any(len(p) < 2 for p in pieces):
             nb = box_with_deck(seg, words, cw, ch, pi)
             if nb:
                 out.append((nb, seg))
             continue
-        bounds = sorted(g[0] for g in pi.gutters()
-                        if min(cols[g[0]:g[1]] or [1]) <= rules.GUTTER_CROSSED)
-        pieces, cur = [], [seg[0]]
-        for w in seg[1:]:
-            prev = cur[-1]
-            a, z = (prev[0] + prev[2]) * per, w[0] * per
-            if any(a < gx < z for gx in bounds):
-                pieces.append(cur); cur = [w]
-            else:
-                cur.append(w)
-        pieces.append(cur)
         for p in pieces:
             nb = box_with_deck(p, words, cw, ch, pi)
             if nb:

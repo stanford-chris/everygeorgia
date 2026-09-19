@@ -1116,47 +1116,84 @@ against the pre-fix code. Full suite: 288/288. Verified against the real page
 exactly `["VICIORIES", "EVERYWHERE"]` as the head, cleanly, with nothing above
 or beside it.
 
-⚠️⚠️ **OPEN FINDING, not fixed: the same page's deck line is dropped by a
-THIRD, harder problem, and this one was deliberately left alone.**
-`items.is_tier()` calls `gutter_counts()` on the row "HAIG IS SMASHING;
-BULGARIA STAGGERING" and reads it as a tier of several column items (3 of 4
-page-level gutters inside its span are "clear" -- not crossed by ink -- on
-this row, and only 1 is "straddled"), so `box_with_deck()` refuses it as the
-head's deck line entirely, and `split_at_gutters()` separately cuts "HAIG"
-off the front of it as its own one-word item. Both are the SAME underlying
-false positive: this row's word-spacing (a perfectly ordinary headline, five
-words, normal gaps) happens to put 3 of this page's 4 nearby column gutters
-inside its own natural word-gaps, purely by coincidence of where the page's
-real column grid (measured over the WHOLE page height, for the body text
-several thousand units further down) falls under this one banner line. The
-calibration this heuristic was built on (`gutter_counts`'s own docstring:
-banners measured 9, 10, 21 straddled against 5, 4, 8 clear; a genuine tier 3
-against 6) all had 9-29 total gutters in span; this row has only 4, so one
-coincidental alignment flips the ratio with no statistical room to absorb
-it. **Not fixed here**: a coverage-based guard (requiring the gutters to span
-a meaningful fraction of the row's own width) was tried and rejected --
-it demonstrably breaks the existing, deliberately-calibrated tier fixture in
-`test_clips.py` (`test_a_row_straddling_the_gutters_is_a_banner_and_is_not_split`),
-whose own tier case has similarly few gutters in span. Fixing this properly
-needs either a `rule`-vs-`paper` distinction carried through `pi.gutters()`'s
-own return value (currently discarded) or validation against the wider
-historical corpus this heuristic was calibrated on, neither of which this
-session had in hand. Consequence, with both fixes above applied: the headline
-lane now correctly posts "VICTORIES EVERYWHERE!" alone for this page, with
-nothing above or beside it and nothing wrong in it, but without its deck line.
+### ✅ Both remaining findings above fixed the same day, and neither needed the token floor touched
 
-⚠️ **OPEN FINDING, not fixed: `_check_transcription`'s 3-token floor refuses a
-genuine two-word headline outright.** With both fixes above, `clip_headline()`
-correctly transcribes this page's real headline as "VICTORIES EVERYWHERE!" --
-and then `_check_transcription` raises `Refused("transcription too short or
-too broken")`, because `len(plain) < 3` (only "victories" and "everywhere")
-regardless of both words being long, legible, and non-noise (the OTHER half
-of that same check, `>= 3 tokens of length >= 4`, would pass at 2 of 2 were
-the token-count floor not there first). This floor is shared across every
-lane (`clips._check_transcription`, headline/article/ad/market alike) and
-was not touched here: loosening it risks admitting genuine noise on other
-lanes, and validating a change against the historical corpus this file was
-calibrated on is out of scope for what this session verified. Consequence:
-this page's headline lane now REFUSES (skips) rather than posts something
-wrong -- correct and safe, but it means a real, punchy, two-word headline
-like this one currently cannot post via the headline lane at all.
+**The deck line.** `items.is_tier()` was calling `gutter_counts()` on "HAIG IS
+SMASHING; BULGARIA STAGGERING" and reading it as a tier of column items (3 of
+4 page-level gutters inside its span "clear," only 1 "straddled"), so
+`box_with_deck()` refused it as a deck line entirely, and `split_at_gutters()`
+separately cut "HAIG" off the front as its own one-word item -- the same
+false positive in two places.
+
+**The rule-vs-paper distinction was tried first and measured, not assumed,
+and it does NOT discriminate this case.** `pi.gutters()` discards whether a
+run is a printed rule or bare paper before returning it; reproducing that
+classification directly against this exact page found all 4 gutters near
+this row are type `paper` -- and so is the ONE gutter in the existing
+calibrated tier fixture (`test_a_row_straddling_the_gutters_is_a_banner_and_is_not_split`'s
+"FRENCH DESTROY | MEMORIAL DAY"). Both shapes are paper gutters; the
+distinction carries no information here. Checking against `pi.vrules()` (the
+page's actual printed vertical rules) doesn't work either: none of them pass
+through this row's y-band at all, but this codebase's OWN reasoning for using
+gutters instead of rules in the first place ("the Macon Telegraph of
+15 January 1897 has seven columns and not one printed rule between them") is
+exactly why a rule-based test would go blind on every rule-less page,
+including plenty of genuine tiers.
+
+**And the straddle RATIO alone cannot be recalibrated to fix it either**,
+without also breaking the calibrated tier: this row's ratio (1 straddled of
+4, 0.25) sits BELOW the docstring's own genuine tier ratio (3 of 9, 0.33) --
+by magnitude, this banner reads MORE tier-like than the real tier it must be
+told apart from. No threshold on this ratio separates the two.
+
+**What actually fixed it: a piece a gutter split would produce must have at
+least two words**, or the split is not trusted and the row reads as one
+object. A piece of one word ("HAIG") could never independently pass
+`clips._check_transcription`'s own floor (at least 3 transcribed tokens) as
+a headline of its own, so a geometric split that manufactures one is never
+useful -- it only ever robs its neighbour of its subject. `items._gutter_pieces()`
+computes the actual candidate pieces once, shared by both `is_tier()` and
+`split_at_gutters()` so the two can never disagree about what a split would
+produce; both were rewritten to use it. The known trade-off, stated plainly:
+the Cordele Dispatch's own third piece, "TWO" (from "FRENCH DESTROY |
+MEMORIAL DAY | TWO"), is also one word and would now be refused too -- but
+that third piece was never in the executable fixture (only the two two-word
+pieces are), so this is a documented, considered trade rather than a
+regression against anything actually pinned.
+
+**Fixing that surfaced a fourth issue, not a third**: once the deck line was
+correctly accepted, the down-walk also reached for "FRENCH AND AMERICANS
+TAKE 12,000" (a taller, different typeface) as a SECOND deck line, since it
+passed the same generic "smaller than the head" test the first deck line
+did. That grew the crop to 19% of the page -- over `HEADLINE_MAX_FRAC`'s 16%
+cap, and uncomfortably close to the ~20% this file already documents as a
+real over-inclusion bug (the Banner-Herald crop that ran a fifth of the page
+into its story). Raising the cap to admit it was rejected outright: it would
+leave almost no margin against the exact failure `HEADLINE_MAX_FRAC` exists
+to catch. Fixed instead with `DECK_GROW_TOL`: a deck line taller (beyond a
+5% noise allowance) than the deck line just accepted is the start of a
+different headline, not a further line of this one's own decks, since real
+decks shrink or hold steady going down and do not grow back up. This also
+resolves it correctly: box_with_deck now stops cleanly after "HAIG IS
+SMASHING; BULGARIA STAGGERING," at 14.6% of the page.
+
+**The token floor needed no change at all.** With the deck line correctly
+included, `clip_headline()` transcribes "VICTORIES EVERYWHERE! HAIG IS
+SMASHING; BULGARIA STAGGERING." -- seven tokens, comfortably past the
+3-token floor `_check_transcription` requires. The two-word-headline
+question that prompted the floor's own open finding never had to be
+answered, because the correct crop was never just two words to begin with.
+
+**Verified end to end and reposted.** `clips.clip_headline()` returns
+`<PASS: clean>` for this page, repeatably (checked three times). The
+original wrong post (`.../3mvtfggmt6c2o`, deleted earlier the same day) is
+replaced by `at://did:plc:4yw7vlj3rwihz2ophxlemh36/app.bsky.feed.post/3mvtwbytvfa25`,
+verified live on the public feed: text and hashtags unchanged from the
+account's normal citation form, alt reading "VICTORIES EVERYWHERE! HAIG IS
+SMASHING; BULGARIA STAGGERING," crop 1200x269. `state["posted"]` and
+`state["tried"]["headline"]["sn89053729"]` both updated through the same
+`load_state()`/`save_state()` the poster itself uses.
+
+New regression tests: `Banners.test_a_gutter_split_that_would_leave_a_one_word_piece_is_refused`
+and `DeckLinesDoNotGrow` (two cases) in `test_clips.py`, all three confirmed
+to fail against the pre-fix code. Full suite: 291/291.

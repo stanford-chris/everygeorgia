@@ -313,6 +313,66 @@ class Banners(unittest.TestCase):
         out = items.split_at_gutters([(items.box_with_deck(tier, tier, 1400, 2000), tier)], tier, 1400, 2000, pi)
         self.assertEqual([" ".join(w[4] for w in seg) for _, seg in out], ["FRENCH DESTROY", "MEMORIAL DAY"])
 
+    def test_a_gutter_split_that_would_leave_a_one_word_piece_is_refused(self):
+        """On the Atlanta Georgian of 27 September 1918, "HAIG IS SMASHING;
+        BULGARIA STAGGERING" straddles the one gutter inside its span only
+        once, against three clear -- the SAME shape as a genuine tier -- but
+        a gutter-based split there leaves "HAIG" alone on one side, which
+        could never independently pass clips._check_transcription's own
+        floor (at least 3 tokens) as a headline of its own. Neither
+        is_tier() nor split_at_gutters() may treat that split as real;
+        both share _gutter_pieces() so they can never disagree about it."""
+        pi = rules.PageInk(BannerPage())
+        # one word left of the 430-500 gutter, three words right of it and
+        # short of the next (900-970), mirroring HAIG's own geometry. Tall
+        # enough that the word gaps stay under SPLIT_GAP*height despite
+        # spanning the gutter's own 70-unit width -- otherwise the ordinary
+        # word-gap test (_pieces) would split the row on its own, before
+        # the gutter-ratio mechanism this test targets is ever reached.
+        row = [(30, 300, 380, 100, "HAIG"), (520, 300, 60, 100, "IS"),
+               (600, 300, 150, 100, "SMASHING"), (770, 300, 80, 100, "STAGGERING")]
+        inside, straddled, _ = items.gutter_counts(row, pi)
+        self.assertLessEqual(len(straddled), len(inside) - len(straddled))  # tier-shaped by the ratio alone
+        pieces = items._gutter_pieces(row, pi)
+        self.assertEqual([len(p) for p in pieces], [1, 3])                  # one piece is a single word
+        self.assertFalse(items.is_tier(row, pi))
+        out = items.split_at_gutters([(items.box_with_deck(row, row, 1400, 2000), row)], row, 1400, 2000, pi)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(" ".join(w[4] for w in out[0][1]), "HAIG IS SMASHING STAGGERING")
+
+
+class DeckLinesDoNotGrow(unittest.TestCase):
+    """A second deck line taller than the first is a different headline
+    starting underneath, not a further line of this one's own decks --
+    real decks shrink or hold steady going down, they do not grow back up.
+    On the Atlanta Georgian of 27 September 1918, once is_tier()'s false
+    positive above was fixed, the down-walk correctly took "HAIG IS
+    SMASHING; BULGARIA STAGGERING" as the first deck line under "VICTORIES
+    EVERYWHERE!" and then also reached for "FRENCH AND AMERICANS TAKE
+    12,000" (a taller, different typeface) as a second one -- which passed
+    the ordinary deck test relative to the HEAD and would have made the
+    whole crop 19% of the page, over HEADLINE_MAX_FRAC's 16% cap and
+    uncomfortably close to the ~20% this file already documents as a real
+    over-inclusion bug (the Banner-Herald crop that ran a fifth of the page
+    into its story)."""
+
+    def test_a_taller_second_deck_line_is_not_taken(self):
+        head = [(20, 100, 60, 30, "FIRE"), (85, 100, 70, 30, "DOWNTOWN"), (160, 100, 90, 30, "TONIGHT")]
+        deck1 = [(20, 140, 130, 20, "Blaze"), (160, 140, 120, 20, "spreads")]
+        deck2 = [(20, 180, 150, 24, "Third"), (180, 180, 100, 24, "line")]
+        words = DisplayRows().body() + head + deck1 + deck2
+        b = items.box_with_deck(items.display_rows(words, 1000)[0], words, 700, 1000)
+        self.assertGreaterEqual(b[1] + b[3], 160)   # through deck1
+        self.assertLess(b[1] + b[3], 180)           # not into deck2
+
+    def test_a_second_deck_line_the_same_size_within_tolerance_still_joins(self):
+        head = [(20, 100, 60, 30, "FIRE"), (85, 100, 70, 30, "DOWNTOWN"), (160, 100, 90, 30, "TONIGHT")]
+        deck1 = [(20, 140, 130, 20, "Blaze"), (160, 140, 120, 20, "spreads")]
+        deck2 = [(20, 180, 150, 20, "quickly"), (180, 180, 100, 20, "tonight")]
+        words = DisplayRows().body() + head + deck1 + deck2
+        b = items.box_with_deck(items.display_rows(words, 1000)[0], words, 700, 1000)
+        self.assertGreaterEqual(b[1] + b[3], 200)
+
 
 class BoxWithDeckDiagnostics(unittest.TestCase):
     """box_with_deck's own "bottom" diagnostic, added 15 September 2026 for
