@@ -13,6 +13,7 @@ Stdlib plus Pillow, no network, no model.
 """
 import io
 import unittest
+from unittest.mock import patch
 
 from PIL import Image, ImageDraw
 
@@ -165,6 +166,81 @@ class DisplayRows(unittest.TestCase):
                                 (400, 140, 130, 28, "OTHER")]
         b2 = items.box_with_deck(items.display_rows(words2, 1000)[0], words2, 700, 1000)
         self.assertLess(b2[1] + b2[3], 140)
+
+
+class DisplayRowsYOverlap(unittest.TestCase):
+    """rows_of()'s own tolerance is scaled by the LARGER of the two heights
+    being compared, so a tiny word can bridge into a giant banner's row
+    purely because the banner's own height makes the tolerance window
+    huge -- even when the two never share any y-range at all. On the
+    Atlanta Georgian of 27 September 1918 a small nameplate-area slogan
+    word ("Homes", top 1814, height 317) sat, by x, inside the span of a
+    giant banner word ("VICTORIES", top 2679, height 2367) with a
+    548-unit y-gap between them; rows_of() merged them into one row
+    anyway, and "Homes" then split the banner's two words apart at the
+    x-gap step in display_rows() -- dropping "VICTORIES" out of headline
+    candidacy entirely (its row's reported top read as inside the
+    nameplate) and posting a bare fragment of the deck line beneath it."""
+
+    def test_a_small_unrelated_word_does_not_bridge_a_giant_banners_two_words(self):
+        words = DisplayRows().body() + [
+            (200, 60, 40, 25, "Homes"),          # tiny, unrelated, x falls inside VICTORIES
+            (10, 130, 350, 120, "VICTORIES"),    # giant banner, word 1
+            (500, 125, 400, 122, "EVERYWHERE"),  # giant banner, word 2 -- same line
+        ]
+        rows = items.display_rows(words, 1000)
+        joined = [" ".join(w[4] for w in r) for r in rows]
+        self.assertIn("VICTORIES EVERYWHERE", joined)
+        banner_row = next(r for r in joined if "VICTORIES" in r)
+        self.assertNotIn("Homes", banner_row)
+
+
+class _InnerPage:
+    """seq=2 so items.snapped() skips nameplate detection entirely -- this
+    test is about the vertical snap, not about telling a banner from a
+    nameplate, and a synthetic page with nothing on it but the banner
+    would otherwise read the banner itself as the nameplate."""
+    seq = 2
+
+
+class SnapNeverWalksAboveTheRawTop(unittest.TestCase):
+    """box_with_deck's own docstring already promises it: "a headline
+    item's own top is the seed row itself, never walked." That promise
+    only held inside box_with_deck's own deck-growing loop -- rules.snap's
+    separate paper-mode vertical walk has no such guard, and on the
+    Atlanta Georgian of 27 September 1918 it broke the promise: snapping
+    "VICTORIES EVERYWHERE!" (raw top 2613) walked upward looking for a
+    rule or a clear gap and never found one, because the masthead's own
+    dateline credit line and eagle emblem fill the page's whole width
+    densely all the way up to the masthead lettering itself, with no
+    band of consecutive-enough clear rows anywhere in between. The walk
+    stopped only once it hit that lettering as a "rule", well inside the
+    nameplate's own band -- which either dropped the candidate outright
+    at clips._headline_item's floor check, or, unclamped, would have
+    posted a crop carrying the paper's own masthead furniture above the
+    real headline. items.snapped() now holds the snap to the raw
+    candidate's own top, exactly as box_with_deck already holds itself."""
+
+    def test_an_over_walked_top_is_clamped_back_to_the_raw_candidates_top(self):
+        pi = rules.PageInk(BannerPage())
+        banner = [(30, 100, 380, 30, "FRENCH"), (440, 100, 440, 30, "COUNTER"),
+                  (910, 100, 300, 30, "FOR"), (1220, 100, 150, 30, "KEMMEL")]
+        cw, ch = 1400, 2000
+        raw = items.box_with_deck(banner, banner, cw, ch, pi)
+        over_walked = (raw[0], raw[1] - 500, raw[2], raw[3] + 500)
+        # display_rows()'s own display-vs-body cut is relative to the page's
+        # median word height, so items.snapped()'s internal candidates()
+        # call needs a realistic body-text baseline present or the banner's
+        # own words -- the only words on this synthetic page otherwise --
+        # set that median themselves and read as body text, not display type.
+        words = DisplayRows().body() + banner
+        with patch.object(rules, "snap", return_value=over_walked):
+            out = items.snapped("headline", _InnerPage(),
+                                {"width": cw, "height": ch, "words": words}, pi)
+        self.assertEqual(len(out), 1)
+        s, seg_box, seg = out[0]
+        self.assertEqual(s[1], raw[1])
+        self.assertEqual(s[1] + s[3], over_walked[1] + over_walked[3])
 
 
 class Banners(unittest.TestCase):

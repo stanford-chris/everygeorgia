@@ -26,6 +26,51 @@ SAME_MAX = 1.25          # a continuation line is at most this much taller than
                          # the head; taller is another item (a nameplate)
 
 
+def _y_overlap_groups(row):
+    """Split a nameplate.rows_of() row into groups whose vertical spans
+    actually overlap.
+
+    ⚠️ rows_of()'s own tolerance is scaled by the LARGER of the two heights
+    being compared (ROW_TOL * max(h1, h2)), which is disproportionate when
+    one word is several times taller than the other: a tiny word's tiny
+    height should not matter once the comparison is dominated by a giant
+    neighbour's height, but that is exactly what the formula does, and a
+    tiny word can then bridge into a giant banner's row purely because the
+    banner's own height makes the tolerance window huge -- even though the
+    two never overlap in y at all.
+
+    On the Atlanta Georgian of 27 September 1918 the small nameplate-area
+    slogan word "Homes" (top 1814, height 317) and the giant banner
+    "VICTORIES" (top 2679, height 2367) have no y-overlap -- a 548-unit gap
+    separates them -- but rows_of() put them in one row anyway, and "Homes"
+    then split VICTORIES away from EVERYWHERE (the same banner's other
+    word) at the x-gap step below, in display_rows(). Worse: because that
+    merged row's reported top (1814, from "Homes") fell at or below the
+    nameplate's own floor, the whole banner was filtered out of headline
+    candidacy as if it sat inside the nameplate, and the headline that
+    posted on 19 September 2026 was a fragment of the deck line beneath it
+    ("IS SMASHING; BULGARIA STAGGERING", HAIG cut off the front) with
+    "VICTORIES EVERYWHERE!" itself entirely absent.
+
+    An overlap test, unlike a top-difference test, cannot be fooled this
+    way: two words on the same printed line always share y-range however
+    different their sizes, and two words on different lines generally do
+    not, however close their tops read after a size-scaled tolerance. This
+    only ever splits a row rows_of() already built, so it can refine a
+    false merge but can never introduce a false one of its own."""
+    row = sorted(row, key=lambda w: w[1])
+    out = [[row[0]]]
+    hi = row[0][1] + row[0][3]
+    for w in row[1:]:
+        if w[1] < hi:
+            out[-1].append(w)
+            hi = max(hi, w[1] + w[3])
+        else:
+            out.append([w])
+            hi = w[1] + w[3]
+    return out
+
+
 def display_rows(words, page_height):
     """Rows of display words, as lanes._runs does, then split at column gaps."""
     med = nameplate.page_median_height(words)
@@ -35,17 +80,18 @@ def display_rows(words, page_height):
     disp = sorted((w for w in words if w[3] >= cut), key=lambda w: (w[1], w[0]))
     out = []
     for row in nameplate.rows_of(disp):
-        row = sorted(row, key=lambda w: w[0])
-        seg = [row[0]]
-        for w in row[1:]:
-            prev = seg[-1]
-            h = max(prev[3], w[3])
-            if w[0] - (prev[0] + prev[2]) > SPLIT_GAP * h:
-                out.append(seg)
-                seg = [w]
-            else:
-                seg.append(w)
-        out.append(seg)
+        for group in _y_overlap_groups(row):
+            group = sorted(group, key=lambda w: w[0])
+            seg = [group[0]]
+            for w in group[1:]:
+                prev = seg[-1]
+                h = max(prev[3], w[3])
+                if w[0] - (prev[0] + prev[2]) > SPLIT_GAP * h:
+                    out.append(seg)
+                    seg = [w]
+                else:
+                    seg.append(w)
+            out.append(seg)
     return [s for s in out
             if any(sum(ch.isalpha() for ch in w[4]) >= MIN_REAL_TOKEN for w in s)]
 
@@ -314,6 +360,34 @@ def snapped(lane, page, coords, pi=None):
             s = rules.snap(pi, b, mode="column", rules_only=True, include_border=True)
         else:
             s = rules.snap(pi, b, mode=mode)
+        # ⚠️ box_with_deck's own docstring already says it: "a headline
+        # item's own top is the seed row itself, never walked" -- but that
+        # promise only held inside box_with_deck's deck-growing loop. The
+        # SNAP below has no such guard, and on the Atlanta Georgian of
+        # 27 September 1918 it broke the promise: snapping the "VICTORIES
+        # EVERYWHERE!" banner (raw top 2613) in paper mode walked upward
+        # looking for a rule or a clear gap and never found one, because
+        # this page's masthead furniture -- the dateline credit line
+        # ("VOL. XVII ... ATLANTA, GA., FRIDAY, SEPTEMBER 27, 1918 ...
+        # Issued daily...") and the eagle emblem above it -- fills the
+        # whole width densely all the way up to the masthead lettering
+        # itself, with no band of consecutive-enough clear rows anywhere
+        # in between. The walk climbed straight through all of it and
+        # stopped only when it hit that lettering as a "rule", at OCR
+        # y 1375 -- inside the nameplate's own 0-1828 band, and still
+        # above the dateline row it had just swept in as if it were part
+        # of the headline. Unclamped, that either disqualified the
+        # candidate outright at clips._headline_item's floor check
+        # (s[1] < floor) or, had it not been, would have posted a crop
+        # carrying the paper's own masthead furniture above the real
+        # headline. The raw candidate's own top needed no walking to begin
+        # with -- it already IS the visual top of the banner -- so hold
+        # the snap to it exactly as box_with_deck already holds its own
+        # walk, rather than trust a floor (the nameplate's own detected
+        # bottom) that on this page sits short of the furniture it should
+        # cover.
+        if s and lane == "headline" and s[1] < b[1]:
+            s = (s[0], b[1], s[2], s[1] + s[3] - b[1])
         if s and s[3] <= MAX_ITEM_FRAC * ch:
             out.append((s, b, seg))
     return out

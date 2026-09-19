@@ -1061,3 +1061,102 @@ and it exits 0 in silence the moment the csv exists.
 - **Search finds shape, never genre.** Every failed lane failed this way.
 - **Carry identifiers through; never reconstruct them.** This caused two wrong
   links and one whole class of dropped records.
+
+## ✅ Fixed 19 September 2026: the headline crop dropped its own headline
+
+Reported live: the headline post for the Atlanta Georgian of 27 September 1918
+shipped "IS SMASHING; BULGARIA STAGGERING" -- HAIG cut off the front, and
+"VICTORIES EVERYWHERE!", the actual banner headline above it, entirely absent.
+Two independent, real bugs in `items.py`, both from real word geometry on this
+page, both fixed with tests that fail on the old code:
+
+1. **`nameplate.rows_of()`'s tolerance is scaled by the LARGER of the two
+   heights compared**, so a tiny, unrelated word can bridge into a giant
+   banner's row purely because the banner's own height makes the tolerance
+   window huge -- even when the two never share any y-range. The nameplate
+   area's small slogan word "Homes" (top 1814, height 317) sat, by x, inside
+   the span of "VICTORIES" (top 2679, height 2367) with a 548-unit y-gap
+   between them; `rows_of()` merged them anyway, and "Homes" then split
+   "VICTORIES" away from "EVERYWHERE" at the x-gap step in `display_rows()`.
+   Worse, the merged row's reported top (1814, from "Homes") read as inside
+   the nameplate, so the whole banner was filtered out of headline candidacy
+   before transcription ever ran. `items._y_overlap_groups()` now re-splits a
+   `rows_of()` row wherever two words' vertical spans do not actually
+   overlap, before the existing x-gap split runs -- it can only refine a
+   false merge, never introduce one, since real same-line words always
+   overlap in y however different their sizes.
+
+2. **`rules.snap()`'s paper-mode vertical walk can climb above a headline
+   candidate's own raw top**, even though `box_with_deck()`'s own docstring
+   already promises "a headline item's own top is the seed row itself, never
+   walked" -- that promise only held inside `box_with_deck`'s own loop.
+   Snapping "VICTORIES EVERYWHERE!" (raw top 2613) walked upward looking for
+   a rule or a clear gap and never found one: this page's masthead furniture
+   (the dateline credit line -- "VOL. XVII ... ATLANTA, GA., FRIDAY,
+   SEPTEMBER 27, 1918 ... Issued daily..." -- and the eagle emblem above it)
+   fills the whole width densely all the way up to the masthead lettering
+   itself, with no band of consecutive-enough clear rows anywhere in
+   between. The walk stopped only once it hit that lettering as a "rule", at
+   OCR y 1375: inside the nameplate's own 0-1828 band, and still above the
+   dateline row it had just swept in too. Unclamped, that either disqualified
+   the (now-correct) candidate at `clips._headline_item`'s own floor check,
+   or would have posted a crop carrying the paper's own masthead furniture
+   above the real headline. `items.snapped()` now holds the snap to the raw
+   candidate's own top for the headline lane, exactly as `box_with_deck`
+   already holds itself -- clamping to the raw top rather than to the
+   nameplate's own detected bottom, because on this page that bottom (1828)
+   sits short of the furniture (the dateline row runs to about 2443) it
+   should cover, and clamping there would have swept the dateline row into
+   the crop instead.
+
+Both fixed in `items.py`; regression tests `DisplayRowsYOverlap` and
+`SnapNeverWalksAboveTheRawTop` in `test_clips.py`, both confirmed to fail
+against the pre-fix code. Full suite: 288/288. Verified against the real page
+(`sn89053729`, 1918-09-27, ed 5, seq 1): `clips._headline_item()` now returns
+exactly `["VICIORIES", "EVERYWHERE"]` as the head, cleanly, with nothing above
+or beside it.
+
+⚠️⚠️ **OPEN FINDING, not fixed: the same page's deck line is dropped by a
+THIRD, harder problem, and this one was deliberately left alone.**
+`items.is_tier()` calls `gutter_counts()` on the row "HAIG IS SMASHING;
+BULGARIA STAGGERING" and reads it as a tier of several column items (3 of 4
+page-level gutters inside its span are "clear" -- not crossed by ink -- on
+this row, and only 1 is "straddled"), so `box_with_deck()` refuses it as the
+head's deck line entirely, and `split_at_gutters()` separately cuts "HAIG"
+off the front of it as its own one-word item. Both are the SAME underlying
+false positive: this row's word-spacing (a perfectly ordinary headline, five
+words, normal gaps) happens to put 3 of this page's 4 nearby column gutters
+inside its own natural word-gaps, purely by coincidence of where the page's
+real column grid (measured over the WHOLE page height, for the body text
+several thousand units further down) falls under this one banner line. The
+calibration this heuristic was built on (`gutter_counts`'s own docstring:
+banners measured 9, 10, 21 straddled against 5, 4, 8 clear; a genuine tier 3
+against 6) all had 9-29 total gutters in span; this row has only 4, so one
+coincidental alignment flips the ratio with no statistical room to absorb
+it. **Not fixed here**: a coverage-based guard (requiring the gutters to span
+a meaningful fraction of the row's own width) was tried and rejected --
+it demonstrably breaks the existing, deliberately-calibrated tier fixture in
+`test_clips.py` (`test_a_row_straddling_the_gutters_is_a_banner_and_is_not_split`),
+whose own tier case has similarly few gutters in span. Fixing this properly
+needs either a `rule`-vs-`paper` distinction carried through `pi.gutters()`'s
+own return value (currently discarded) or validation against the wider
+historical corpus this heuristic was calibrated on, neither of which this
+session had in hand. Consequence, with both fixes above applied: the headline
+lane now correctly posts "VICTORIES EVERYWHERE!" alone for this page, with
+nothing above or beside it and nothing wrong in it, but without its deck line.
+
+⚠️ **OPEN FINDING, not fixed: `_check_transcription`'s 3-token floor refuses a
+genuine two-word headline outright.** With both fixes above, `clip_headline()`
+correctly transcribes this page's real headline as "VICTORIES EVERYWHERE!" --
+and then `_check_transcription` raises `Refused("transcription too short or
+too broken")`, because `len(plain) < 3` (only "victories" and "everywhere")
+regardless of both words being long, legible, and non-noise (the OTHER half
+of that same check, `>= 3 tokens of length >= 4`, would pass at 2 of 2 were
+the token-count floor not there first). This floor is shared across every
+lane (`clips._check_transcription`, headline/article/ad/market alike) and
+was not touched here: loosening it risks admitting genuine noise on other
+lanes, and validating a change against the historical corpus this file was
+calibrated on is out of scope for what this session verified. Consequence:
+this page's headline lane now REFUSES (skips) rather than posts something
+wrong -- correct and safe, but it means a real, punchy, two-word headline
+like this one currently cannot post via the headline lane at all.
