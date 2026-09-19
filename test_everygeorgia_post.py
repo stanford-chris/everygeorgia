@@ -253,6 +253,129 @@ class Selection(unittest.TestCase):
         self.assertFalse(os.path.exists(ep.STATE_FILE + ".tmp"))
 
 
+class TitleFamilies(unittest.TestCase):
+    """19 September 2026: a split paper (three LCCNs for one continuously-
+    published title, a Chronicling America title-change split -- Griffin
+    Daily News in production) was still getting three turns out of a small
+    eligible pool after the 14 September collapse fix, which only stopped
+    the shared order shrinking to a narrow lane's subset and said outright
+    that the frequency skew itself "would recur for any other town whose
+    paper Chronicling America split the same way." These pin that a family
+    now occupies exactly one slot in title_order/next_titles/choose, while
+    CLIP and the returned lccn still see the real member that published a
+    given date."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self._state, self._review = ep.STATE_FILE, ep.REVIEW_FILE
+        ep.STATE_FILE = os.path.join(self.tmp.name, "post_state.json")
+        ep.REVIEW_FILE = os.path.join(self.tmp.name, "review.jsonl")
+        self._clip = ep.CLIP
+        self._family_of = dict(ep.FAMILY_OF)
+        # A synthetic three-LCCN family, gapless and non-overlapping, same
+        # shape as Griffin's -- isolated from the real TITLE_FAMILIES tuple
+        # so this suite does not depend on the production roster.
+        ep.FAMILY_OF = dict(ep.FAMILY_OF, **{
+            "sn10000002": "sn10000001", "sn10000003": "sn10000001"})
+        self.issues = {
+            "sn10000001": [("1881-01-01", 1), ("1885-06-01", 1)],
+            "sn10000002": [("1890-01-01", 1)],
+            "sn10000003": [("1920-01-01", 1), ("1925-01-01", 1)],
+            "sn00000009": [("1900-01-01", 1)],
+        }
+
+    def tearDown(self):
+        ep.STATE_FILE, ep.REVIEW_FILE, ep.CLIP = self._state, self._review, self._clip
+        ep.FAMILY_OF = self._family_of
+        self.tmp.cleanup()
+
+    def test_family_resolves_to_its_canonical_member(self):
+        self.assertEqual(ep.family("sn10000002"), "sn10000001")
+        self.assertEqual(ep.family("sn10000003"), "sn10000001")
+        self.assertEqual(ep.family("sn10000001"), "sn10000001")
+        self.assertEqual(ep.family("sn00000009"), "sn00000009")   # no family
+
+    def test_title_order_collapses_a_family_to_one_slot(self):
+        s = {"order": [], "pass": 1, "posted": [], "tried": {}}
+        order = ep.title_order(s, self.issues)
+        self.assertEqual(sorted(order), sorted({"sn10000001", "sn00000009"}))
+        self.assertNotIn("sn10000002", order)
+        self.assertNotIn("sn10000003", order)
+
+    def test_title_order_self_heals_a_state_still_holding_raw_members(self):
+        """A state file saved before this merge existed may hold several of
+        a family's raw members as separate entries (production's did, for
+        Griffin). The first call must collapse them to one, keeping the
+        earliest surviving position, exactly as the 14 September fix
+        self-healed a collapsed order with no manual edit."""
+        s = {"order": ["sn10000002", "sn00000009", "sn10000003", "sn10000001"],
+             "pass": 1, "posted": [], "tried": {}}
+        order = ep.title_order(s, self.issues)
+        self.assertEqual(order, ["sn10000001", "sn00000009"])
+
+    def test_next_titles_owes_a_family_only_one_turn(self):
+        s = {"order": [], "pass": 1, "posted": [], "tried": {}}
+        owed = ep.next_titles(s, self.issues, lane="nameplate")
+        self.assertEqual(owed.count("sn10000001"), 1)
+        self.assertNotIn("sn10000002", owed)
+        self.assertNotIn("sn10000003", owed)
+
+    def test_choose_returns_the_real_member_that_published_the_date(self):
+        """The family id is internal bookkeeping; the caller (and
+        state["posted"]) must see the actual LCCN CLIP fetched from, for
+        accurate citation and history."""
+        calls = []
+
+        def clip(lane, lccn, date, ed, seq=1, phrase=None):
+            calls.append((lccn, date))
+            return fake_result(lccn, date)
+        ep.CLIP = clip
+        s = {"order": ["sn10000001"], "pass": 1, "posted": [], "tried": {}}
+        lccn, r = ep.choose(s, {"sn10000001": self.issues["sn10000001"],
+                                 "sn10000002": self.issues["sn10000002"],
+                                 "sn10000003": self.issues["sn10000003"]},
+                             log=lambda *a: None)
+        self.assertIn(lccn, ("sn10000001", "sn10000002", "sn10000003"))
+        self.assertEqual(r["lccn"], lccn)
+        self.assertEqual(calls[0][0], lccn)   # CLIP was called with the real member
+
+    def test_a_family_gets_one_turn_per_pass_per_lane_regardless_of_which_member(self):
+        """Once sn10000002 (a Griffin-shaped family member) has posted in
+        this lane this pass, sn10000001 and sn10000003 -- its family-mates
+        -- must not also get a turn: this is the mechanism that let three
+        LCCNs of one paper post three times in the account's opening weeks."""
+        s = {"order": ["sn10000001"], "pass": 1,
+             "posted": [{"lccn": "sn10000002", "date": "1890-01-01",
+                         "pass": 1, "lane": "nameplate"}],
+             "tried": {}}
+        owed = ep.next_titles(s, self.issues, lane="nameplate")
+        self.assertNotIn("sn10000001", owed)   # the family's turn is already taken
+        self.assertIn("sn00000009", owed)      # an unrelated title is unaffected
+
+    def test_tries_are_bounded_across_the_whole_family(self):
+        """TRIES_PER_TITLE is a budget per TURN, not per LCCN -- a family
+        does not get TRIES_PER_TITLE dates on each of its members."""
+        many = {"sn10000001": [(f"18{i:02d}-01-01", 1) for i in range(10)],
+                "sn10000002": [(f"19{i:02d}-01-01", 1) for i in range(10)]}
+        ep.CLIP = lambda lane, l, d, e, seq=1, phrase=None: (_ for _ in ()).throw(npc.Refused("x"))
+        s = {"order": [], "pass": 1, "posted": [], "tried": {}}
+        ep.choose(s, many, log=lambda *a: None)
+        self.assertEqual(len(s["tried"]["nameplate"]["sn10000001"]), ep.TRIES_PER_TITLE)
+
+    def test_recent_titles_and_search_lane_dedupe_treat_a_family_as_one_title(self):
+        s = {"order": [], "pass": 1,
+             "posted": [{"lccn": "sn10000002", "date": "1890-01-01",
+                         "pass": 1, "lane": "ad"}],
+             "tried": {}}
+        recent = ep.recent_titles(s, "ad")
+        self.assertIn("sn10000001", recent)   # normalised through family()
+        cands = [("sn10000001", "1885-06-01", 1, 1, "phrase"),
+                 ("sn00000009", "1900-01-01", 1, 1, "phrase")]
+        ep.CLIP = lambda lane, l, d, e, seq=1, phrase=None: fake_result(l, d)
+        lccn, r = ep.choose_search(s, cands, "ad", log=lambda *a: None)
+        self.assertEqual(lccn, "sn00000009")   # the family member was skipped as recent
+
+
 class Lanes(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()

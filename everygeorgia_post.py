@@ -161,6 +161,65 @@ CARTOON_RECENT_WINDOW = 3           # ⚠️ Not RECENT_TITLE_WINDOW: the credit
                                     # post one cartoon in four; measured share
                                     # of hits in HANDOFF.md
 
+# ⚠️⚠️ TITLE FAMILIES. A handful of continuously-published papers are split
+# by Chronicling America across several LCCNs, one per title change, and
+# title_order/eligible() otherwise count each LCCN as an independent title
+# with its own turn -- which is exactly the shape of two incidents already
+# hit here: Griffin occupying 3 of headline/cartoon's ~19/13 "dailies" slots
+# (HANDOFF.md, 14 September; a reader noticed it posting three times in
+# three days) and "the first dozen posts carried the Cordele Dispatch three
+# times in three lanes" (the lane-offset fix, same file). The 14 September
+# fix stopped the shared order COLLAPSING to a narrow lane's subset; it did
+# not stop a split paper getting more than its share of that subset's turns,
+# which HANDOFF.md names outright as "a structural bias... [that] would
+# recur for any other town whose paper Chronicling America split the same
+# way." This is that recurrence, confirmed 19 September 2026: Griffin still
+# holds 3 of headline's 19 slots and 2 of cartoon's 13 (unchanged by the
+# collapse fix), plus a shuffle coincidence put all three within the first
+# ten of the full 843-title order, so the nameplate lane hit all three in
+# its opening two weeks (3 of its first 12 posts).
+#
+# Each family here was verified by reading its members' ACTUAL held issue
+# dates (not the roster's declared, sometimes open-ended year range) and
+# confirming they are gapless and non-overlapping -- a real handoff from one
+# masthead to the next, not two papers that happened to share a city:
+#   Griffin daily news        1881-89 -> 1889-1924 -> 1924-present, no gap
+#   Cordele dispatch          1916-1920-06-01 -> 1920-06-02-1926-04-07 ->
+#                             1926-04-08-1927, no gap (day-to-day handoffs)
+#   Augusta herald            1909-1914-03-03 -> 1914-03-18-1924, 15-day gap
+#   Macon telegraph & messenger  1871-1873-08-30 -> 1873-10-09-1882, 40-day gap
+# ⛔ NOT auto-derived from "same city": Savannah alone has 12 daily titles
+# in one city, and they are genuinely distinct, competing papers running in
+# parallel (Savannah Morning News, Savannah Daily Republican, Savannah
+# Georgian...), not one renamed. Left OUT for the same reason, pending a
+# closer read: Columbus's Daily Sun -> Sun and Columbus Daily Enquirer ->
+# Daily Times -> Columbus Daily Times chain is gapless too, but "Sun" to
+# "Times" is a bigger discontinuity than any family merged here, and
+# Columbus Enquirer-Sun picks up four years after Columbus Daily Times ends;
+# Atlanta Georgian and News -> Atlanta Georgian has a 14-month gap; Macon
+# News arrives the year after Telegraph and Messenger folded under an
+# unrelated name. A human should read those before merging them.
+#
+# The merge is scoped to TURN-TAKING ONLY (title_order/eligible/choose): it
+# never touches issues_by_title(), dailies() or eligible()'s own per-LCCN
+# density and era-floor math, so a family's real per-member issue lists,
+# and which real LCCN a given date is fetched from, are untouched. The
+# canonical id for a family is always its first (oldest) member, so it is
+# stable regardless of dict ordering.
+TITLE_FAMILIES = (
+    ("sn89053182", "sn89053183", "sn83009936"),   # Griffin daily news
+    ("sn89053138", "2022239691", "2022239700"),   # Cordele dispatch
+    ("sn89053973", "sn89053972"),                 # Augusta herald
+    ("sn85034225", "sn85038493"),                 # Macon telegraph and messenger
+)
+FAMILY_OF = {member: fam[0] for fam in TITLE_FAMILIES for member in fam}
+
+
+def family(lccn):
+    """The canonical id for lccn's title family (its oldest member), or
+    lccn itself when it belongs to no known family."""
+    return FAMILY_OF.get(lccn, lccn)
+
 
 # --------------------------------------------------------------- credentials
 
@@ -299,10 +358,24 @@ def title_order(state, titles):
     eligible slots, and a headline-lane post collapsed the persisted order
     from 843 to 19 the same evening a reader noticed Griffin posting twice in
     two days. `next_titles()` now threads a separate `full_titles` argument
-    through for exactly this reason -- call this only with that."""
-    order = [t for t in state.get("order", []) if t in titles]
-    known = set(order)
-    fresh = sorted(t for t in titles if t not in known)
+    through for exactly this reason -- call this only with that.
+
+    ⚠️ The order holds FAMILY ids (see TITLE_FAMILIES/family()), not raw
+    LCCNs, so a split paper occupies one slot regardless of how many LCCNs
+    it is catalogued under. `titles` may still be a dict/iterable of real
+    LCCNs; membership below is tested through family(), and the loop over
+    the existing order also dedupes through family() and drops a second
+    member if one is somehow already present -- self-healing an order saved
+    before this merge existed, the same way the 14 September fix self-healed
+    a collapsed one."""
+    universe = {family(t) for t in titles}
+    order, seen = [], set()
+    for t in state.get("order", []):
+        f = family(t)
+        if f in universe and f not in seen:
+            order.append(f)
+            seen.add(f)
+    fresh = sorted(f for f in universe if f not in seen)
     if fresh:
         random.Random(SHUFFLE_SEED + len(order)).shuffle(fresh)
         order += fresh
@@ -321,7 +394,11 @@ def dates_for(lccn, issues, pass_no, lane="nameplate"):
 
 
 def posted_this_pass(state, lccn, lane="nameplate"):
-    return any(p["lccn"] == lccn and p.get("pass") == state["pass"]
+    """⚠️ Compared through family(): once any member of a title family has
+    posted in this lane this pass, the family's turn is taken, whichever of
+    its LCCNs actually got picked."""
+    f = family(lccn)
+    return any(family(p["lccn"]) == f and p.get("pass") == state["pass"]
                and p.get("lane", "nameplate") == lane
                for p in state.get("posted", []))
 
@@ -337,7 +414,12 @@ def next_titles(state, issues, lane="nameplate", full_titles=None):
     (19/19/13 of 843 titles). Defaults to `issues` only so a caller with
     nothing broader to offer (a test, say) still gets the old single-set
     behaviour; every real caller in `pick()` passes `sources["nameplate"]`,
-    which is always the unfiltered set. See `title_order()`'s own warning."""
+    which is always the unfiltered set. See `title_order()`'s own warning.
+
+    ⚠️ Returns FAMILY ids, not raw LCCNs -- Cordele's or Griffin's three
+    LCCNs occupy one slot here even though `issues` still holds each of
+    them separately (see TITLE_FAMILIES). `choose()` resolves a family id
+    back to whichever of its real members is actually being tried."""
     master = title_order(state, full_titles if full_titles is not None else issues)
     # ⚠️ Each lane starts the shared MASTER order at its own point, or the
     # lanes march through the same titles together: the first dozen posts
@@ -347,17 +429,20 @@ def next_titles(state, issues, lane="nameplate", full_titles=None):
     if master:
         off = (LANES.index(lane) * len(master)) // len(LANES)
         master = master[off:] + master[:off]
-    order = [t for t in master if t in issues]
+    present = {family(l) for l in issues}
+    order = [f for f in master if f in present]
     for _ in range(2):
         tried = lane_tried(state, lane)
         owed = []
-        for lccn in order:
-            if posted_this_pass(state, lccn, lane):
+        for f in order:
+            if posted_this_pass(state, f, lane):
                 continue
-            n_tried = len(tried.get(lccn, []))
-            if n_tried >= min(TRIES_PER_TITLE, len(issues[lccn])):
+            members = [m for m in issues if family(m) == f]
+            n_issues = sum(len(issues[m]) for m in members)
+            n_tried = len(tried.get(f, []))
+            if n_tried >= min(TRIES_PER_TITLE, n_issues):
                 continue                    # exhausted this pass
-            owed.append(lccn)
+            owed.append(f)
         if owed:
             return owed
         state["pass"] = state.get("pass", 1) + 1
@@ -538,21 +623,35 @@ def log_review(r, state):
 
 def choose(state, issues, log=print, lane="nameplate", full_titles=None):
     """Walk the owed titles and their dates until one clip PASSES. Returns
-    (lccn, result) or (None, None). Every date looked at is recorded in
-    state['tried'][lane] whether it passed or not, so a dry run that is then
-    followed by a live run does not re-fetch, and a REVIEW is not re-offered
-    next run. `full_titles` passes straight through to `next_titles()`."""
+    (lccn, result) or (None, None) -- the REAL lccn a passing clip was
+    fetched from, exactly as before this merge existed; the family id
+    `next_titles()` hands back is resolved to a real member below and never
+    leaks into the return value, `state["posted"]`, or the caller. Every
+    date looked at is recorded in state['tried'][lane] whether it passed or
+    not, so a dry run that is then followed by a live run does not
+    re-fetch, and a REVIEW is not re-offered next run. `full_titles` passes
+    straight through to `next_titles()`.
+
+    ⚠️ A family's dates are drawn from ALL its members present in `issues`
+    combined into one pool (dates never overlap between real members --
+    verified by hand for every family in TITLE_FAMILIES), tagged with
+    whichever real lccn actually holds that date, so `CLIP()` and the
+    result's own `meta`/citation are always for the LCCN that truly
+    published it. `seen`/`tried` key on the family id and hold plain dates,
+    which is safe for the same no-overlap reason."""
     tried = lane_tried(state, lane)
-    for lccn in next_titles(state, issues, lane, full_titles=full_titles)[:TITLES_PER_RUN]:
-        seen = set(tried.get(lccn, []))
-        used = {(q["lccn"], q["date"]) for q in state.get("posted", []) if q.get("pass") == state["pass"]}
-        for date, ed in dates_for(lccn, issues[lccn], state["pass"], lane):
-            if date in seen or (lccn, date) in used:
+    for f in next_titles(state, issues, lane, full_titles=full_titles)[:TITLES_PER_RUN]:
+        members = sorted(m for m in issues if family(m) == f)
+        combined = [(d, e, m) for m in members for d, e in issues[m]]
+        seen = set(tried.get(f, []))
+        used = {(family(q["lccn"]), q["date"]) for q in state.get("posted", []) if q.get("pass") == state["pass"]}
+        for date, ed, lccn in dates_for(f, combined, state["pass"], lane):
+            if date in seen or (f, date) in used:
                 continue
             if len(seen) >= TRIES_PER_TITLE:
                 break
             seen.add(date)
-            tried[lccn] = sorted(seen)
+            tried[f] = sorted(seen)
             try:
                 r = CLIP(lane, lccn, date, ed)
             except (npc.Refused, ghn_api.FetchError, ValueError) as e:
@@ -562,13 +661,15 @@ def choose(state, issues, log=print, lane="nameplate", full_titles=None):
                 return lccn, r
             log_review(r, state)
             log(f"  review {lane} {lccn} {date}: {'; '.join(r['verdict'].reasons)}")
-        log(f"  {lane} {lccn}: nothing passed in {len(seen)} tries; next title")
+        log(f"  {lane} {f}: nothing passed in {len(seen)} tries; next title")
     return None, None
 
 
 def recent_titles(state, lane, n=RECENT_TITLE_WINDOW):
-    """Titles this lane posted among its last `n` posts."""
-    mine = [p["lccn"] for p in state.get("posted", []) if p.get("lane") == lane]
+    """Title families this lane posted among its last `n` posts. Through
+    family() so a search lane (ad/market/cartoon-search) treats two LCCNs
+    of the same split paper as the one title it is to a reader."""
+    mine = [family(p["lccn"]) for p in state.get("posted", []) if p.get("lane") == lane]
     return set(mine[-n:])
 
 
@@ -589,7 +690,7 @@ def choose_search(state, cands, lane, log=print, clip_lane=None, recent_lane=Non
         key = f"{lccn}:{date}:{seq}"
         if key in tried:
             continue
-        if lccn in recent:
+        if family(lccn) in recent:
             continue
         if looked >= SEARCH_TRIES.get(lane, 8):
             break

@@ -533,6 +533,101 @@ beside and unverified for every other. It now says only what the archive holds
 exactly, plus what the detector guarantees (display type at the top of the
 front page).
 
+## ✅ Griffin's own frequency skew, not just the collapse — fixed 19 September 2026
+
+Chris flagged a specific post ("georgia in print bot continues to seem to
+favor griffin paper," linking the 18 September nameplate post of *Griffin
+daily news.*, sn83009936) five days after the 14 September fix above. That
+fix was real but narrower than it read: it stopped the shared order
+collapsing to a lane's subset, and said outright, in its own words, that the
+underlying skew "would recur for any other town whose paper Chronicling
+America split the same way." It was never a claim that Griffin would stop
+getting extra turns — only that a lane win would stop deleting 824 other
+titles from the ledger.
+
+**Measured on the live account (26 posts since launch):** 4 of 26 (15%) were
+Griffin, under one of its three LCCNs — 3 of 12 nameplate posts, 1 of 5
+headline posts. Two distinct mechanisms, confirmed rather than assumed:
+- **Headline/cartoon's own narrow "dailies" pools.** Unchanged since
+  14 September: Griffin occupies 3 of headline's 19 eligible titles and 2 of
+  cartoon's 13 (`eligible(dailies(issues), lane)`, run live). That pool
+  completes a full pass roughly monthly, so Griffin was always going to
+  recur there at ~3x a normal daily's rate, forever, not as a passing
+  artefact.
+- **A shuffle coincidence in the nameplate lane**, not previously diagnosed:
+  `SHUFFLE_SEED` is fixed for reproducibility, and it happened to place all
+  three Griffin LCCNs at positions 5, 8 and 10 of the 843-title order.
+  Nameplate walks the full, unfiltered order from position 0 and — at its
+  own ~0.4 posts/day — needs roughly six years to complete one pass, so it
+  hit all three in its first two weeks purely because they sit near the
+  front. This half fades on its own; it was left alone.
+
+A grep for "same city, several dailies" (the naive fix) would have been
+wrong: Savannah alone holds 12 daily titles that are genuinely distinct,
+competing papers (Savannah Morning News, Savannah Daily Republican, Savannah
+Georgian...), not one renamed masthead. Each candidate family was instead
+checked against its members' ACTUAL held issue dates (`issues_by_title()`,
+not the roster's declared, sometimes open-ended year range) for a gapless,
+non-overlapping handoff — a real continuation, not two papers sharing a
+city. Four passed: **Griffin daily news** (1881-89 → 1889-1924 →
+1924-present, no gap at all — the transition dates are literally
+day-to-day), **Cordele dispatch** (1916 → 1920-06-02 → 1926-04-08, also
+day-to-day), **Augusta herald** (1909-1914-03-03 → 1914-03-18, 15-day gap)
+and **Macon telegraph and messenger** (1871-1873-08-30 → 1873-10-09, 40-day
+gap). Left OUT, each for a real reason rather than caution alone: Columbus's
+gapless Daily Sun → Sun and Enquirer → Daily Times → Columbus Daily Times
+chain changes name too completely ("Sun" to "Times") to call a simple
+rename, and Columbus Enquirer-Sun picks up four years after that chain
+ends; Atlanta Georgian and News → Atlanta Georgian has a 14-month gap
+(and Atlanta Georgian alone already dominates its pool at 14,118 issues, so
+merging it would change nothing); Macon News arrives the year after
+Telegraph and Messenger folded under a name with no relation to it at all.
+
+**The fix is scoped to turn-taking only.** `TITLE_FAMILIES`/`family()` in
+`everygeorgia_post.py` never touch `issues_by_title()`, `dailies()` or
+`eligible()` — a family's real per-LCCN issue lists and density/era-floor
+math are untouched, so nothing about which titles qualify as "daily" or
+"postable" changes. Only `title_order()`, `next_titles()`,
+`posted_this_pass()`, `choose()` and (for the search lanes) `recent_titles()`
+now compare through `family()`, so a split paper occupies exactly one slot
+in the order and one turn per pass per lane, while `choose()` still combines
+dates from every real member present and calls `CLIP()` with whichever real
+LCCN actually published that date — the returned lccn, and everything in
+`state["posted"]`, is always the real member, never a synthetic family id.
+Verified the fix self-heals the live state file the same way the
+14 September one did: on a deep copy of the real `post_state.json`,
+`title_order()` collapsed 843 entries to 837 on the very first call (Griffin
+3→1, Cordele 3→1, Augusta 2→1, Macon 2→1), with no manual edit. Also ran the
+real `pick()`/`sources` wiring end to end against the full 843-title,
+19/13-eligible production data (CLIP stubbed to refuse everything, so no
+network fetch and no write to the real state or review files) and confirmed
+it completes without error across all five lanes.
+
+⚠️ **Mutation-tested, not just green:** reverting `posted_this_pass()` to
+compare raw lccn instead of `family()` was confirmed to let a family-mate
+take a second turn in the same pass/lane — the exact shape of the original
+finding — and the new tests catch it. `test_everygeorgia_post.py` gained a
+`TitleFamilies` class (8 tests, a synthetic three-LCCN family isolated from
+the real `TITLE_FAMILIES` tuple) covering: family resolution, order
+collapsing to one slot, self-healing a state that still holds raw members,
+`next_titles()` owing a family only one turn, `choose()` returning the real
+member (not the family id), one turn per pass per lane regardless of which
+member is posted, `TRIES_PER_TITLE` bounding the whole family rather than
+each member separately, and `recent_titles()`/`choose_search()` treating a
+family as one title for search-lane variety. All 39 pre-existing tests in
+the file pass unchanged, confirming no non-family title's selection
+behaviour moved. The other four suites in this repo (`test_clips.py`,
+`test_nameplate.py`, `test_pictures.py`, `test_transcribe.py`) were also
+re-run and are unaffected, as expected — nothing here touches their code.
+
+⚠️ **Not addressed, on purpose:** the roster almost certainly holds other
+split-title families beyond these four (51 exact name+city duplicates
+turned up in an unrelated scan of the whole roster, most of them genuinely
+distinct competing papers rather than renames — see Savannah above). Only
+the four already confirmed, gapless, non-overlapping continuations were
+merged; anything else needs the same by-hand date-range read before being
+added to `TITLE_FAMILIES`, not a rule that infers it from a shared city.
+
 ## Gate 4, the ink edge: the crops were read, and a fifth of them were wrong
 
 HANDOFF said "read the crops; do not read only the summary line". Done, on
