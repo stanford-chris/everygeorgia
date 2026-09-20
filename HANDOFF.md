@@ -103,6 +103,7 @@ their determination would be used, not ours.
 | article | as headline | the headline item plus its first paragraph: everything down to the first run of three tight lines, then that run to the next indented line or ten lines (`clip_article`) | model transcription, whole |
 | ad | search on genre phrases (`AD_PHRASES`: sarsaparilla, castoria, "for sale by all druggists"…), any page | the column block of set text around the phrase, `clips.block_around()` | OCR when legible, else the model |
 | market | search on `MARKET_PHRASES`, any page | the block under the phrase, capped at ten rows and 15% of the page | OCR only; refused when illegible |
+| classified ⏸ held | search on `CLASSIFIED_PHRASES`, any page | a run of want-ad items around the phrase, in the column `local_column()` reads off the pixels, closed by `classified_block()`; capped at six items and 15% | OCR only; refused when illegible; wanted-notice words are REVIEW |
 
 Every lane runs gates.py's crop and page passes, and the two model lanes run
 the vocabulary prefixes over the transcription as well, since for display
@@ -1041,7 +1042,79 @@ route.
 `rights_join_tick.sh` is spent but kept: it documents how the join was gated,
 and it exits 0 in silence the moment the csv exists.
 
-## Things that will bite a fresh session
+## ⏸ The classified lane, built and held, 20 September 2026
+
+His ask, on seeing the WANTS column beside the Brunswick News strip of 14 July 1927
+("if there's a way to capture what's in the screenshot reliably, that's also a good
+vein"), then "Build it, and bring me the crops to look at first." It is `clip_classified()`
+in `clips.py`, `"classified"` in `HELD_LANES` and `SEARCH_LANES` in the poster, and runs
+only under `--lane classified` until he releases it into `LANES` (between market and
+cartoon; `test_the_classified_lane_is_built_and_held_until_he_has_seen_the_crops` pins
+the hold). Era floor 1867, the ad lane's, for the ad lane's reason.
+
+**What it is.** Search on item phrases (`CLASSIFIED_PHRASES`: light housekeeping,
+furnished rooms, situation wanted, strayed or stolen, apply at this office, liberal
+reward), then a run of want-ad items around the hit, closed by `classified_block()`:
+the column read from the pixels, its rows cut into items at rules, paragraph gaps and
+heading rows, the seed's item required to LEAD, neighbours added while they lead, and
+the crop's x from the kept words. OCR only, like the market lane. Alt is the items'
+text, the category subhead first when it heads the block.
+
+**Two forms of item, and the lane knows both.** The 20th-century one opens `LEAD—`
+("FOR SALE—", "LOST—", "ROOM—"; `classified_lead_rows`, the lead from
+`CLASSIFIED_LEADS`, the dash optional when the lead is in capitals because the OCR
+drops it). The 19th-century one is a heading over a paragraph whose first word is in
+small capitals and carries no dash: "TO RENT." / "ONE LARGE STORE" (Augusta 1874),
+"Lost," / "ON Broad street" (Savannah 1868); `classified_heading` for a list-word
+heading at display size, `caps_heading` for a flush-left row of capitals ("LAUNDRY
+MISPLACED — Lost", Griffin 1924), which leads only with a list word in it.
+
+**Yield, measured on the two decade samples that set every constant:** 7 of 24 in
+1867-1899 and 7 of 32 in 1900-1930, 14 of 56, against the market lane's 3 of 50. The
+misses are the phrase not on the page's own OCR (the search stems: 15), the phrase
+inside prose or a display ad rather than an item (24), and illegible OCR (3). The
+page that prompted it gives LOST, FOR SALE and FOR RENT whole, subhead included.
+
+### What building it taught, in the order it bit
+
+- **A want-ad department is set at its own measure inside a border, so its columns
+  are on no page-level gutter.** `block_around()` gave the FOR SALE items exactly,
+  rule to rule, and 180px to the left: the crop began in the LOST column's tail and
+  cut the last word off every line. Hence `local_column()`.
+- **Neither PageInk's 1400px page nor the OCR can read that column.** The Brunswick
+  gutter is 20 image pixels with a dotted rule down its middle, 5px at 1400, and the
+  two columns' OCR boxes come within 5-8 units, the same as inter-word gaps. The
+  column is read from a native-resolution band around the seed (one fetch a candidate).
+- **Binarized ink share, not gray means.** On the faint Brunswick scan the gutter's
+  paper is dirtier (gray 205) than a text column's mean (206); on the dense Georgian
+  the band's brightest column means are text. Dirty paper binarizes to no ink.
+- **Slices, matched with drift, because scans are skewed and banners cross bands.**
+  The Georgian's column rule sits at x=1200 in one slice and 1192 in the next; a
+  column-by-column vote across the band found no gutter at all. Its running head
+  spoils the seed's own slice when the seed is near the top (1 October 1908).
+- **A typographic river is not a gutter.** A wobbly white channel 4-8px wide runs
+  through "occupies", "Close in." and "rooms for" in three slices of four. Only two
+  structures count: a clear run 30px wide (`LOCAL_WIDE`, raised from 13 when the
+  Brunswick News of 24 March 1930 produced a 17px river in loose-set type), or a rule
+  with paper on both sides. Every narrow gutter measured carries a rule.
+- **The white around the WANTS lettering agreed across two slices.** So the seed
+  slice's own boundary rules, and the other slices stand in only when it has none.
+- **The first word of a 19th-century notice is a small capital twice the body height,
+  so "display type" must be judged on the second-tallest word of a row.**
+- **Items are cut at 1.0 body heights, not `PARA_GAP`'s 1.3, and a heading row cuts
+  whatever the gap**: Augusta sets its notices 1.29 apart with no rule, and its "TO
+  RENT" sits 0.5 under the previous notice's dateline and 1.3 above its own paragraph.
+- **A reward seed finds wanted notices.** The Oconee Enterprise of 14 December 1880
+  passed CLEAN: "$25 Reward... for the arrest and apprehension of one George Parks,
+  col.... 'ginger-cake' color". `CLASSIFIED_REVIEW` makes that REVIEW, and "mouse
+  colored" (a lost Maltese cat, Rome 1895) is not a person.
+- **A column of local notes passes the shape test** (Savannah Republican, 21 May 1867:
+  "Situation Wanted." / "We direct attention to the advertisement of...", bold
+  body-size heads). Display size on the heading excludes most; it is the lane's known
+  false positive, and the words say what it is.
+- **The reader-ad column joins by its catchlines** ("HAVE your pictures framed cheap",
+  Macon 1895): capitals then a lower-case word, no dash. A city dateline has the dash.
+
 
 - **Rights are not a date rule.** NoC-US runs to 1928 while In Copyright begins
   in 1924. The 1931 cutoff is an additional narrowing, never a substitute.

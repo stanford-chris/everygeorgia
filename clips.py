@@ -97,6 +97,118 @@ AD_PHRASES = ("sarsaparilla", "for sale by all druggists", "dry goods and notion
 CARTOON_PHRASES = ("International Feature Service", "Newspaper Feature Service",
                    "Registered U. S. Patent Office")
 CARTOON_SEARCH_FROM = "1900-01-01"
+# ⚠️ The classified lane's search seed, 20 September 2026, his ask on seeing
+# the WANTS column beside the Brunswick News strip ("if there's a way to
+# capture what's in the screenshot reliably, that's also a good vein"). Item
+# phrases, never the department's own head: "WANTS", "WANT ADS" and the
+# "one cent a word" rate line are display type the OCR did not read on that
+# very page, while the items under them read at 79-92 percent. Each phrase
+# below has no other life in a newspaper, and together they reach both the
+# 1910s department (20,342 pages say "light housekeeping" in that decade)
+# and the 19th-century notice ("apply at this office", 6,455 pages in the
+# 1870s; "strayed or stolen", 1,183). Measured by decade in the session log.
+CLASSIFIED_PHRASES = ("light housekeeping", "furnished rooms", "situation wanted",
+                      "strayed or stolen", "apply at this office", "liberal reward")
+# The words a classified item may open with, before its dash: "FOR SALE—",
+# "LOST—", "ROOM—", "STRAYED OR STOLEN—", "WANTED—". A row opening with
+# one to three of these and a dash is a classified item; a wire brief
+# opens the same way with a CITY ("WASHINGTON—The"), which is why the
+# lead is judged against a list and not by its shape alone.
+CLASSIFIED_LEADS = frozenset("""
+    for to or and sale rent let lease exchange trade wanted want lost found strayed stolen
+    stray estray taken up room rooms board boarders boarding house houses home homes
+    cottage cottages apartment apartments flat flats furnished unfurnished help
+    situation situations position positions male female money loan loans land lands
+    farm farms lot lots acres horse horses mule mules cow cows cattle hog hogs
+    chickens eggs dog dogs seed hay wood coal automobile automobiles auto car cars
+    piano typewriter furniture bargain bargains offer offered cheap free reward
+    """.split())
+CLASSIFIED_LEAD_RE = re.compile(
+    r"^((?:[A-Za-z][A-Za-z.\']*\s+){0,3}[A-Za-z][A-Za-z.\']*)[.,:]?\s?([—–-]*)\s*(?=[A-Z0-9\$“\"])")
+# A neighbouring item's lead, once the seed's own has passed the list: three
+# or more capitals, then a dash within a few characters. The OCR reads the
+# lead in display capitals worst of all ("FOR SAJ E—Nice fat fryers"), and
+# an item that is rule-bound to a proven classified is not a wire brief.
+CLASSIFIED_LOOSE_RE = re.compile(r"^[A-Z][A-Z .\']{1,20}[—–-]")
+# The OCR reads a column rule's fragment as a one-letter token at the head
+# of a row ("i ROOM—Large cool room", Brunswick 1927); stripped before the
+# lead is judged. Never a digit or a capital, which can be real.
+ROW_NOISE_RE = re.compile(r"^(?:[a-z|!¡;:,.'\"]\s+)+")
+# ⚠️ A reward notice is where the classified lane meets what the page gate
+# exists for. The first decade sample (20 September 2026) passed the Oconee
+# Enterprise of 14 December 1880 as CLEAN: "$25 Reward... for the arrest and
+# apprehension of one George Parks, col., who is under bond... charged with
+# adultry, and has fled from justice. Description. He is of a rather
+# 'ginger-cake' color..." -- a wanted notice for a Black man in the period's
+# language, which the crop_frequency prefixes do not carry because "col." is
+# an abbreviation. Any of these words in the block is REVIEW: a person
+# decides, this is not a rejection (gates.py's rule).
+CLASSIFIED_REVIEW = ("arrest", "arrested", "apprehension", "apprehended", "fugitive",
+                     "escaped", "runaway", "jail", "sheriff", "convict", "convicted",
+                     "chain gang", "col.", "mulatto", "description")
+CLASSIFIED_REVIEW_RE = re.compile(          # "mouse colored" is a cat (Rome, 1895)
+    r"\bcolou?red (man|woman|boy|girl|men|women|person|people|fellow|preacher|servant|cook)\b")
+CLASSIFIED_MAX_FRAC = 0.15   # a run of items, never the whole department:
+                             # three FOR SALE items on the Brunswick page
+                             # are 0.09
+CLASSIFIED_MAX_ITEMS = 6
+CLASSIFIED_DISPLAY = 1.4     # a row this many body heights tall, under one that
+                             # is not, starts a new item (a heading of some kind)
+PAPER_ROW = 0.02             # _to_paper(): a small-image row at most this dark
+                             # over the column is paper (leading between lines)
+CLASSIFIED_PARA_GAP = 1.0    # a row gap over this many body heights starts a
+                             # new item. ⚠️ Measured between two pages that
+                             # pull opposite ways: the Augusta Chronicle of
+                             # 8 March 1874 sets its notices 1.29 body heights
+                             # apart with no rule between them (at PARA_GAP,
+                             # 1.3, the whole column was one item), and the
+                             # 1873 paper on sn85034215 leads its LINES 0.79
+                             # apart (at 0.7 every line was an item). The
+                             # Brunswick News of 1927: items 1.4-1.6, lines 0-0.3
+CLASSIFIED_HEAD_WORDS = 4    # a one-row segment of this many words or fewer,
+                             # from the list, is a heading: an item's own
+                             # ("Wanted to Rent", 1873) or the category's
+                             # subhead over LEAD— items ("FOR RENT", 1927)
+CLASSIFIED_UNREAD_GAP = 3.0  # a gap between items of this many body heights
+                             # holds something the OCR did not read -- the
+                             # next category's subhead in display type -- and
+                             # ends the run there
+LOCAL_SPAN = 0.06            # local_column(): rows either side of the seed,
+                             # of the page's height, over which a gutter is
+                             # judged (about a dozen body lines)
+LOCAL_REACH = 0.25           # ...and this much of the page's width either side
+LOCAL_GUTTER = 0.001         # ...a run of this many clear image columns (5px
+                             # on a 5,152px page, never under 4) is a gutter:
+                             # word spaces in justified type do not line up
+                             # over a dozen rows. The 20px Brunswick gutter
+                             # holds 8 clear each side of its dotted rule; the
+                             # Georgian's holds 4-5 each side of a solid one
+LOCAL_SLICES = 4             # ...the band judged in this many horizontal
+                             # slices, a boundary counted when at least
+LOCAL_AGREE = 2              # ...this many of them carry it (a river wobbles
+                             # out of line; a running head or banner empties
+                             # a slice or two), within
+LOCAL_DRIFT = 0.004          # ...this much of the page's width (17px on the
+                             # Georgian, whose skew moves a rule 8px a slice)
+LOCAL_CLEAR = 0.06           # ...clear meaning a column with at most this
+                             # share of ink over the slice: dirty paper
+                             # binarizes to none, the lightest body type on
+                             # the Brunswick page to 0.05-0.20
+LOCAL_WIDE = 0.006           # ...a clear run this wide (30px on the Brunswick
+                             # page) is a gutter by itself. ⚠️ Not 0.003: the
+                             # Brunswick News of 24 March 1930 sets its want
+                             # ads so loose that a 17px river ran through
+                             # them; every narrow gutter measured (Brunswick
+                             # 1927, the Georgian, Augusta 1874) carries a
+                             # rule, and the rule structure below finds it
+LOCAL_RULE = 0.30            # ...and an inked body no wider than LOCAL_WIDE
+                             # peaking at this much ink, with LOCAL_GUTTER of
+                             # clear beyond it on each side, is a column rule
+                             # in its gutter -- dotted (Brunswick) or solid
+                             # (the Georgian, 1.0). ⚠️ At 0.15 the faint
+                             # Brunswick text qualified column after column:
+                             # a stroke is a row of ink, and paper 5px away
+                             # is ordinary inside light type
 MAX_BLOCK_FRAC = 0.25
 MAX_BLOCK_W = 0.45       # a block wider than this of the page is not one item
 MARKET_MAX_FRAC = 0.40   # a market crop runs from its own section heading to
@@ -1189,6 +1301,566 @@ def clip_market(lccn, date, ed=1, seq=1, phrase="cotton market", log=print):
                    page_hits, _curl(words), False, {"phrase": phrase})
 
 
+def local_column(pi, coords, seed):
+    """(x0, x1) in OCR units: the column the seed words sit in, read from
+    the pixels of a band of the page around them at the image's own
+    resolution, never from the page's gutters. Walking outward from the
+    seed's centre along the band's column-darkness profile, the first run
+    of LOCAL_GUTTER columns averaging under LOCAL_CLEAR is a gutter, and
+    the column ends at its near side. None if either walk reaches the
+    band's edge, which is a column that could not be read, not one the
+    width of the band.
+
+    ⚠️ Exists because a want-ad department is set at its own measure
+    inside a border, so its internal column rule is on no page-level
+    gutter: on the Brunswick News of 14 July 1927 the grid's column began
+    in the neighbouring column's tail and cut the last word off every line.
+    ⚠️ At the image's resolution, not PageInk's 1400px page, and not from
+    the OCR either. Measured on that page: the gutter between the LOST
+    and FOR SALE columns is about 20 image pixels with a dotted rule down
+    its middle, which is 5 pixels at 1400 and reads as grain, and the OCR
+    boxes of the two columns come within 5-8 units of each other, the
+    same as its inter-word gaps. The band costs one fetch a candidate.
+    ⚠️ It reads NARROW on the left of a hanging-indented column, since only
+    first lines ink the indent. classified_block() therefore widens the
+    word test by an em on that side and takes the box's edges from the
+    words of the rows it keeps; this only says which words are in the
+    column."""
+    from PIL import Image
+    import io
+    page = pi.page
+    x0 = min(w[0] for w in seed); x1 = max(w[0] + w[2] for w in seed)
+    y0 = min(w[1] for w in seed); y1 = max(w[1] + w[3] for w in seed)
+    ix, iy, iw, ih = page.to_image((x0, y0, x1 - x0, y1 - y0))
+    cx, cy = ix + iw // 2, iy + ih // 2
+    reach, half = int(page.image_w * LOCAL_REACH), int(page.image_h * LOCAL_SPAN)
+    bx0, bx1 = max(0, cx - reach), min(page.image_w, cx + reach)
+    by0, by1 = max(0, cy - half), min(page.image_h, cy + half)
+    data = page.fetch_crop((bx0, by0, bx1 - bx0, by1 - by0), width=bx1 - bx0)
+    im = Image.open(io.BytesIO(data)).convert("L")
+    ink = im.point(lambda v: 255 if v < pi.thresh else 0)
+    n, h = ink.size
+    # ⚠️ Binarized ink share per column, in LOCAL_SLICES horizontal slices.
+    # Ink share and not gray means: on the faint Brunswick scan the gutter's
+    # paper is dirtier (gray 205) than the mean of a text column (206), and
+    # on the dense Georgian the band's brightest column means are text, so
+    # a gray "paper" level is wrong on both; dirty paper binarizes to no
+    # ink at all. Slices, because a banner crossing the band spoils one
+    # slice's profile and the scans are skewed (the Georgian's rule moves
+    # 8px a slice), so boundaries are found per slice and matched across
+    # them with `drift`.
+    step_h = max(1, h // LOCAL_SLICES)
+    slices = []
+    for k in range(LOCAL_SLICES):
+        part = ink.crop((0, k * step_h, n, min(h, (k + 1) * step_h)))
+        slices.append([v / 255.0 for v in part.resize((n, 1), Image.BOX).get_flattened_data()])
+    start = cx - bx0
+    need = max(4, int(page.image_w * LOCAL_GUTTER))
+    wide = max(2 * need, int(page.image_w * LOCAL_WIDE))
+    pad = max(2, int(page.image_w * 0.001))
+    drift = max(need, int(page.image_w * LOCAL_DRIFT))
+
+    def boundaries(s):
+        """Boundary x's in one slice. ⚠️ Two structures count, and a bare
+        clear run of `need` does not: a WIDE clear run, or an inked column
+        with `need` of clear on BOTH sides (a column rule, dotted or solid,
+        in its gutter). The Brunswick column carries a typographic river,
+        a wobbly white channel 4-8px wide through "occupies", "Close in."
+        and "rooms for", present in three slices of four, and a run test
+        read it as the gutter. A river is never 13px wide and never has a
+        rule down its middle."""
+        out = set()
+        clear = [v <= LOCAL_CLEAR for v in s]
+        run = 0
+        for x in range(n):
+            if clear[x]:
+                run += 1
+                continue
+            if run >= wide:
+                out.add(x - run); out.add(x - 1)             # the run's two ends,
+                out.add(x - run // 2)                        # and its middle, which is
+            run = 0                                          # where another slice's
+        if run >= wide:                                      # rule mark lands
+            out.add(n - run); out.add(n - run // 2)
+        x = 0
+        while x < n:
+            if s[x] < LOCAL_RULE:
+                x += 1
+                continue
+            # the rule's own body: a scanned rule is 3-8px wide with gray
+            # shoulders (the Georgian's peaks 0.99 over two columns and
+            # ramps 0.11-0.8 for three either side), so the body is every
+            # inked column touching the peak, and the clear flanks begin
+            # beyond it
+            a = x
+            while a > 0 and not clear[a - 1]:
+                a -= 1
+            b = x
+            while b + 1 < n and not clear[b + 1]:
+                b += 1
+            if (b - a + 1) <= wide and a - need >= 0 and b + need < n \
+                    and all(clear[a - need:a]) and all(clear[b + 1:b + need + 1]):
+                out.add((a + b) // 2)
+            x = b + 1
+        return sorted(out)
+
+    marks = [boundaries(s) for s in slices]
+    ks = min(LOCAL_SLICES - 1, max(0, (cy - by0) // step_h))    # the seed's own slice
+
+    def agreed(x, k0):
+        """The slices besides `k0` with a boundary within `drift` of x."""
+        return sum(1 for k, m in enumerate(marks) if k != k0 and any(abs(x - y) <= drift for y in m))
+
+    def walk(step):
+        """The seed slice's own nearest boundary that one other slice
+        corroborates. ⚠️ Only when the seed slice has no boundary at all
+        on this side does any other slice's, corroborated by a third,
+        stand in: a seed near the top of the page puts the running head in
+        its own slice (the Georgian of 1 October 1908, whose seed slice
+        held no structure while the two below it held both rules). Not
+        "any two slices" outright: the white around the WANTS lettering
+        above the Brunswick LOST column gave two slices a wide run whose
+        ends agreed, in the middle of the seed slice's own words."""
+        own = sorted((x for x in marks[ks] if (x - start) * step >= iw // 2),
+                     key=lambda x: abs(x - start))
+        for x in own:
+            if agreed(x, ks) >= 1:
+                return x - step * pad
+        if own:
+            return None
+        rest = sorted({x for k, m in enumerate(marks) if k != ks
+                       for x in m if (x - start) * step >= iw // 2},
+                      key=lambda x: abs(x - start))
+        for x in rest:
+            if agreed(x, None) >= LOCAL_AGREE:
+                return x - step * pad
+        return None
+
+    left, right = walk(-1), walk(1)
+    if left is None or right is None or right - left < need:
+        return None
+    s = page.scale                                     # image px per OCR unit
+    return (int((bx0 + max(0, left)) / s), int((bx0 + min(n, right + 1)) / s))
+
+
+def classified_lead_rows(rows, loose=False):
+    """The rows that open a classified item the 20th-century way: one to
+    three lead words from CLASSIFIED_LEADS, a dash, and a capital or
+    figure. "FOR SALE—Nice fat fryers" and "ROOM—Large cool room" count;
+    "WASHINGTON—The Senate" does not, since a city is not a lead. ⚠️ The
+    dash is optional when the lead is set in capitals: the OCR dropped it
+    from "FOR RENT — Three unfurnished" on the Brunswick page. With
+    `loose`, CLASSIFIED_LOOSE_RE counts as well."""
+    out = []
+    for r in rows:
+        text = ROW_NOISE_RE.sub("", ocr_text(r))
+        m = CLASSIFIED_LEAD_RE.match(text)
+        if m:
+            lead = [t for t in re.split(r"[\s.']+", m.group(1).lower()) if t]
+            if lead and all(t in CLASSIFIED_LEADS for t in lead) and (m.group(2) or m.group(1).isupper()):
+                out.append(r)
+                continue
+        if loose and CLASSIFIED_LOOSE_RE.match(text):
+            out.append(r)
+    return out
+
+
+def classified_heading(row):
+    """Whether a row is a classified item's own heading, the 19th-century
+    way: "Lost", "TO RENT", "Horse Stolen", "Wanted to Rent" set over a
+    paragraph whose first word is in small capitals and carries no dash
+    (the Augusta Chronicle of 8 March 1874, the Savannah Morning News of
+    7 November 1868). Up to CLASSIFIED_HEAD_WORDS tokens, at least one of
+    them a list word and none of them anything else -- a token that BEGINS
+    with a list word passes, since the OCR read "TO rentT" for TO RENT."""
+    toks = [re.sub(r"[^a-z]", "", w[4].lower()) for w in row]
+    toks = [t for t in toks if t]
+    if not toks or len(toks) > CLASSIFIED_HEAD_WORDS:
+        return False
+    hits = 0
+    for t in toks:
+        if t in CLASSIFIED_LEADS:
+            hits += 1
+        elif not any(t.startswith(l) and len(l) >= 4 for l in CLASSIFIED_LEADS):
+            return False
+    return hits >= 1
+
+
+def heading_text(row):
+    """A heading's words as the list words the test matched: "TO rentT" is
+    "TO RENT". The OCR reads display capitals worst, and the alt is read
+    aloud; a token the list did not match is kept as read."""
+    out = []
+    for w in row:
+        t = re.sub(r"[^a-z]", "", w[4].lower())
+        if not t:
+            continue
+        if t not in CLASSIFIED_LEADS:
+            t = next((l for l in sorted(CLASSIFIED_LEADS, key=len, reverse=True)
+                      if t.startswith(l) and len(l) >= 4), t)
+        out.append(t.upper())
+    return " ".join(out)
+
+
+def _to_paper(pi, sx0, sx1, y_ocr, step, med, reach=2.5):
+    """From OCR row `y_ocr`, out (up if step < 0) through inked small-image
+    rows to the first paper row, no further than `reach` body heights; the
+    OCR edge itself if paper is nearer than a line's height, or never
+    comes. Returns OCR units."""
+    per = pi.page.scale * pi.scale
+    y = int(y_ocr * per)
+    limit = int(reach * med * per)
+    line = max(1, int(0.5 * med * per))
+    if not (0 <= y < pi.h) or sx1 <= sx0:
+        return y_ocr
+    stop = y + step * limit
+    lo, hi = (min(y, stop), max(y, stop))
+    lo, hi = max(0, lo), min(pi.h, hi)
+    dark = pi.row_dark(sx0, sx1, lo, hi)
+    seq = list(range(y, stop, step))
+    inked = 0
+    for k, yy in enumerate(seq):
+        if not (lo <= yy < hi):
+            break
+        if dark[yy - lo] <= PAPER_ROW:
+            if inked >= line:
+                return int(yy / per)
+            return y_ocr
+        inked += 1
+    return y_ocr
+
+
+def classified_block(pi, coords, seed, log=print, column=None, rule_test=row_has_rule):
+    """(box, items, rows, head) for the run of classified items around
+    `seed`, or None; `head` is the category subhead row when one heads the
+    block. The column is local_column()'s; its rows are cut into ITEMS at
+    printed rules and paragraph gaps, and a one-row heading is joined to
+    the paragraph under it; the seed's item must LEAD -- open with LEAD—
+    (classified_lead_rows) or carry a heading of its own
+    (classified_heading) -- or this is not a classified; then whole
+    neighbouring items are added below and above while each leads, until
+    a display row, a category subhead over a LEAD— item (which is kept,
+    and heads the block), a gap wide enough to hold an unread subhead,
+    or the caps. The box's x comes from the kept rows' own words, padded,
+    never from the pixel column: see local_column()'s hanging-indent note.
+    `column` and `rule_test` are for the tests, which have no page. A
+    heading the OCR could not read ("rm KLM" for FOR RENT) stays in the
+    crop and out of the words, since the alt is what a reader hears."""
+    words = coords["words"]
+    med = nameplate.page_median_height(words) or 1
+    if column is None:
+        column = local_column(pi, coords, seed)
+    if column is None:
+        return None
+    cx0, cx1 = column[0] - med, column[1]        # an em of slack on the left:
+    incol = [w for w in words if cx0 <= w[0] + w[2] / 2.0 < cx1]   # hanging indents
+    rows = _rows(incol)
+    if not rows:
+        return None
+    per = pi.page.scale * pi.scale                # small px per OCR unit, for the rule test
+    sx0, sx1 = int(column[0] * per), int(column[1] * per)
+    top = lambda i: min(w[1] for w in rows[i])
+    bot = lambda i: max(w[1] + w[3] for w in rows[i])
+    def high(i):
+        # ⚠️ The second-tallest word, not the tallest, on a row of three or
+        # more: the 19th-century notice opens with its first word in small
+        # capitals ("ONE LARGE STORE", the Augusta Chronicle of 8 March
+        # 1874, an initial twice the body height), and the tallest word
+        # alone called every such item display type and refused it.
+        hs = sorted((w[3] for w in rows[i]), reverse=True)
+        return hs[1] if len(hs) >= 2 else hs[0]     # (the smaller of two: "lanta 4510"
+                                                    # carried one tall digit box)
+    text_left = min(w[0] for r in rows for w in r)   # the column's own text edge
+
+    def caps_heading(i):
+        # a row of one to four words set in capitals, no dash: "LAUNDRY
+        # MISPLACED Lost" (Macon 1924), "MASONIC NOTICE" (Savannah 1868),
+        # "STORAGE" (Augusta 1874). It heads the paragraph under it; whether
+        # the item then LEADS is judged in leads()
+        toks = [w[4].strip(".,;:") for w in rows[i]]
+        caps = [t for t in toks if t.isupper() and len(t) >= 2]
+        return 1 <= len(toks) <= CLASSIFIED_HEAD_WORDS and len(caps) >= max(1, len(toks) - 1) \
+            and sum(len(t) for t in caps) >= 4 and not CLASSIFIED_LOOSE_RE.match(ocr_text(rows[i])) \
+            and high(i) < 1.6 * med \
+            and min(w[0] for w in rows[i]) <= text_left + 3 * med
+        # ...not display type (a running head or banner), and flush left: a
+        # notice signs off in capitals set to the right ("THOS. HARRISON,
+        # Columbus, Ga.", Savannah 1868), and that is a signature, not the
+        # heading of what follows
+
+    def heading(i):
+        return (classified_heading(rows[i]) or caps_heading(i)) and not classified_lead_rows([rows[i]])
+
+    # rows -> segments: a rule, a paragraph gap, or a heading row starts a
+    # new one. ⚠️ A heading starts one whatever the gap above it: on the
+    # Augusta page "TO RENT" sits 0.5 body heights under the previous
+    # notice's dateline and 1.3 above its own paragraph, so by gaps alone
+    # it belonged to the wrong item.
+    segs = [[0]]
+    for i in range(1, len(rows)):
+        gap = top(i) - bot(i - 1)
+        # ⚠️ The rule test only where the rows do not overlap: a drop
+        # capital or a descender makes the boxes of two consecutive rows
+        # overlap, and an inverted range handed to row_has_rule() split
+        # the Savannah "Lost" notice of 1868 in two mid-sentence.
+        toks = [w[4].strip(".,;:") for w in rows[i]]
+        if len(toks) <= 2 and all(len(t) <= 3 for t in toks) and \
+                (len(toks) == 1 or any(ch.isdigit() for t in toks for ch in t)):
+            segs[-1].append(i)                    # "14", "tf", "07 1t": the item's own key.
+            continue                              # Not "rm KLM": that is an unread subhead
+        rule = gap > 0 and rule_test(pi, sx0, sx1, bot(i - 1), top(i))
+        # ...and so does a row set larger than the one above it: the next
+        # notice's own heading ("STORAGE", 1.58 body heights, not on the
+        # list) sat 0.9 under "Apply at this office" and rode into the item.
+        taller = high(i) >= CLASSIFIED_DISPLAY * med > high(i - 1)
+        if heading(i) or taller or gap > CLASSIFIED_PARA_GAP * med or rule:
+            segs.append([i])
+        else:
+            segs[-1].append(i)
+    # segments -> items: a heading row heads the paragraph under it, in
+    # its own segment or the next
+    items = []
+    for s in segs:
+        if items and items[-1]["head"] is not None and not items[-1]["rows"] and not heading(s[0]):
+            items[-1]["rows"] = s
+            continue
+        if heading(s[0]):
+            items.append({"head": s[0], "rows": s[1:]})
+        else:
+            items.append({"head": None, "rows": s})
+    items = [it for it in items if it["rows"]]        # a heading over a heading is dropped
+    if not items:
+        return None
+    first = lambda it: it["rows"][0] if it["head"] is None else it["head"]
+    last = lambda it: it["rows"][-1]
+    sy = (min(w[1] for w in seed) + max(w[1] + w[3] for w in seed)) / 2.0
+    si = min(range(len(items)),
+             key=lambda k: min(abs(top(first(items[k])) - sy), abs(bot(last(items[k])) - sy)))
+    if not (top(first(items[si])) - med <= sy <= bot(last(items[si])) + med):
+        return None
+
+    def dash_led(it, loose=False):
+        return bool(classified_lead_rows([rows[it["rows"][0]]], loose=loose))
+
+    def leads(it, loose=False):
+        # ⚠️ A heading counts only at display size: the want-ad heads
+        # measured run 2.0-2.3 body heights (Augusta 1874, Savannah 1868,
+        # sn85034215 1873), while a column of local notes sets bold
+        # body-size heads ("Situation Wanted.", "Dog Collars.", "Mayor's
+        # Hours", the Savannah Republican of 21 May 1867) and read as items.
+        if it["head"] is not None:
+            h = rows[it["head"]]
+            if classified_heading(h) and high(it["head"]) >= CLASSIFIED_DISPLAY * med:
+                return True
+            # a capitals heading leads when a list word is in it ("LAUNDRY
+            # MISPLACED Lost"); "MASONIC NOTICE" and "ANNOUNCEMENT" do not
+            toks = [re.sub(r"[^a-z]", "", w[4].lower()) for w in h]
+            if any(t in CLASSIFIED_LEADS and t not in ("for", "to", "or", "and") for t in toks):
+                return True
+        return dash_led(it, loose)
+
+    def catchline(it):
+        # a reader advertisement opens with a word or two in capitals and
+        # runs on: "HAVE your pictures framed", "COME IN and look", "I HAVE
+        # the largest" (the Macon Telegraph of 1 December 1895). A local
+        # note does not ("To Kill the Curculio.", "Dog Collars.")
+        r = rows[it["rows"][0]]
+        text = ocr_text(r)
+        if re.match(r"^[A-Z][A-Za-z ,.']{0,24}[—–-]", text):
+            return False                          # a dateline: "WASHINGTON, Dec. 1.—"
+        toks = [w[4] for w in r]
+        for n in (1, 2):                          # the capitals, then a lower-case word on the row
+            caps = " ".join(toks[:n]).strip(".,;:")
+            if len(toks) > n and len(caps.replace(" ", "")) >= 3 and caps.isupper() \
+                    and toks[n][:1].islower():
+                return True
+        return False                              # "MASONIC NOTICE" alone on its row is a heading
+
+    def indented(it):
+        # a paragraph that continues an item opens indented; the block's
+        # own left edge is where its leads begin
+        r = rows[it["rows"][0]]
+        return min(w[0] for w in r) >= left_edge + 0.8 * med
+
+    def is_display(it):
+        # any row at display size, or the FIRST row merely taller: "STORAGE"
+        # over the next merchant's notice measured 1.58 body heights, a hair
+        # under the 1.6 the rest of this module calls display, and rode in
+        return (any(high(i) >= 1.6 * med for i in it["rows"])
+                or high(it["rows"][0]) >= CLASSIFIED_DISPLAY * med)
+
+    def is_centred_head(it):
+        # a one-row item, short and centred in the column, is a subhead the
+        # OCR could not read ("rm KLM" for FOR RENT on the Brunswick page):
+        # kept in the crop when it heads the block, never walked through
+        if it["head"] is not None or len(it["rows"]) != 1:
+            return False
+        r = rows[it["rows"][0]]
+        rx0 = min(w[0] for w in r); rx1 = max(w[0] + w[2] for w in r)
+        width = cx1 - cx0
+        return (rx1 - rx0) <= 0.6 * width and abs((rx0 + rx1) / 2.0 - (cx0 + cx1) / 2.0) <= 0.12 * width
+
+    def is_subhead(it):
+        # a heading over a LEAD— item is the CATEGORY's subhead, not the item's own
+        return it["head"] is not None and dash_led(it, loose=True)
+
+    if not leads(items[si]) or is_display(items[si]):
+        return None
+    left_edge = min(w[0] for i in items[si]["rows"] for w in rows[i])
+    lo = hi = si
+    count = 1
+    cap = CLASSIFIED_MAX_FRAC * coords["height"]
+    height = lambda a, b: bot(last(items[b])) - top(first(items[a]))
+    grow = {"down": True, "up": not is_subhead(items[si])}
+    while grow["down"] or grow["up"]:
+        for side in ("down", "up"):
+            if not grow[side]:
+                continue
+            k = hi + 1 if side == "down" else lo - 1
+            if k < 0 or k >= len(items) or count >= CLASSIFIED_MAX_ITEMS:
+                grow[side] = False
+                continue
+            gap = (top(first(items[k])) - bot(last(items[hi])) if side == "down"
+                   else top(first(items[lo])) - bot(last(items[k])))
+            a, b = (lo, k) if side == "down" else (k, hi)
+            if gap > CLASSIFIED_UNREAD_GAP * med or height(a, b) > cap:
+                grow[side] = False
+                continue
+            if is_display(items[k]) or (side == "down" and is_centred_head(items[k])):
+                grow[side] = False
+                continue
+            if side == "up" and is_centred_head(items[k]):
+                lo = k                            # an unread subhead heads the block
+                grow[side] = False
+                continue
+            if not leads(items[k], loose=True):
+                if items[k]["head"] is not None:
+                    grow[side] = False            # headed, so its own thing: "ANNOUNCEMENT"
+                    continue                      # over the Cadillac agent's paragraph
+                # A plain paragraph with no lead is one of two things, told
+                # apart by its first line. Opening with a catchline in
+                # capitals and no dash it is a sibling reader ad ("HAVE your
+                # pictures framed cheap", Macon 1895) and joins as an item.
+                # INDENTED, it is the neighbouring item's second paragraph
+                # (the Savannah "Horse Stolen" notice of 1868 sets its
+                # reward line a paragraph apart, 1.2 body heights in, and
+                # the crop ended mid-notice without this): going down it
+                # continues the item just taken; going up it belongs to the
+                # leading item above it, which is taken with it. Anything
+                # else -- a bold body-size head over a local note, a flush
+                # paragraph of someone else's matter, a dateline -- ends the
+                # walk. ⚠️ Not "a rule between them": the printed rules of
+                # the Macon column were not all found, and a rule that IS
+                # found says only that two things are separate, which a
+                # paragraph gap says as well.
+                if catchline(items[k]) and not is_centred_head(items[k]):
+                    if side == "down":
+                        hi = k
+                    else:
+                        lo = k
+                    count += 1
+                    continue
+                if indented(items[k]):
+                    if side == "down":
+                        hi = k
+                        continue
+                    if k - 1 >= 0 and leads(items[k - 1], loose=True) and not is_display(items[k - 1]) \
+                            and height(k - 1, hi) <= cap and count < CLASSIFIED_MAX_ITEMS:
+                        lo = k - 1
+                        count += 1
+                        if is_subhead(items[lo]):
+                            grow[side] = False
+                        continue
+                grow[side] = False
+                continue
+            if side == "down":
+                if is_subhead(items[k]):          # the next category begins: stop short
+                    grow[side] = False
+                    continue
+                hi = k
+            else:
+                lo = k
+                if is_subhead(items[k]):          # this category's subhead: keep it, stop
+                    grow[side] = False
+            count += 1
+    head = rows[items[lo]["head"]] if is_subhead(items[lo]) else None
+    kept_items = items[lo:hi + 1]
+    body = [w for it in kept_items if not is_centred_head(it) for i in it["rows"] for w in rows[i]]
+    body += [w for it in kept_items if it["head"] is not None and rows[it["head"]] is not head
+             for w in rows[it["head"]]]
+    pad = int(0.6 * med)
+    # ⚠️ x padded no further than the pixel column: on the Georgian the
+    # gutter is 12px, under an em of padding, and the crop took a sliver
+    # of the neighbouring column's letters
+    x0 = max(0, min(w[0] for w in body) - pad, column[0])
+    x1 = min(coords["width"], max(w[0] + w[2] for w in body) + pad, column[1])
+    y0 = top(first(items[lo])); y1 = bot(last(items[hi]))
+    # ⚠️ Each edge walked out to paper on the pixels, a little way: the
+    # OCR read nothing of "lanta 4510.", the last line of the Georgian's
+    # fourth item, and the crop cut that line in half. A row of type the
+    # OCR missed is still ink; the walk stops at the first paper row, or
+    # gives up and keeps the OCR edge if none comes within reach.
+    y0 = _to_paper(pi, sx0, sx1, y0, -1, med)
+    y1 = _to_paper(pi, sx0, sx1, y1, +1, med)
+    y0 = max(0, y0 - pad); y1 = min(coords["height"], y1 + pad)
+    box = (x0, y0, x1 - x0, y1 - y0)
+    out_rows = []
+    for it in kept_items:
+        if is_centred_head(it):
+            continue                              # unread; nothing to say aloud
+        if it["head"] is not None and rows[it["head"]] is not head:
+            h = rows[it["head"]]                  # an item's own heading, as its list words
+            out_rows.append([(h[0][0], h[0][1], h[0][2], h[0][3], heading_text(h) + ".")])
+        out_rows += [rows[i] for i in it["rows"]]
+    return box, count, out_rows, head
+
+
+def clip_classified(lccn, date, ed=1, seq=1, phrase=None, log=print):
+    """A run of classified items -- LOST, FOR SALE, FOR RENT and what is
+    under them -- found by search on an item phrase and closed by
+    classified_block(). OCR only, like the market lane: the items on the
+    page that prompted this read at 79-92 percent."""
+    phrase = phrase or CLASSIFIED_PHRASES[0]
+    meta = _meta(lccn, date)
+    pages = ghn_api.issue_pages(lccn, date, ed)
+    if seq < 1 or seq > len(pages):
+        raise npc.Refused(f"no seq-{seq} in this issue")
+    page = pages[seq - 1]
+    c = page.coords()
+    hit = find_phrase(c["words"], phrase)
+    if not hit:
+        raise npc.Refused(f"phrase {phrase!r} not found on the page's OCR")
+    pi = rules.PageInk(page)
+    got = classified_block(pi, c, hit, log=log)
+    # ⚠️ The phrase is shape, not genre, as everywhere here: "furnished
+    # rooms" sits in a hotel's display advertisement and "liberal reward"
+    # in a story about a lost child. classified_block() refuses unless the
+    # item holding the phrase opens LEAD—, from CLASSIFIED_LEADS.
+    if got is None:
+        raise npc.Refused("the phrase is not inside a classified item")
+    box, n_items, rows, head = got
+    inside = [w for r in rows for w in r]
+    leg, n = legibility(inside)
+    if leg < LEGIBLE:
+        raise npc.Refused(f"classified OCR illegible ({leg:.0%} of {n} tokens)")
+    text = ocr_text(inside)
+    if head is not None:
+        text = heading_text(head) + ". " + text
+        inside = list(head) + inside
+    verdict, page_hits = _verdict("classified", lccn, date, inside, c["words"], True)
+    low = " " + re.sub(r"\s+", " ", text.lower()) + " "
+    flagged = sorted(w for w in CLASSIFIED_REVIEW if f" {w}" in low or f" {w}," in low)
+    if CLASSIFIED_REVIEW_RE.search(low):
+        flagged.append(CLASSIFIED_REVIEW_RE.search(low).group(0))
+    if flagged:
+        verdict = _review(verdict, f"the block reads like a wanted notice: {flagged}")
+    image_box, data = _fetch(page, box)
+    words = cut_band(text, MARKET_ALT_CHARS)
+    return _result("classified", page, meta, date, ed, box, image_box, data, verdict,
+                   page_hits, _curl(words), False,
+                   {"phrase": phrase, "items": n_items})
+
+
 def clip(lane, lccn, date, ed=1, seq=1, phrase=None, log=print):
     if lane == "nameplate":
         return clip_nameplate(lccn, date, ed, log=log)
@@ -1200,6 +1872,8 @@ def clip(lane, lccn, date, ed=1, seq=1, phrase=None, log=print):
         return clip_ad(lccn, date, ed, seq, phrase, log=log)
     if lane == "market":
         return clip_market(lccn, date, ed, seq, phrase or MARKET_PHRASES[0], log=log)
+    if lane == "classified":
+        return clip_classified(lccn, date, ed, seq, phrase, log=log)
     if lane == "cartoon":
         import pictures                      # imports this module; resolved late
         return pictures.clip_cartoon(lccn, date, ed, seq if seq and seq > 1 else None, log=log)
@@ -1212,6 +1886,16 @@ def market_candidates(rights, **kw):
 
 def ad_candidates(rights, **kw):
     return search_candidates(AD_PHRASES, rights, **kw)
+
+
+def classified_candidates(rights, **kw):
+    # ⚠️ per_phrase high enough to walk EVERY decade: search_candidates()
+    # stops a phrase once it has per_phrase hits, and at 50 a decade the ad
+    # lane's 200 reaches 1906 and never the 1910s, where the want-ad
+    # department lives (20,342 pages say "light housekeeping" in that
+    # decade against 1,582 in the 1890s). Seven decades, 50 each, is 350.
+    kw.setdefault("per_phrase", 400)
+    return search_candidates(CLASSIFIED_PHRASES, rights, **kw)
 
 
 def cartoon_candidates(rights, **kw):

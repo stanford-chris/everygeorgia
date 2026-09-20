@@ -135,13 +135,21 @@ CLIP = clips.clip                   # swapped by the tests; never call clips.cli
 # lane, strips included"): a drawing on any page of a daily, found by the hole
 # it leaves in the OCR and sorted by the model (pictures.py). Title order,
 # dailies only, the first lane whose alt is a description.
+# ⏸ "classified" is BUILT and HELD, 20 September 2026, his ask ("Build it,
+# and bring me the crops to look at first"): a run of want-ad items (LOST,
+# FOR SALE, FOR RENT) from search on clips.CLASSIFIED_PHRASES, closed by
+# clips.classified_block(). It joins LANES on his say-so after he has seen
+# the crops; until then `--lane classified` previews it and the rotation
+# never reaches it.
 LANES = ("nameplate", "headline", "ad", "market", "cartoon")
+HELD_LANES = ("classified",)
 LANE_LABEL = {"nameplate": "Nameplate", "headline": "Headline", "article": "Article",
-              "ad": "Advertisement", "market": "Market report", "cartoon": "Cartoon"}
-SEARCH_LANES = ("ad", "market")
+              "ad": "Advertisement", "market": "Market report", "cartoon": "Cartoon",
+              "classified": "Classified advertisements"}
+SEARCH_LANES = ("ad", "market", "classified")
 SEARCH_TRIES = {"ad": 8, "market": 16,  # candidates a search lane looks at per
-               "cartoon-search": 4}   # run: the market lane passes one in fifteen
-                                    # and handed off twelve times in twelve at 8;
+               "classified": 8,        # run: the market lane passes one in fifteen
+               "cartoon-search": 4}   # and handed off twelve times in twelve at 8;
                                     # a cartoon-search candidate costs up to two
                                     # model calls, so four
 RECENT_TITLE_WINDOW = 30            # a search lane skips a title posted in its
@@ -571,7 +579,7 @@ def alt_text(r):
     where = f"{city}, Georgia" if city else "Georgia"
     seq = r["url"].rstrip("/").rsplit("-", 1)[-1]
     what = {"headline": "headline", "article": "article", "ad": "advertisement",
-            "market": "market report"}[lane]
+            "market": "market report", "classified": "classified advertisements"}[lane]
     lead = f"{transcribe.PREFIX} {what}" if r.get("generated") else what.capitalize()
     alt = (f"{lead} from “{title},” {where}, {npc.post_date(r['date'])}, page {seq}, "
            f"reading: “{r['words']}”")
@@ -884,7 +892,8 @@ def main():
     ap.add_argument("--count", type=int, default=1, help="how many to post (default 1)")
     ap.add_argument("--save", metavar="DIR",
                     help="dry run only: write each crop and its post text and alt to DIR")
-    ap.add_argument("--lane", choices=LANES, help="this lane only, instead of the rotation")
+    ap.add_argument("--lane", choices=LANES + HELD_LANES,
+                    help="this lane only, instead of the rotation (a held lane runs only this way)")
     ap.add_argument("--setup-profile", action="store_true", help="write name, bio and avatar")
     ap.add_argument("--launch", action="store_true", help="post the pinned thread (once)")
     ap.add_argument("--status", action="store_true")
@@ -910,14 +919,18 @@ def main():
     sources = {"nameplate": issues, "headline": eligible(dailies(issues), "headline"),
                "article": eligible(dailies(issues), "article"),
                "ad": clips.ad_candidates(rights), "market": clips.market_candidates(rights),
+               "classified": clips.classified_candidates(rights),
                "cartoon": eligible(dailies(issues), "cartoon"),
                CARTOON_SEARCH: clips.cartoon_candidates(rights)}
     client = None
     for n in range(args.count):
-        start = LANES.index(args.lane) if args.lane else LANES.index(next_lane(state))
+        if args.lane:
+            order = (args.lane,)                 # one lane, held or not
+        else:
+            start = LANES.index(next_lane(state))
+            order = LANES[start:] + LANES[:start]
         lccn = r = None
-        for k in range(len(LANES)):
-            lane = LANES[(start + k) % len(LANES)]
+        for lane in order:
             print(f"[{lane}]")
             lccn, r = pick(state, sources, lane)
             if r is not None or args.lane:

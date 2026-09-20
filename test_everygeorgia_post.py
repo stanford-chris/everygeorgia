@@ -439,6 +439,19 @@ class Lanes(unittest.TestCase):
         # "cartoon" joined 12 September 2026 ("Build the cartoon lane, strips included")
         self.assertEqual(ep.LANES, ("nameplate", "headline", "ad", "market", "cartoon"))
 
+    def test_the_classified_lane_is_built_and_held_until_he_has_seen_the_crops(self):
+        # 20 September 2026: "Build it, and bring me the crops to look at first."
+        # It runs only under --lane classified until he releases it; when he
+        # does, move it into LANES (between "market" and "cartoon") and
+        # retire this test rather than weaken it.
+        self.assertNotIn("classified", ep.LANES)
+        self.assertIn("classified", ep.HELD_LANES)
+        self.assertIn("classified", ep.SEARCH_LANES)      # a search lane, like ad and market
+        self.assertIn("classified", ep.SEARCH_TRIES)
+        r = fake_result(); r["lane"] = "classified"; r["generated"] = False
+        r["words"] = "LOST—Brown leather suit case"
+        self.assertTrue(ep.alt_text(r).startswith("Classified advertisements from “The Abbeville Chronicle,”"))
+
     def test_no_lane_carries_a_bracketed_label(self):
         # His call on the first headline post, 11 September 2026.
         for lane in ep.LANE_LABEL:

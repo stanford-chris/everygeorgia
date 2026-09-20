@@ -1615,3 +1615,121 @@ class OwnTitleFragments(unittest.TestCase):
     def test_a_real_headline_with_one_title_word_passes(self):
         clips._refuse_own_title("NEWS OF THE STRIKE REACHES ATLANTA", self.META, "headline")
         clips._refuse_own_title("FRENCH COUNTER FOR KEMMEL HILL", {"title": "The Cordele dispatch."}, "headline")
+
+
+class ClassifiedLeads(unittest.TestCase):
+    """The classified lane's genre test: rows opening LEAD—, the lead from
+    CLASSIFIED_LEADS. Built 20 September 2026 on the Brunswick News of
+    14 July 1927 (its WANTS column); the fixtures are that page's OCR."""
+
+    def row(self, text):
+        return [(i * 30, 0, 25, 8, tok) for i, tok in enumerate(text.split())]
+
+    def leads(self, *texts, loose=False):
+        return [clips.ocr_text(r) for r in clips.classified_lead_rows([self.row(t) for t in texts], loose=loose)]
+
+    def test_lead_words_from_the_list_with_a_dash_count(self):
+        self.assertEqual(self.leads("FOR SALE—8 or 10 colonies of bees", "LOST—Brown leather suit case",
+                                    "ROOM—Large cool room", "STRAYED OR STOLEN—From the subscriber",
+                                    "For Rent—Two nicely furnished rooms"),
+                         ["FOR SALE—8 or 10 colonies of bees", "LOST—Brown leather suit case",
+                          "ROOM—Large cool room", "STRAYED OR STOLEN—From the subscriber",
+                          "For Rent—Two nicely furnished rooms"])
+
+    def test_a_city_dateline_is_not_a_lead(self):
+        # the shape a wire brief opens with; a city is not on the list
+        self.assertEqual(self.leads("WASHINGTON—The Senate today", "ATLANTA, Ga.—The governor",
+                                    "Guy E. Barrett has returned"), [])
+
+    def test_the_dash_is_optional_only_for_a_lead_in_capitals(self):
+        # the OCR dropped it from "FOR RENT — Three unfurnished" on the Brunswick page
+        self.assertEqual(self.leads("FOR RENT Three unfurnished rooms"), ["FOR RENT Three unfurnished rooms"])
+        self.assertEqual(self.leads("For rent the house", "Room for one"), [])
+
+    def test_loose_accepts_capitals_and_a_dash_for_a_neighbour_only(self):
+        self.assertEqual(self.leads("FOR SAJ E—Nice fat fryers"), [])
+        self.assertEqual(self.leads("FOR SAJ E—Nice fat fryers", loose=True), ["FOR SAJ E—Nice fat fryers"])
+        self.assertEqual(self.leads("WASHINGTON—The Senate today", loose=True), ["WASHINGTON—The Senate today"])
+
+
+class ClassifiedBlock(unittest.TestCase):
+    """classified_block()'s item walk on synthetic rows: items cut at gaps
+    and rules, the seed item must lead, neighbours join while they lead,
+    a subhead heads the block and ends the run, a wide gap ends it."""
+
+    class _Pi:
+        class page:
+            scale = 1.0
+        scale = 1.0
+        h = 1000
+
+        def row_dark(self, x0, x1, y0, y1):
+            return [0.0] * (y1 - y0)                 # paper everywhere: edges stay put
+
+    def coords(self, lines, x0=100):
+        """lines: (y, text) rows, one word per token, 8 high, in one column."""
+        words = []
+        for y, text in lines:
+            words += [(x0 + i * 30, y, 25, 8, tok) for i, tok in enumerate(text.split())]
+        # a second column to the right that must never be taken
+        words += [(400 + i * 30, 30, 25, 8, tok) for i, tok in enumerate("WASHINGTON—The Senate met".split())]
+        return {"width": 800, "height": 1000, "words": words}
+
+    def walk(self, lines, seed_text, rules=()):
+        c = self.coords(lines)
+        seed = [w for w in c["words"] if w[4] == seed_text]
+        ruled = set(rules)
+        def rule_test(pi, sx0, sx1, ya, yb):
+            return any(ya <= y <= yb for y in ruled)
+        return clips.classified_block(self._Pi(), c, seed, log=lambda *a: None,
+                                      column=(100, 300), rule_test=rule_test)
+
+    def test_neighbouring_items_join_across_rules_and_a_far_gap_ends_the_run(self):
+        lines = [(10, "LOST—Brown leather suit case"), (20, "taining ladies wearing apparel"),
+                 (40, "LOST—Left on desk in lobby"), (50, "office a purse containing"),
+                 (100, "FOR SALE—One house"), (110, "occupies corner lot")]
+        box, n, rows, head = self.walk(lines, "ladies", rules=(34,))
+        self.assertEqual(n, 2)
+        self.assertIsNone(head)
+        self.assertEqual(clips.ocr_text(rows[0])[:4], "LOST")
+        self.assertEqual(clips.ocr_text(rows[-1]), "office a purse containing")
+        self.assertLess(box[1] + box[3], 100)        # the far item, 42 units off, is not taken
+
+    def test_the_seed_item_must_itself_lead(self):
+        lines = [(10, "Guy E. Barrett has returned"), (20, "to the Cadillac agency after"),
+                 (40, "FOR RENT—Two nicely furnished")]
+        self.assertIsNone(self.walk(lines, "Cadillac"))
+
+    def test_a_subhead_heads_the_block_and_the_run_stops_there(self):
+        lines = [(0, "FOR SALE—Nice fat fryers"), (20, "FOR RENT"),
+                 (40, "FOR RENT—Two nicely furnished"), (50, "rooms for light housekeeping")]
+        box, n, rows, head = self.walk(lines, "housekeeping", rules=(14, 34))
+        self.assertEqual(n, 1)
+        self.assertEqual(clips.ocr_text(head), "FOR RENT")
+        self.assertEqual([clips.ocr_text(r)[:8] for r in rows], ["FOR RENT", "rooms fo"])
+        self.assertLessEqual(box[1], 20)             # the subhead is inside the crop
+
+    def test_the_other_column_never_enters(self):
+        lines = [(30, "FOR SALE—Nice fat fryers"), (40, "in lots of one dozen")]
+        box, n, rows, head = self.walk(lines, "dozen")
+        text = " ".join(clips.ocr_text(r) for r in rows)
+        self.assertNotIn("WASHINGTON", text)
+        self.assertLess(box[0] + box[2], 400)
+
+
+class ClassifiedReview(unittest.TestCase):
+    """The lane's own REVIEW words. Pinned because the first decade sample
+    passed the Oconee Enterprise of 14 December 1880 as clean: a $25 reward
+    for the arrest of a Black man, in the period's language, which the
+    crop_frequency prefixes do not carry ("col." is an abbreviation)."""
+
+    def test_the_oconee_notice_is_flagged_and_a_mouse_colored_cat_is_not(self):
+        low = " a liberal reward will be paid for the arrest and apprehension of one george parks, col., description. "
+        self.assertTrue(any(f" {w}" in low for w in clips.CLASSIFIED_REVIEW))
+        self.assertIsNone(clips.CLASSIFIED_REVIEW_RE.search(" a maltese cat, mouse colored with a few white hairs "))
+        self.assertIsNotNone(clips.CLASSIFIED_REVIEW_RE.search(" a colored man about thirty "))
+
+    def test_heading_text_gives_the_list_words_the_test_matched(self):
+        row = [(0, 0, 20, 12, "TO"), (30, 0, 40, 12, "rentT")]
+        self.assertEqual(clips.heading_text(row), "TO RENT")
+        self.assertEqual(clips.heading_text([(0, 0, 40, 12, "Lost,")]), "LOST")

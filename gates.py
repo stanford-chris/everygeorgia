@@ -96,6 +96,14 @@ POLICIES = {
         min_date="1867-01-01", page_gate=True,
         why="a market report is a column of set text, the same shape as the "
             "rate card the ad lane's floor exists for; same floor"),
+    # ⚠️ 1867 for the classified lane, the ad lane's floor for the ad lane's
+    # reason and more directly: a want-ad department's "FOR SALE—" and
+    # "STRAYED OR STOLEN—" items are the exact shape the pre-1867 notices
+    # took, and the lane's lead test would read those as items.
+    "classified": Policy(
+        min_date="1867-01-01", page_gate=True,
+        why="a block of FOR SALE and WANTED items is the shape the slave-sale "
+            "and runaway notices took; the ad lane's measured floor"),
     # ⚠️ 1900 for the cartoon lane, MEASURED on the corpus's own credit lines
     # (12 September 2026): pages carrying a syndicate line ("Newspaper
     # Feature Service", "International Feature Service", "Registered U. S.

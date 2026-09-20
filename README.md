@@ -61,7 +61,14 @@ this kind of clipping and stopped in December 2024.
   over an item's own rows; interior dark columns are rules, not film.
 - `items.py` — display rows split at column gaps, boxed with their decks.
 - `clips.py` — one clipping from any lane; the block-of-text builder for the
-  search-driven lanes; the search candidate lists.
+  search-driven lanes; the search candidate lists. ⏸ Also the **classified lane**
+  (`clip_classified`, built 20 September 2026 and held for review): a run of want-ad
+  items around a search phrase, in a column read from the pixels at the image's own
+  resolution (`local_column`: a want-ad department is set at its own measure inside a
+  border, on no page-level gutter, and its gutter is 20px with a dotted rule that reads
+  as grain at 1400px), items cut at rules, gaps and headings (`classified_block`), the
+  20th-century `LEAD—` form and the 19th-century heading-over-paragraph form both
+  recognised, wanted-notice vocabulary REVIEW. HANDOFF.md has the traps.
 - `transcribe.py` — the words in a clipping, by `claude -p` vision, prefixed
   `A.I.-transcribed` wherever they reach a reader.
 - `pictures.py` — the cartoon lane: a drawing found by the hole it leaves in the
