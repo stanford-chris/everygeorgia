@@ -74,7 +74,7 @@ import gates
 import ghn_api
 import nameplate
 from crop_frequency import (NEGRO_PREFIXES, SUBJECT_PREFIXES, noc_issues,
-                            norm, score)
+                            score)
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 RIGHTS_CSV = os.path.join(HERE, "data", "georgia_rights.csv")
@@ -263,23 +263,6 @@ def row_crossing(im, page_rows, edge_col=INK_EDGE_COLUMN,
         yy = min(h - 1, y + stride)
         out.append(sum(1 for x in cols if px[x, y] < thresh and px[x, yy] < thresh) / n)
     return out
-
-
-def first_gap(rows, from_row, page_rows, gap_frac=GAP_FRAC, margin=CLEAR_MARGIN):
-    """The first row at or below `from_row` that starts a run of `gap` clear
-    rows, or None. Clear is relative to the probe's own 10th percentile,
-    because a mottled microfilm never reads zero anywhere."""
-    n = len(rows)
-    if n == 0:
-        return None
-    base = sorted(rows)[n // 10]
-    gap = max(3, int(round(page_rows * gap_frac)))
-    run = 0
-    for y in range(max(0, int(from_row)), n):
-        run = run + 1 if rows[y] <= base + margin else 0
-        if run >= gap:
-            return y - gap + 1
-    return None
 
 
 BIG = "big"     # ink_bottom()'s third answer: the walk met large type

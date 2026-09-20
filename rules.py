@@ -32,8 +32,6 @@ both, because the words on the other side were never part of the item.
 """
 import io
 
-import ghn_api
-
 PAGE_WIDTH = 1400        # the page image every measurement here is made on
 INK_SHARE = 0.40         # a pixel is ink this share of the way from paper to
                          # the page's 5th-percentile pixel (nameplate_crop's
@@ -279,16 +277,6 @@ class PageInk:
             return None
         base = sorted(cols)[n // 10]
         clear = [c <= base + CLEAR_MARGIN for c in cols]
-        need = 2
-
-        def walk(start, step):
-            i, run = start, 0
-            while 0 <= i < n:
-                run = run + 1 if clear[i] else 0
-                if run >= need:
-                    return i - step * (need - 1)
-                i += step
-            return None
 
         # ⚠️ Always walk, never keep the OCR edge: a display word's OCR box
         # is narrower than its glyphs, and "MANY MINERS ARE ENTOMBE[D]" and
