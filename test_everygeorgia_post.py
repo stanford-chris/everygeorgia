@@ -436,16 +436,15 @@ class Lanes(unittest.TestCase):
         # is a decision pending, not a bug: restore it only when he says so, and
         # move this test with it.
         self.assertNotIn("article", ep.LANES)
-        # "cartoon" joined 12 September 2026 ("Build the cartoon lane, strips included")
-        self.assertEqual(ep.LANES, ("nameplate", "headline", "ad", "market", "cartoon"))
+        # "cartoon" joined 12 September 2026 ("Build the cartoon lane, strips included");
+        # "classified" 20 September 2026 ("Release the lane into the rotation")
+        self.assertEqual(ep.LANES, ("nameplate", "headline", "ad", "market", "classified", "cartoon"))
 
-    def test_the_classified_lane_is_built_and_held_until_he_has_seen_the_crops(self):
-        # 20 September 2026: "Build it, and bring me the crops to look at first."
-        # It runs only under --lane classified until he releases it; when he
-        # does, move it into LANES (between "market" and "cartoon") and
-        # retire this test rather than weaken it.
-        self.assertNotIn("classified", ep.LANES)
-        self.assertIn("classified", ep.HELD_LANES)
+    def test_the_classified_lane_is_a_search_lane_with_an_ocr_alt(self):
+        # Built and held 20 September 2026 ("bring me the crops to look at
+        # first"), released the same evening. A held lane sits in HELD_LANES
+        # and runs only under --lane; nothing is held now.
+        self.assertEqual(ep.HELD_LANES, ())
         self.assertIn("classified", ep.SEARCH_LANES)      # a search lane, like ad and market
         self.assertIn("classified", ep.SEARCH_TRIES)
         r = fake_result(); r["lane"] = "classified"; r["generated"] = False

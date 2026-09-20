@@ -103,7 +103,7 @@ their determination would be used, not ours.
 | article | as headline | the headline item plus its first paragraph: everything down to the first run of three tight lines, then that run to the next indented line or ten lines (`clip_article`) | model transcription, whole |
 | ad | search on genre phrases (`AD_PHRASES`: sarsaparilla, castoria, "for sale by all druggists"…), any page | the column block of set text around the phrase, `clips.block_around()` | OCR when legible, else the model |
 | market | search on `MARKET_PHRASES`, any page | the block under the phrase, capped at ten rows and 15% of the page | OCR only; refused when illegible |
-| classified ⏸ held | search on `CLASSIFIED_PHRASES`, any page | a run of want-ad items around the phrase, in the column `local_column()` reads off the pixels, closed by `classified_block()`; capped at six items and 15% | OCR only; refused when illegible; wanted-notice words are REVIEW |
+| classified | search on `CLASSIFIED_PHRASES`, any page | a run of want-ad items around the phrase, in the column `local_column()` reads off the pixels, closed by `classified_block()`; capped at six items and 15% | OCR only; refused when illegible; wanted-notice words are REVIEW |
 
 Every lane runs gates.py's crop and page passes, and the two model lanes run
 the vocabulary prefixes over the transcription as well, since for display
@@ -1042,15 +1042,17 @@ route.
 `rights_join_tick.sh` is spent but kept: it documents how the join was gated,
 and it exits 0 in silence the moment the csv exists.
 
-## ⏸ The classified lane, built and held, 20 September 2026
+## ✅ The classified lane, 20 September 2026
 
 His ask, on seeing the WANTS column beside the Brunswick News strip of 14 July 1927
 ("if there's a way to capture what's in the screenshot reliably, that's also a good
-vein"), then "Build it, and bring me the crops to look at first." It is `clip_classified()`
-in `clips.py`, `"classified"` in `HELD_LANES` and `SEARCH_LANES` in the poster, and runs
-only under `--lane classified` until he releases it into `LANES` (between market and
-cartoon; `test_the_classified_lane_is_built_and_held_until_he_has_seen_the_crops` pins
-the hold). Era floor 1867, the ad lane's, for the ad lane's reason.
+vein"), then "Build it, and bring me the crops to look at first," and, on the fifteen
+crops that evening, "Release the lane into the rotation." It is `clip_classified()` in
+`clips.py` and `"classified"` in `LANES` (between market and cartoon) and `SEARCH_LANES`
+in the poster, `SEARCH_TRIES` 8. Era floor 1867, the ad lane's, for the ad lane's reason.
+`HELD_LANES` is the mechanism it waited in (`--lane <x>` runs a held lane, the rotation
+never reaches it) and is empty now. He also had the Oconee reward notice below pushed
+into `data/review.jsonl` by hand before the release.
 
 **What it is.** Search on item phrases (`CLASSIFIED_PHRASES`: light housekeeping,
 furnished rooms, situation wanted, strayed or stolen, apply at this office, liberal

@@ -135,14 +135,16 @@ CLIP = clips.clip                   # swapped by the tests; never call clips.cli
 # lane, strips included"): a drawing on any page of a daily, found by the hole
 # it leaves in the OCR and sorted by the model (pictures.py). Title order,
 # dailies only, the first lane whose alt is a description.
-# ⏸ "classified" is BUILT and HELD, 20 September 2026, his ask ("Build it,
-# and bring me the crops to look at first"): a run of want-ad items (LOST,
-# FOR SALE, FOR RENT) from search on clips.CLASSIFIED_PHRASES, closed by
-# clips.classified_block(). It joins LANES on his say-so after he has seen
-# the crops; until then `--lane classified` previews it and the rotation
-# never reaches it.
-LANES = ("nameplate", "headline", "ad", "market", "cartoon")
-HELD_LANES = ("classified",)
+# ✅ "classified" since 20 September 2026, his ask on seeing the WANTS column
+# beside the Brunswick News strip ("Build it, and bring me the crops to look
+# at first", then, on the crops, "Release the lane into the rotation"): a run
+# of want-ad items (LOST, FOR SALE, FOR RENT) from search on
+# clips.CLASSIFIED_PHRASES, closed by clips.classified_block(). Between market
+# and cartoon, so the two OCR-only search lanes sit together.
+# HELD_LANES is the mechanism a lane waits in before it joins: `--lane <x>`
+# runs it, the rotation never reaches it. Empty now.
+LANES = ("nameplate", "headline", "ad", "market", "classified", "cartoon")
+HELD_LANES = ()
 LANE_LABEL = {"nameplate": "Nameplate", "headline": "Headline", "article": "Article",
               "ad": "Advertisement", "market": "Market report", "cartoon": "Cartoon",
               "classified": "Classified advertisements"}
