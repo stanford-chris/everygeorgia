@@ -947,7 +947,8 @@ def main():
         print(text)
         print(f"[{len(text)} chars]  [alt] {alt}")
         print(f"[{r['lane']}] {r['band_fraction']*100:.1f}% of page"
-              f"{', extended to the ink edge' if r.get('extended') else ''}; "
+              f"{', extended to the ink edge' if r.get('extended') else ''}"
+              f"{', the printed border' if r.get('boxed') else ''}; "
               f"crop {r['size'][0]}x{r['size'][1]}")
         if len(text) > 300:
             sys.exit(f"post is {len(text)} characters")

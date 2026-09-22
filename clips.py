@@ -841,11 +841,53 @@ def clip_article(lccn, date, ed=1, seq=None, log=print):
                    verdict, page_hits, _curl(words), True)
 
 
+BOX_MARGIN_W = 0.012     # a boxed advertisement's crop: paper beyond its
+BOX_MARGIN_H = 0.008     # border, of the page's width and of its height
+
+
+def ad_box(pi, coords, seed):
+    """The printed border enclosing `seed`, as an OCR-space box, or None:
+    rules.PageInk.border_box() with the page's text height read off the
+    OCR. A box shallower than MIN_BLOCK_FRAC is a boxed notice, not an
+    advertisement crop, and is left to block_around like everything
+    else. Shared by clip_ad() and crop_closure_check.py, so the audit
+    asks the same question the poster did."""
+    med = nameplate.page_median_height(coords["words"]) or 1
+    x0 = min(w[0] for w in seed); x1 = max(w[0] + w[2] for w in seed)
+    y0 = min(w[1] for w in seed); y1 = max(w[1] + w[3] for w in seed)
+    per = pi.page.scale * pi.scale                    # small px per OCR unit
+    text_h = med * per
+    words = [(w[0] * per, w[1] * per, w[2] * per, w[3] * per, w[4]) for w in coords["words"]]
+    b = pi.border_box(pi.from_ocr((x0, y0, x1 - x0, y1 - y0)), text_h, words)
+    if b is None:
+        return None
+    box = pi.to_ocr((b[0], b[1], b[2] - b[0], b[3] - b[1]))
+    if box[3] < MIN_BLOCK_FRAC * coords["height"]:
+        return None
+    return box
+
+
 def clip_ad(lccn, date, ed=1, seq=1, phrase=None, log=print):
-    """With a phrase (from AD_PHRASES, via search): the block of set text
-    around it, which is where legible advertising lives. Without one: the
-    largest rule-closed display item on the front page whose OCR sells
-    something, which on most pages the OCR cannot read well enough to say."""
+    """With a phrase (from AD_PHRASES, via search): the printed BORDER
+    around it if the advertisement is boxed (ad_box), else the block of
+    set text around it (block_around), which is where legible advertising
+    lives. Without one: the largest rule-closed display item on the front
+    page whose OCR sells something, which on most pages the OCR cannot
+    read well enough to say.
+
+    ⚠️ The border comes first and no size cap applies to it, his rule of
+    22 September 2026 on the Tanner Mercantile advertisement (Douglas
+    Enterprise, 13 July 1907): "err on the side of looser rather than
+    tighter crops that fall precisely along column gutters". That ad is
+    a box across the whole page and 40 percent of its height; block_around
+    shipped one column of it, cut at MAX_BLOCK_FRAC, because MAX_BLOCK_W
+    and MAX_BLOCK_FRAC exist to bound a walk that found no boundary, and
+    a border IS the boundary. See rules.PageInk.border_box for how one is
+    read. The block path keeps its caps and now takes the same margin a
+    headline gets (LOOSE_W, LOOSE_H), so a crop that does stop on a
+    gutter shows the gutter rather than cutting the B of "Best" off.
+    ⚠️ The alt text and the advertising-word check read the words inside
+    the TIGHT box, never the margin: the margin is the neighbour's."""
     meta = _meta(lccn, date)
     pages = ghn_api.issue_pages(lccn, date, ed)
     if seq < 1 or seq > len(pages):
@@ -858,15 +900,22 @@ def clip_ad(lccn, date, ed=1, seq=1, phrase=None, log=print):
         if not hit:
             raise npc.Refused(f"phrase {phrase!r} not found on the page's OCR")
         pi = rules.PageInk(page)
-        box = block_around(pi, c, hit, allow_display=True, log=log,
-                           split_wide_headings=True)
-        if not box:
-            raise npc.Refused("the advertisement could not be closed on the grid")
+        box = ad_box(pi, c, hit)
+        boxed = box is not None
+        if boxed:
+            crop = _loosen(box, c, BOX_MARGIN_W, BOX_MARGIN_H)
+        else:
+            box = block_around(pi, c, hit, allow_display=True, log=log,
+                               split_wide_headings=True)
+            if not box:
+                raise npc.Refused("the advertisement could not be closed on the grid")
+            crop = _loosen(box, c, LOOSE_W, LOOSE_H)
         inside = nameplate.words_in(c["words"], box)
         text = ocr_text(inside)
         if len(ad_markers(text)) < 2:
             raise npc.Refused("the block around the phrase does not read as an advertisement")
     else:
+        boxed = False
         best = None
         for s, raw, seg in items.snapped("ad", page, c):
             inside = nameplate.words_in(c["words"], s)
@@ -880,8 +929,9 @@ def clip_ad(lccn, date, ed=1, seq=1, phrase=None, log=print):
         if best is None:
             raise npc.Refused("no rule-closed advertisement with advertising words")
         box, inside, text = best
+        crop = box
     verdict, page_hits = _verdict("ad", lccn, date, inside, c["words"], True)
-    image_box, data = _fetch(page, box)
+    image_box, data = _fetch(page, crop)
     leg, n = legibility(inside)
     if leg >= LEGIBLE:
         words, generated = text, False
@@ -894,7 +944,7 @@ def clip_ad(lccn, date, ed=1, seq=1, phrase=None, log=print):
         if hits:
             verdict = _review(verdict, f"the transcribed advertisement carries {sorted(hits)}")
     return _result("ad", page, meta, date, ed, box, image_box, data, verdict,
-                   page_hits, _curl(words), generated, {"phrase": phrase})
+                   page_hits, _curl(words), generated, {"phrase": phrase, "boxed": boxed})
 
 
 def _rows(words):

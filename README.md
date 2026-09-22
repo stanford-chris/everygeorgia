@@ -57,7 +57,10 @@ this kind of clipping and stopped in December 2024.
   and skipped; `--launch` for the pinned thread; `--setup-profile`.
 - `profile.py` — the bio and the six-post thread as data.
 - `rules.py` — the page's grid from its pixels: gutters, rules, film edge, and
-  the snapping of an OCR box to its cell. ⚠️ Gutters over the whole page, never
+  the snapping of an OCR box to its cell; since 22 September 2026 also
+  `border_box()`, the printed border round a boxed advertisement, which the
+  advertisement lane crops to whole, with no size cap, when the search phrase
+  sits inside one (his rule: err looser, never a crop cut on a column gutter). ⚠️ Gutters over the whole page, never
   over an item's own rows; interior dark columns are rules, not film.
 - `items.py` — display rows split at column gaps, boxed with their decks.
 - `clips.py` — one clipping from any lane; the block-of-text builder for the

@@ -118,13 +118,42 @@ class CheckPostDispatch(unittest.TestCase):
         with mock.patch.object(ccc.ghn_api, "issue_pages", return_value=self._pages()), \
              mock.patch.object(ccc.clips, "find_phrase", return_value=hit), \
              mock.patch.object(ccc.rules, "PageInk", return_value="PI"), \
+             mock.patch.object(ccc.clips, "ad_box", return_value=None) as ab, \
              mock.patch.object(ccc.clips, "closure_margins", return_value={}) as cm:
             ccc.check_post(post, "clothing and hats")
+        ab.assert_called_once()                  # the border is asked about first
         cm.assert_called_once()
         args = cm.call_args[0]
         self.assertEqual(args[0], "PI")
         self.assertEqual(args[2], hit)
         self.assertTrue(args[3])                 # allow_display=True for the ad lane
+
+    def test_a_boxed_ad_reports_border_on_both_sides_and_never_walks(self):
+        # clips.ad_box (22 September 2026): a boxed advertisement is
+        # cropped to its printed border, so there is no walk to explain
+        # and closure_margins must not be consulted at all
+        post = {"lane": "ad", "lccn": "sn1", "date": "1900-01-01", "seq": 1}
+        hit = [(0, 0, 1, 1, "x")]
+        with mock.patch.object(ccc.ghn_api, "issue_pages", return_value=self._pages()), \
+             mock.patch.object(ccc.clips, "find_phrase", return_value=hit), \
+             mock.patch.object(ccc.rules, "PageInk", return_value="PI"), \
+             mock.patch.object(ccc.clips, "ad_box", return_value=(1, 2, 3, 4)), \
+             mock.patch.object(ccc.clips, "closure_margins") as cm:
+            findings = ccc.check_post(post, "clothing and hats")
+        cm.assert_not_called()
+        self.assertEqual(findings, [])           # "border" is a confident reason
+
+    def test_market_never_asks_for_a_border(self):
+        post = {"lane": "market", "lccn": "sn1", "date": "1900-01-01", "seq": 1}
+        hit = [(0, 0, 1, 1, "x")]
+        with mock.patch.object(ccc.ghn_api, "issue_pages", return_value=self._pages()), \
+             mock.patch.object(ccc.clips, "find_phrase", return_value=hit), \
+             mock.patch.object(ccc.rules, "PageInk", return_value="PI"), \
+             mock.patch.object(ccc.clips, "ad_box") as ab, \
+             mock.patch.object(ccc.clips, "closure_margins", return_value={}) as cm:
+            ccc.check_post(post, "cotton market")
+        ab.assert_not_called()
+        cm.assert_called_once()
 
     def test_headline_calls_headline_closure_margins_with_no_phrase_needed(self):
         post = {"lane": "headline", "lccn": "sn1", "date": "1900-01-01", "seq": 1}

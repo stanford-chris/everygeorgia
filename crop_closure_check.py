@@ -116,6 +116,7 @@ MARGIN_FLOOR = 0.15
 # means in its own lane.
 CONFIDENT_REASONS = {
     "rule", "display-boundary", "row-count-cap", "cap",       # ad / market
+    "border",                                                  # ad, boxed (clips.ad_box)
     "different-item", "boundary", "tier", "height-cap", "iteration-cap",   # headline
     "indent",                                                  # article
     "reach",                                                   # cartoon
@@ -213,9 +214,16 @@ def check_post(post, phrase, floor=MARGIN_FLOOR, log=print):
         if not hit:
             return None
         pi = rules.PageInk(page)
-        margins = clips.closure_margins(pi, c, hit, lane_params["allow_display"],
-                                        max_frac=lane_params["max_frac"],
-                                        split_wide_headings=True)
+        if post.get("lane") == "ad" and clips.ad_box(pi, c, hit) is not None:
+            # a boxed advertisement is cropped to its printed border
+            # (clips.ad_box, 22 September 2026): no walk, nothing to
+            # second-guess, the same question clip_ad asked
+            margins = {"top": {"reason": "border", "text": "", "ratio": None},
+                       "bottom": {"reason": "border", "text": "", "ratio": None}}
+        else:
+            margins = clips.closure_margins(pi, c, hit, lane_params["allow_display"],
+                                            max_frac=lane_params["max_frac"],
+                                            split_wide_headings=True)
     elif kind == "headline":
         margins = clips.headline_closure_margins(c, page)
     elif kind == "article":

@@ -1272,3 +1272,122 @@ SMASHING; BULGARIA STAGGERING," crop 1200x269. `state["posted"]` and
 New regression tests: `Banners.test_a_gutter_split_that_would_leave_a_one_word_piece_is_refused`
 and `DeckLinesDoNotGrow` (two cases) in `test_clips.py`, all three confirmed
 to fail against the pre-fix code. Full suite: 291/291.
+
+## ✅ Boxed advertisements are cropped to their printed border, 22 September 2026
+
+His instruction, on the Tanner Mercantile advertisement of the Douglas Enterprise of
+13 July 1907 (post `3mw2wu2652g24`, since deleted and reposted): "This crop is a little
+tight. I think the general rule should be to err on the side of looser rather than
+tighter crops that fall precisely along column gutters," with the whole ad drawn by hand
+as the reference. Four approaches were put to him with what each would have done to that
+ad (a margin past every non-rule edge; fixing the three measurements below; a printed
+border as the boundary with the caps waived; a rule crossing a gutter as proof the
+gutter is interior) and he chose the border, with the margin folded in.
+
+**What shipped was not a tight crop, it was a quarter of the ad**, and nothing that
+closed it was real. The ad is a box across the whole page width and 40 percent of its
+height; the crop was one page column of it, capped at `MAX_BLOCK_FRAC` (the log's
+"25.0% of page" is that constant exactly), its left edge through the B of "Best".
+Measured on the page: the crop's sides were 2-px "gutters" (`rules.gutters()` floors a
+gutter at 2 px, and on a page that is mostly display ads word gaps line up down the
+page: 30 gutters found, 26 under 12 px); the crossing test judged a gutter on its
+CLEAREST column, which sits in a letter gap ("General Merchandise," ran straight through
+an 11-px gutter and read as clear at 0.016); and none of the ad's four printed rules was
+seen, each being 3-4 px thick against `RULE_MAX_RUN` of 2. ⚠️ **A gutter-width floor
+was measured and rejected**: on the eight-column Savannah Morning News real gutters read
+2-4 px too, because microfilm skew shrinks a gutter's clear run to a few pixel columns,
+so a floor deletes real gutters on the pages that need them most. The crossing test is
+untouched too: changing `column_bounds` touches every lane and nobody asked.
+
+**The rule now** (`clips.clip_ad`, phrase path): `clips.ad_box()` first, which is
+`rules.PageInk.border_box()` with the page's text height and OCR words; if the seed sits
+inside a printed border the crop is the border plus `BOX_MARGIN_W`/`BOX_MARGIN_H` and no
+size cap applies, because `MAX_BLOCK_W` and `MAX_BLOCK_FRAC` exist to bound a walk that
+found no boundary and a border IS the boundary. Otherwise `block_around` as before, now
+loosened by the headline's own `LOOSE_W`/`LOOSE_H` so a crop that stops on a gutter shows
+the gutter rather than cutting a letter. The alt text and the advertising-word check read
+the tight box's words, never the margin's. The result carries `boxed`, the poster's lane
+line says "the printed border", and `crop_closure_check.py` reports `border` on both
+sides for a boxed ad (a confident reason; there is no walk to explain).
+
+**How a border is read, and every constant's page.** The docstring of `border_box()`
+carries it in full; the short form:
+
+1. Sides are `vrules(BOX_MIN_VRULE, skip_dark=False)`: dark runs 4 percent of the page
+   tall (the Ever Crease box is 9.7 percent and at the column-rule floor of 12 its own
+   border was never a candidate), and NOT skipping columns darker than `EDGE_DARK` as
+   film, since two boxes stacked on one margin share a border column dark down most of
+   the page (Tanner + Harrelson read 0.51, a taller box from the 0.55 cut); only a column
+   touching the page edge is film. The seed's rows must fall in the candidate's 5-px
+   strip run with breaks up to `BORDER_BREAK` (the daisy border's gaps run to 36 px).
+2. Top and bottom are full-width rules walked to from the seed. A rule is a band of
+   rows at least `HRULE_MIN_SHARE` dark that is THIN (`RULE_THICK` text heights: display
+   type is 1.6 and up, the Greek-key border, the thickest here, 1.34), whose best row
+   runs `HRULE_SPAN` of the width in one stroke (`row_span`, breaks up to `HRULE_BREAK`:
+   rules and borders 0.45-1.00, a dotted border 0.41, body text 0.25 and under), that
+   reaches both sides (`HRULE_REACH`, judged over the band because the page is skewed
+   and the Tanner top border's ink is at the left end on rows 1135-1137 and the right
+   end on 1134 and 1139), and **that the OCR read no word on** — the decisive test for
+   body text, from the Atlanta Georgian of 4 December 1908, where a one-column window of
+   justified 6.7-px type has word gaps under any break tolerance that also bridges the
+   Douglas page's broken rules; the OCR reads 7-9 words on every line of type measured
+   and none on any of the seven real rules and borders.
+3. A full-width rule closes the box only if the side strips end there (`BORDER_SNAP`)
+   or beyond it is a SEAM: paper `SEAM_MIN` deep then another rule band (the next box's
+   border; a double hairline is 2-4 px apart). An ad's own interior rules are full-width
+   too and are walked past. Fringe rows under a rule (0.15 dark under the Carlisle box's
+   bottom) are neither paper nor band and are walked past when counting the seam.
+4. Each side is verified over the box's rows: its darkest single pixel column at least
+   `BORDER_FILL` (borders 0.44-0.83 on the Douglas page, stems and type 0.28 or under
+   there), its ink at most `BORDER_MAX_W` wide (borders 7-20 px; columns of dense type
+   mistaken for a side on the Savannah Morning News of 13 January 1871 ran 90-173) and
+   paper within `BORDER_MARGIN_W` of it on one side or the other.
+5. Innermost pair first, the first closed box wins. Outermost-first was measured wrong
+   (the Ever Crease and Carlisle boxes sit 6 px apart, their tops within a rule of each
+   other, and the outer pair closed as one box). Three refusals on a closed pair: a side
+   that BOTH the top and bottom rules run through is an interior column rule, not a
+   corner (one may: the Augusta Cotton Exchange shares its top rule with the box beside
+   it); a rule that runs through BOTH sides is the page's or a section's (the Savannah
+   Morning News of 14 February 1873 closed a column a column wide and half the page deep
+   under the page's rule, the Vidalia Advance of 10 August 1921 three columns of news
+   under its dateline); and a border-dark column inside the window with paper beside it
+   that the top or bottom rule STOPS AT rather than crosses is another box's border (the
+   Athens Banner of 19 October 1913 closed a column of type with the boxed "Georgia
+   State Fair" beside it, because a boxed header in that column carried rules aligned
+   with the ad's own). "Runs through" is `CORNER_TOUCH` contiguous pixels within
+   `CORNER_GAP` of the side and `CORNER_SHARE` of the next `CORNER_EXT`, over the band
+   widened by `CORNER_SKEW` rows; the gap allowance is 4 px because the 1873 page rule
+   stops 4 px short of the column rule it runs up to, and the nearest two boxes measured
+   are 6 apart. ⚠️ **Requiring a side to be the box's OWN border (its run starting at the
+   top rule and ending at the bottom) was tried for the 1873 and Athens cases and
+   measured wrong**: a column-width boxed ad on a 1920s page borrows the column rules as
+   its sides (the Augusta Cotton Exchange on the Twin City Citizen of 17 September 1927,
+   stacked over a bank's box in the same column), and every such ad was refused.
+6. A box deeper than `MAX_BOX_FRAC` is a page border, and `ad_box` refuses one shallower
+   than `MIN_BLOCK_FRAC`.
+
+**Measured before it went live.** The Douglas page: all four boxed items from every seed
+tried (Tanner from four seeds, Ever Crease, Harrelson, the dotted Carlisle), the three
+unboxed items refused. Every recorded ad-lane try (`tried["ad"]`, 17 with a phrase hit):
+5 boxes, each looked at and right (the two Swainsboro Trading Company boxes, Ayer's
+Sarsaparilla, the Templeman piano ad whose old block was two lines, Tanner), 12 refused
+and looked at (no border on any). Every recorded market try (89 hits) as a false-positive
+sweep: 2 boxes, both the Augusta Cotton Exchange's real one. `test_border_box.py` is 20
+tests on a synthetic page carrying every shape above, plus 2 in
+`test_crop_closure_check.py`; 324 in the repo. Verified by mutation on a scratch copy,
+18 breakages: 12 fail the suite, the stops-at test fails the corpus check
+(`corpus_check.py` in the session's scratchpad, 9 true boxes and 7 known false ones),
+and **five fail nothing any more**: `BORDER_MAX_W`, the paper-beside test, `BORDER_FILL`,
+`skip_dark=False` and innermost-first. Each was set on a real page and each of those
+pages is now also refused by a later test (the wider-rule and stops-at refusals of
+step 5), so they are defence in depth on every page measured, not load-bearing. Left in
+place and said so here; a simplify pass may take them out if it can show the same
+corpus check still holds without them.
+
+**What it does not do.** The alt text of a boxed ad is still the OCR's reading order,
+which interleaves the columns of a two-column box ("Best Patent Flour Furniture At Lowest
+Prices is literally loaded"); a column-aware reading for boxed ads was not built and not
+asked for. A seed in a boxed ad whose border the detector cannot read falls back to the
+block, now loosened, never to nothing. The 1929 Castoria and 1919 Castoria ads and the
+1877 Augusta Music House ad, bounded by column rules and section rules rather than
+boxes, were looked at and are correctly not boxes.
