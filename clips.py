@@ -867,6 +867,147 @@ def ad_box(pi, coords, seed):
     return box
 
 
+COLUMN_SPAN = 0.95       # column_text(): a vertical rule is a column
+                         # boundary for a band when it spans this much of
+                         # the band's own TEXT -- from the top of its first
+                         # line to the bottom of its last -- rather than of
+                         # the band, which runs rule to rule and includes
+                         # the white above and below the type a column rule
+                         # is not obliged to reach into
+COLUMN_CROSS = 0.25      # ...and no word of the band crosses it by more than
+                         # this of the text height on its narrower side. ⚠️
+                         # Measured on the Tanner advertisement, where the
+                         # words genuinely spanning the rule (the heading's
+                         # "MERCANTILE", the closing line's "anything")
+                         # overlap it by 122.7, 50.6 and 35.8 px against a
+                         # 14.2-px text height, while the body columns' own
+                         # boxes touch it by 1.9, 0.5 and 0.0. A bare "does
+                         # any box cross it" test therefore vetoed the real
+                         # split on one word's half-pixel of box slop
+COLUMN_LINE = 0.5        # ...and words are gathered into lines when their
+                         # vertical centres are within this of the text
+                         # height of the last word's, a chain along the line
+COLUMN_MIN_ROWS = 2      # a band shallower than this many text heights holds
+                         # no line worth splitting into columns
+
+
+def column_text(pi, coords, box, is_rule=None):
+    """The words inside `box` in READING order: the box's own interior rules
+    split it into BANDS, a band's own column rules split it into COLUMNS, and
+    each column is read top to bottom before the next is begun.
+
+    His instruction, 22 September 2026, on the Tanner Mercantile advertisement
+    (Douglas Enterprise, 13 July 1907), whose alt text read "Best Patent Flour
+    Furniture At Lowest Prices is literally loaded with all grades": a boxed
+    advertisement is one item but not one column, and ocr_text()'s page-wide
+    rows interleave its columns line by line. That ad is a full-width heading,
+    a two-column body and a full-width closing line, and it now reads through
+    in order.
+
+    ⚠️ **Bands come from the printed rules, not from gaps between lines.** On
+    that ad the gap under the heading is 1.9 text heights and the widest gap
+    INSIDE the body is 1.8, so no threshold separates them; the rule under
+    "Douglas, Georgia." does. `is_rule` is rules.PageInk.rule_finder()'s
+    callable (built here when not passed), so a band boundary is exactly what
+    border_box() walked to when it closed the box.
+
+    ⚠️ **Columns come from the printed rules too, and for a sharper reason:
+    there is no gap to find.** The body's two columns are set hard against
+    their rule -- measured, the left column's last word box ends 57 OCR units
+    (0.4 of a text height) before the right column's first begins, which is
+    narrower than a word space. A candidate is a vertical rule spanning
+    COLUMN_SPAN of the band that no word crosses by more than COLUMN_CROSS
+    (see there), and words fall on the side their CENTRE does, as
+    nameplate.words_in() has them fall inside a box.
+
+    ⚠️ **A rule within BORDER_MAX_W of the box's own edges is the border, not
+    a column boundary.** Ayer's Sarsaparilla (Augusta Chronicle, 27 January
+    1899) is a single column inside a ruled border whose right rule sits 9 px
+    in, and splitting there moved two words of the border's own OCR noise to
+    the end of the ad.
+
+    ⚠️ **Lines are gathered by the vertical CENTRE of each word against the
+    last one's, not by nameplate.rows_of().** That groups by each word's TOP
+    against the FIRST word of the row, which is right across a page-wide band
+    and wrong inside a narrow column: a word with no ascender sits lower, and
+    "our" in the Tanner ad's right column fell 101 units below its own line's
+    first word against a 70-unit tolerance, landing at the end of the line.
+    The chain against the previous word absorbs that drift (19 units) while
+    the line spacing it must not cross is 460.
+
+    Returns the text; a box with no interior rule and no column rule still
+    reads through this, since the line gathering is the better one."""
+    per = pi.page.scale * pi.scale                   # small px per OCR unit
+    med = (nameplate.page_median_height(coords["words"]) or 1) * per
+    words = [(w[0] * per, w[1] * per, w[2] * per, w[3] * per, w[4])
+             for w in coords["words"]]
+    if is_rule is None:
+        is_rule = pi.rule_finder(med, words)
+    x0, y0 = int(box[0] * per), int(box[1] * per)
+    x1, y1 = int((box[0] + box[2]) * per), int((box[1] + box[3]) * per)
+    xa, xb = x0 + 6, x1 - 6
+    if xb - xa < 8 or y1 - y0 < 2:
+        return ocr_text(nameplate.words_in(coords["words"], box))
+
+    # the box's own rules, as runs of rows, merged across a hairline gap
+    runs, y = [], y0
+    while y < y1:
+        if is_rule(y, xa, xb):
+            j = y
+            while j + 1 < y1 and is_rule(j + 1, xa, xb):
+                j += 1
+            if runs and y - runs[-1][1] <= 3:
+                runs[-1] = (runs[-1][0], j)
+            else:
+                runs.append((y, j))
+            y = j + 1
+        else:
+            y += 1
+    bands, y = [], y0
+    for a, b in runs:
+        if a - y > COLUMN_MIN_ROWS * med:
+            bands.append((y, a))
+        y = b + 1
+    if y1 - y > COLUMN_MIN_ROWS * med:
+        bands.append((y, y1))
+
+    edge = max(6, int(pi.w * rules.BORDER_MAX_W))
+    slop = max(2.0, COLUMN_CROSS * med)
+    out = []
+    for top, bot in bands:
+        band = [w for w in words if top <= w[1] + w[3] / 2.0 < bot
+                and x0 <= w[0] + w[2] / 2.0 < x1]
+        if not band:
+            continue
+        ttop = min(w[1] for w in band)
+        tbot = max(w[1] + w[3] for w in band)
+        cuts = []
+        for vx, vt, vb in pi.vrules(rules.BOX_MIN_VRULE, skip_dark=False):
+            if not (x0 + edge < vx < x1 - edge):
+                continue
+            if min(vb, tbot) - max(vt, ttop) < COLUMN_SPAN * (tbot - ttop):
+                continue
+            if any(min(vx - w[0], w[0] + w[2] - vx) > slop for w in band
+                   if w[0] < vx < w[0] + w[2]):
+                continue
+            cuts.append(vx)
+        left = x0
+        for right in sorted(cuts) + [x1]:
+            col = [w for w in band if left <= w[0] + w[2] / 2.0 < right]
+            left = right
+            lines = []
+            for w in sorted(col, key=lambda w: w[1] + w[3] / 2.0):
+                centre = w[1] + w[3] / 2.0
+                last = lines[-1][-1] if lines else None
+                if last is not None and centre - (last[1] + last[3] / 2.0) <= COLUMN_LINE * med:
+                    lines[-1].append(w)
+                else:
+                    lines.append([w])
+            for line in lines:
+                out.extend(w[4] for w in sorted(line, key=lambda w: w[0]))
+    return " ".join(" ".join(out).split())
+
+
 def clip_ad(lccn, date, ed=1, seq=1, phrase=None, log=print):
     """With a phrase (from AD_PHRASES, via search): the printed BORDER
     around it if the advertisement is boxed (ad_box), else the block of
@@ -911,7 +1052,12 @@ def clip_ad(lccn, date, ed=1, seq=1, phrase=None, log=print):
                 raise npc.Refused("the advertisement could not be closed on the grid")
             crop = _loosen(box, c, LOOSE_W, LOOSE_H)
         inside = nameplate.words_in(c["words"], box)
-        text = ocr_text(inside)
+        # ⚠️ A boxed advertisement is one item but not one column, so its
+        # words are read band by band and column by column (column_text);
+        # ocr_text's page-wide rows interleave them. The words are the same
+        # words, so ad_markers, legibility and the vocabulary gate are not
+        # affected -- only the order they are read in.
+        text = column_text(pi, c, box) if boxed else ocr_text(inside)
         if len(ad_markers(text)) < 2:
             raise npc.Refused("the block around the phrase does not read as an advertisement")
     else:

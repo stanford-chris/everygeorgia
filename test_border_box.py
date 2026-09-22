@@ -30,8 +30,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
 import clips        # noqa: E402
-import rules        # noqa: E402
 import nameplate    # noqa: E402
+import rules        # noqa: E402
 
 
 class BoxedPage:
@@ -51,6 +51,9 @@ class BoxedPage:
     F = (300, 1240, 700, 1480)         # column rules under a wider rule
     D = (30, 300, 260, 1450)           # a column of dense type
     A_INTERIOR_RULE = 470              # full-width rule under A's heading
+    A_CLOSING_RULE = 750               # ...and another above its closing line
+    A_SHORT_RULE = 426                 # a short rule in a word gap of the
+                                       # left column's first three lines
     A_COLUMN_RULE = 700                # interior column rule, x, in A's body
 
     def __init__(self):
@@ -101,13 +104,53 @@ class BoxedPage:
         row(ax0 + 60, ay0 + 30, 40, "TANNER MERCANTILE COMPANY")      # display, OCR'd
         d.rectangle([ax0 + 20, self.A_INTERIOR_RULE, ax1 - 20, self.A_INTERIOR_RULE + 3], fill=20)
         d.rectangle([self.A_COLUMN_RULE, self.A_INTERIOR_RULE + 20, self.A_COLUMN_RULE + 1, ay1 - 60], fill=20)
+        # a SHORT rule standing in the word gap the left column's every line
+        # happens to share, crossed by no word box and covering only the
+        # first three of the band's five lines: at 65 px
+        # it is long enough to be a vrule at all (BOX_MIN_VRULE is 60 px here)
+        # and only COLUMN_SPAN says it is not a column boundary (a flourish, a
+        # bracket, the tail of a neighbour's rule)
+        d.rectangle([self.A_SHORT_RULE, self.A_INTERIOR_RULE + 20,
+                     self.A_SHORT_RULE + 1, self.A_INTERIOR_RULE + 85], fill=20)
         y = self.A_INTERIOR_RULE + 30
         for i in range(5):
             row(ax0 + 30, y, self.BODY_H, f"for sale at low prices {i}", bar_to=self.A_COLUMN_RULE - 10)
-            row(self.A_COLUMN_RULE + 10, y, self.BODY_H, f"kitchen furniture at right {i}", bar_to=ax1 - 30)
+            # ⚠️ The first right-column line's own box starts 4 px LEFT of
+            # the column rule, as a real OCR box overlaps it (the Tanner
+            # ad's "why" by 0.5 px): COLUMN_CROSS is what keeps that from
+            # vetoing the split. The 3-px overlap that leaves sits between
+            # the slop floor (2 px) and the default tolerance (0.25 of a
+            # 14-px text height), so the test can move the constant either
+            # way and see the reading change
+            if i == 1:
+                # ⚠️ This line is set by hand so that two of its words sit LOW
+                # in it, as a word with no ascender does: "our" 9 px below the
+                # line's first word and "own" 14 px below, against rows_of's
+                # 7-px tolerance, which drops both out of their own line (the
+                # Tanner ad's "our" sat 101 units below its line's first word
+                # against a 70-unit tolerance and read at the end of it).
+                # Their CENTRES are 5 and 10 px off, so gathering by centre
+                # keeps them -- but only chained against the PREVIOUS word,
+                # since "own" is 10 off the line's first and 5 off its
+                # neighbour. Both words sort mid-line, so each grouping gives
+                # a different reading
+                d.rectangle([self.A_COLUMN_RULE + 10, y, ax1 - 30, y + self.BODY_H], fill=120)
+                for tok, tx, dy, th in (("kitchen", 710, 0, 14), ("our", 802, 9, 6),
+                                        ("furniture", 830, 0, 14), ("own", 940, 14, 6),
+                                        ("at", 970, 0, 14), ("right", 1000, 0, 14),
+                                        ("1", 1060, 0, 14)):
+                    tw = max(20, len(tok) * 12)
+                    d.rectangle([tx, y + dy, tx + tw, y + dy + th], fill=30)
+                    words.append((tx, y + dy, tw, th, tok))
+            else:
+                row(self.A_COLUMN_RULE - 4 if i == 0 else self.A_COLUMN_RULE + 10,
+                    y, self.BODY_H, f"kitchen furniture at right {i}", bar_to=ax1 - 30)
             y += self.BODY_H + 8
-        # closing display line, set across the full measure so that only
-        # its thickness says it is not a rule
+        # a second full-width interior rule, then the closing display line
+        # set across the full measure so that only its thickness says it is
+        # not a rule. The rule is what lets column_text() read the closing
+        # line as its own band, exactly as the real advertisement's does
+        d.rectangle([ax0 + 20, ay1 - 70, ax1 - 20, ay1 - 67], fill=20)
         row(ax0 + 20, ay1 - 50, 30, "TANNER MERCANTILE COMPANY FURNITURE", bar_to=ax1 - 20)
         # box B, stacked above with a seam
         bx0, by0, bx1, by1 = self.B
@@ -307,6 +350,106 @@ class unittest_patch:
         setattr(self.obj, self.name, self.old)
 
 
+class ColumnText(unittest.TestCase):
+    """clips.column_text(): a boxed advertisement read band by band and
+    column by column (22 September 2026). Box A is the Tanner Mercantile
+    shape -- a full-width heading, a two-column body divided by a hairline
+    rule, a full-width closing line -- and box B carries the doubled border
+    that must not read as a column."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.page = BoxedPage()
+        cls.coords = cls.page.coords()
+        cls.pi = rules.PageInk(cls.page)
+
+    def _read(self, phrase):
+        hit = clips.find_phrase(self.coords["words"], phrase)
+        self.assertIsNotNone(hit, phrase)
+        box = clips.ad_box(self.pi, self.coords, hit)
+        self.assertIsNotNone(box, phrase)
+        return clips.column_text(self.pi, self.coords, box), box
+
+    def test_each_column_is_read_through_before_the_next_is_begun(self):
+        text, _ = self._read("mercantile company")
+        left = " ".join(f"for sale at low prices {i}" for i in range(5))
+        right = " ".join("kitchen our furniture own at right 1" if i == 1
+                         else f"kitchen furniture at right {i}" for i in range(5))
+        self.assertEqual(
+            text,
+            "TANNER MERCANTILE COMPANY " + left + " " + right
+            + " TANNER MERCANTILE COMPANY FURNITURE")
+
+    def test_the_page_wide_reading_interleaves_them(self):
+        # what ocr_text gives for the same words, and why this exists
+        _, box = self._read("mercantile company")
+        old = clips.ocr_text(nameplate.words_in(self.coords["words"], box))
+        self.assertIn("low prices 0 kitchen furniture", old)
+
+    def test_no_word_is_gained_or_lost(self):
+        text, box = self._read("mercantile company")
+        old = clips.ocr_text(nameplate.words_in(self.coords["words"], box))
+        self.assertEqual(sorted(old.split()), sorted(text.split()))
+
+    def test_the_full_width_heading_is_not_split_at_the_column_rule(self):
+        # the heading's own words cross the rule, which is what says it is
+        # not a column boundary for that band
+        text, _ = self._read("mercantile company")
+        self.assertTrue(text.startswith("TANNER MERCANTILE COMPANY for sale"))
+
+    def test_the_closing_line_is_not_split_either(self):
+        text, _ = self._read("mercantile company")
+        self.assertTrue(text.endswith("TANNER MERCANTILE COMPANY FURNITURE"))
+
+    def test_a_word_touching_the_rule_does_not_veto_the_split(self):
+        # COLUMN_CROSS: box slop on one word's edge is not a crossing
+        with unittest_patch(clips, "COLUMN_CROSS", 0.0):
+            text, _ = self._read("mercantile company")
+        self.assertIn("low prices 0 kitchen furniture", text)   # no split
+
+    def test_words_sitting_low_in_their_line_stay_in_it(self):
+        text, _ = self._read("mercantile company")
+        self.assertIn("kitchen our furniture own at right 1", text)
+
+    def test_rows_of_is_what_drops_that_word_out_of_its_line(self):
+        # the reason column_text() gathers lines by centre instead: this is
+        # nameplate.rows_of's own answer for the same words
+        _, box = self._read("mercantile company")
+        col = [w for w in nameplate.words_in(self.coords["words"], box)
+               if BoxedPage.A_COLUMN_RULE < w[0]
+               and w[4] in ("kitchen", "our", "own", "furniture")]
+        rows = nameplate.rows_of(sorted(col, key=lambda w: (w[1], w[0])), row_tol=0.5)
+        self.assertIn(["our"], [[w[4] for w in r] for r in rows])
+        self.assertIn(["own"], [[w[4] for w in r] for r in rows])
+
+    def test_a_rule_too_short_for_the_band_is_not_a_column_boundary(self):
+        # A_SHORT_RULE spans half the band and no word crosses it, so only
+        # COLUMN_SPAN keeps the left column whole
+        text, _ = self._read("mercantile company")
+        self.assertIn("for sale at low prices 0 for sale at low prices 1", text)
+        with unittest_patch(clips, "COLUMN_SPAN", 0.0):
+            loose, _ = self._read("mercantile company")
+        self.assertNotIn("for sale at low prices 0 for sale at low prices 1", loose)
+
+    def test_a_rule_within_the_border_margin_is_never_a_column_boundary(self):
+        # BORDER_MAX_W of either edge is the border's own width, not a
+        # column: Ayer's Sarsaparilla's right border sits 9 px in, and
+        # splitting there moved two words of its OCR noise to the end
+        with unittest_patch(rules, "BORDER_MAX_W", 0.35):      # 490 px: the
+            text, _ = self._read("mercantile company")         # rule is inside
+        self.assertIn("low prices 0 kitchen furniture", text)  # it, so no split
+
+    def test_a_band_with_no_column_rule_reads_in_line_order(self):
+        text, _ = self._read("pressing club")
+        self.assertEqual(
+            text, " ".join(f"pressing club rates membership {i}" for i in range(5)))
+
+    def test_a_box_too_thin_to_read_falls_back_to_ocr_text(self):
+        box = (0, 0, 1, 1)
+        self.assertEqual(clips.column_text(self.pi, self.coords, box),
+                         clips.ocr_text(nameplate.words_in(self.coords["words"], box)))
+
+
 class AdBox(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -358,6 +501,8 @@ class ClipAdBoxed(unittest.TestCase):
         self.assertGreater(r["band_fraction"], clips.MAX_BLOCK_FRAC)  # over the block cap: none applies
         self.assertIn("kitchen furniture", r["words"].lower())     # the whole ad's words
         self.assertNotIn("pressing club", r["words"].lower())      # not the box above
+        # and the words are the COLUMN reading, not the page-wide one
+        self.assertIn("low prices 4 kitchen furniture at right 0", r["words"])
 
     def test_an_unboxed_ad_takes_the_block_with_the_headline_margin(self):
         from unittest import mock

@@ -489,6 +489,68 @@ class PageInk:
                     cur = gap = 0
         return best / float(max(1, x1 - x0))
 
+    def rule_finder(self, text_h, words):
+        """A callable `(y, x0, x1) -> bool`: is row `y` part of a printed rule
+        running the full width of [x0, x1)? `text_h` is the page's median text
+        height in small-image pixels and `words` its OCR word boxes in the
+        same pixels, both from the OCR the caller already holds. Answers are
+        cached per (row, window), so a caller may ask about every row.
+
+        A rule is a band of rows at least HRULE_MIN_SHARE dark that is THIN
+        (at most RULE_THICK text heights: display type is 1.6 and up), whose
+        best row runs at least HRULE_SPAN of the width in one stroke
+        (row_span, breaks up to HRULE_BREAK bridged), that carries ink within
+        HRULE_REACH of both ends, and that the OCR read no word on.
+
+        ⚠️ The OCR test is the decisive one for body text, added on the
+        Atlanta Georgian of 4 December 1908: in a one-column window its
+        justified 6.7-px type has word gaps under any break tolerance that
+        also bridges the Douglas Enterprise's broken rules; the OCR reads 7-9
+        words on every line of type measured and none on any of the seven real
+        rules and borders there. The pixel tests still stand because display
+        type is what the OCR misses, and type fails them one at a time: a line
+        of body text is thin enough but its best row runs 0.25 or under (word
+        gaps); a display heading runs 0.35 but is 1.6 text heights tall or
+        more. ⚠️ Reach is judged over the whole band, not one row: the page is
+        skewed, and the Tanner advertisement's top border inks the left end on
+        rows 1135-1137 and the right end on 1134 and 1139, never on one row.
+
+        Shared by border_box(), which walks to a box's edges with it, and by
+        clips.column_text(), which reads a box's own interior rules off it."""
+        thick = max(2, int(RULE_THICK * text_h))
+        hbrk = max(2, int(self.w * HRULE_BREAK))
+        reach = max(4, int(self.w * HRULE_REACH))
+        # OCR word centres; only real tokens, since an ornament can OCR as a
+        # stray mark
+        centres = sorted([(wx + ww / 2.0, wy + wh / 2.0) for wx, wy, ww, wh, t in words
+                          if sum(ch.isalpha() for ch in t) >= 3],
+                         key=lambda p: p[1])
+        centre_ys = [p[1] for p in centres]
+        cache = {}
+
+        def is_rule(yy, xa, xb):
+            key = (yy, xa, xb)
+            if key not in cache:
+                ok = False
+                if self.row_share(yy, xa, xb) >= HRULE_MIN_SHARE:
+                    a = yy
+                    while a > 0 and self.row_share(a - 1, xa, xb) >= HRULE_MIN_SHARE:
+                        a -= 1
+                    b = yy
+                    while b < self.h - 1 and self.row_share(b + 1, xa, xb) >= HRULE_MIN_SHARE:
+                        b += 1
+                    ok = (b - a + 1 <= thick
+                          and not any(xa <= centres[i][0] < xb
+                                      for i in range(bisect_left(centre_ys, a),
+                                                     bisect_right(centre_ys, b)))
+                          and self.row_span(yy, xa, xb, hbrk) >= HRULE_SPAN
+                          and max(self.row_share(r, xa, xa + reach) for r in range(a, b + 1)) * reach >= 3
+                          and max(self.row_share(r, xb - reach, xb) for r in range(a, b + 1)) * reach >= 3)
+                cache[key] = ok
+            return cache[key]
+
+        return is_rule
+
     def border_box(self, sbox, text_h, words):
         """The printed BORDER enclosing `sbox` (small-image x, y, w, h), as
         (x0, y0, x1, y1) in small-image pixels, the outer edges of the
@@ -522,28 +584,10 @@ class PageInk:
            ornamental border is a chain of ornaments with paper between
            (the daisy border here has gaps up to 36 px).
 
-        2. TOP and BOTTOM are full-width rules, walked to from the seed.
-           A rule is a band of rows at least HRULE_MIN_SHARE dark that is
-           THIN, at most RULE_THICK of the text height, and whose best row
-           runs at least HRULE_SPAN of the width between the sides in one
-           stroke (row_span, breaks up to HRULE_BREAK bridged), carrying
-           ink within HRULE_REACH of both sides so a rule under one
-           column of a wider window does not count, and one the OCR read
-           no word on. ⚠️ The OCR test is the decisive one for body text,
-           added on the Atlanta Georgian of 4 December 1908: in a
-           one-column window its justified 6.7-px type has word gaps
-           under the 6-px break tolerance, and a line of it bridged into
-           a "rule" 0.40 of the width. No tolerance fits both that page
-           and the Douglas Enterprise's broken rules; the OCR does,
-           reading 7-9 words on every line of type measured and none on
-           any of the seven real rules and borders. The two pixel tests
-           still stand because display type is what the OCR misses, and
-           type fails them one at a time: a line of body text is thin
-           enough but its best row runs 0.25 or under (word gaps); a
-           display heading runs 0.35 ("Notice to the Public", bridged at
-           any tolerance) but is 1.6 text heights tall or more, where the
-           Greek-key border on the same page, the thickest here, is 1.34.
-           ⚠️ A bare darkness test cannot do this -- the faint rule
+        2. TOP and BOTTOM are full-width rules, walked to from the seed,
+           as rule_finder() defines one (thin, one continuous stroke,
+           reaching both ends, and carrying no OCR word). ⚠️ A bare
+           darkness test cannot do this -- the faint rule
            under "Douglas, Georgia." reads 0.47 dark and the display line
            "We are headquarters" 0.44 -- and where the side borders END
            cannot either: at the break tolerance an ornamental border
@@ -632,13 +676,8 @@ class PageInk:
         seam = max(2, int(self.h * SEAM_MIN))
         hbrk = max(2, int(self.w * HRULE_BREAK))
         thick = max(2, int(RULE_THICK * text_h))
-        reach = max(4, int(self.w * HRULE_REACH))
-        # OCR word centres, for the "no word on a rule" test; only real
-        # tokens, since an ornament can OCR as a stray mark
-        centres = [(wx + ww / 2.0, wy + wh / 2.0) for wx, wy, ww, wh, t in words
-                   if sum(ch.isalpha() for ch in t) >= 3]
-        centres.sort(key=lambda p: p[1])
-        centre_ys = [p[1] for p in centres]
+        is_rule = self.rule_finder(text_h, words)      # see its docstring for
+                                                       # what counts as a rule
         cands = self.vrules(BOX_MIN_VRULE, skip_dark=False)
         lefts = sorted((r[0] for r in cands if r[0] < x), reverse=True)
         rights = sorted(r[0] for r in cands if r[0] >= x + w)
@@ -672,34 +711,6 @@ class PageInk:
         right_runs = [(rx, r) for rx, r in right_runs if r]
         if not left_runs or not right_runs:
             return None
-
-        rule_cache = {}
-
-        def is_rule(yy, xa, xb):
-            key = (yy, xa, xb)
-            if key not in rule_cache:
-                ok = False
-                if self.row_share(yy, xa, xb) >= HRULE_MIN_SHARE:
-                    # the band of dark rows this row sits in must be thin
-                    a = yy
-                    while a > 0 and self.row_share(a - 1, xa, xb) >= HRULE_MIN_SHARE:
-                        a -= 1
-                    b = yy
-                    while b < self.h - 1 and self.row_share(b + 1, xa, xb) >= HRULE_MIN_SHARE:
-                        b += 1
-                    # ⚠️ Reach is judged over the whole band, not this row:
-                    # the page is skewed, and the Tanner top border's ink
-                    # sits at the left end on rows 1135-1137 and at the
-                    # right end on rows 1134 and 1139, never on one row
-                    ok = (b - a + 1 <= thick
-                          and not any(xa <= centres[i][0] < xb
-                                      for i in range(bisect_left(centre_ys, a),
-                                                     bisect_right(centre_ys, b)))
-                          and self.row_span(yy, xa, xb, hbrk) >= HRULE_SPAN
-                          and max(self.row_share(r, xa, xa + reach) for r in range(a, b + 1)) * reach >= 3
-                          and max(self.row_share(r, xb - reach, xb) for r in range(a, b + 1)) * reach >= 3)
-                rule_cache[key] = ok
-            return rule_cache[key]
 
         def edge(start, step, run_end, xa, xb):
             """From `start` in `step`'s direction to the first full-width

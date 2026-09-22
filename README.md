@@ -64,7 +64,10 @@ this kind of clipping and stopped in December 2024.
   over an item's own rows; interior dark columns are rules, not film.
 - `items.py` — display rows split at column gaps, boxed with their decks.
 - `clips.py` — one clipping from any lane; the block-of-text builder for the
-  search-driven lanes; the search candidate lists. ✅ Also the **classified lane**
+  search-driven lanes; the search candidate lists. ✅ Also `column_text()` (23
+  September 2026): a boxed advertisement is one item but not one column, so its
+  words are read band by band and column by column, split at the box's own
+  printed rules, instead of by the page-wide rows that interleave them. ✅ Also the **classified lane**
   (`clip_classified`, built and released 20 September 2026): a run of want-ad
   items around a search phrase, in a column read from the pixels at the image's own
   resolution (`local_column`: a want-ad department is set at its own measure inside a

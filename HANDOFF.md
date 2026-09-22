@@ -1391,3 +1391,90 @@ asked for. A seed in a boxed ad whose border the detector cannot read falls back
 block, now loosened, never to nothing. The 1929 Castoria and 1919 Castoria ads and the
 1877 Augusta Music House ad, bounded by column rules and section rules rather than
 boxes, were looked at and are correctly not boxes.
+
+## ✅ A boxed advertisement is READ column by column, 23 September 2026
+
+His instruction, the morning after the border crop shipped: "do the column aware
+reading." The Tanner Mercantile advertisement (Douglas Enterprise, 13 July 1907)
+was by then cropped whole, and its alt text read
+
+> Best Patent Flour **Furniture** At Lowest Prices **is literally loaded with all
+> grades** One of our stores Household Kitchen Furniture Money back if not
+> satisfied **We the right price We buy in car-load lots and** Come at once …
+
+because `ocr_text()` reads the page's own rows left to right, and a two-column ad
+has two columns on every row. It now reads through:
+
+> TANNER MERCANTILE COMPANY Wholesale and Retail Dealers in General Merchandise
+> Douglas Georgia · Best Patent Flour At Lowest Prices Money back if not satisfied
+> Come at once We want your business Com petition knocked higher than a kite in
+> anything we handle and we handle anything from a four horse wagon to a fish hook
+> · Furniture One of our stores is literally loaded with all grades Household
+> Kitchen Furniture at the right price We buy in car-load lots and therefore sell
+> cheaper than anyone else Then why not buy that Suit of Nice Furniture for your
+> wife Your credit is good · We are headquarters for anything you want Remember we
+> do more than meet competition TANNER MERCANTILE CO
+
+(the middle dots mark the band and column boundaries; nothing is printed there —
+see "What it does not do" below.)
+
+`clips.column_text(pi, coords, box)`, used by `clip_ad` on the boxed path only.
+Bands are the box's own interior rules, columns are the rules inside a band, and
+each column is read to its end before the next is begun. **Every rule in it was
+set on a measurement of that ad**; the four that cost the most:
+
+1. ⚠️ **Bands come from the printed rules, never from gaps between lines.** The
+   gap under the heading is 1.9 text heights and the widest gap INSIDE the body is
+   1.8, so no threshold separates them. The rule under "Douglas, Georgia." does,
+   and it is the same rule `border_box()` walked past when it closed the box —
+   which is why the rule test moved out of that function into
+   `rules.PageInk.rule_finder()` and both now read one definition.
+2. ⚠️ **Columns come from the printed rules too, and there is no gap to fall back
+   on.** The body's columns are set hard against their rule: the left column's
+   last word box ends 57 OCR units — 0.4 of a text height — before the right
+   column's first begins, narrower than a word space. A candidate is a vertical
+   rule covering `COLUMN_SPAN` of the band's own TEXT (not of the band, which runs
+   rule to rule and includes white the rule need not reach into) that no word
+   crosses.
+3. ⚠️⚠️ **"No word crosses it" cannot be read literally.** The heading and the
+   closing line genuinely span the rule and must veto the split, and they overlap
+   it by 122.7, 50.6 and 35.8 px against a 14.2-px text height. But the body's own
+   boxes touch it by 1.9, 0.5 and 0.0 px, and on that half-pixel of box slop the
+   first version vetoed the real split. `COLUMN_CROSS` is 0.25 of the text height,
+   with two orders of magnitude of margin either side.
+4. ⚠️ **A rule within `BORDER_MAX_W` of the box's edges is the border.** Ayer's
+   Sarsaparilla (Augusta Chronicle, 27 January 1899) is one column inside a ruled
+   border whose right rule sits 9 px in; splitting there moved two words of the
+   border's own OCR noise to the end of the advertisement.
+
+⚠️ **The fifth is not about columns at all, and it improved three of the five
+ads.** `nameplate.rows_of()` groups words by their TOP against the FIRST word of
+the row, which is right across a page-wide band and wrong inside a narrow column:
+a word with no ascender sits lower, and "our" in the Tanner ad's right column fell
+101 units below its line's first word against a 70-unit tolerance, reading at the
+end of the line. `column_text()` gathers a line by each word's vertical CENTRE
+against the PREVIOUS word's — the drift is 19 units where the line spacing it must
+not cross is 460. On the J. H. Templeman piano advertisement (Summerville News,
+4 June 1903), a single-column ad, that alone restored "the best instrument for the
+amount **you can** afford to **pay**", "**so many** Pianos and Organs", "**are
+no** questionable instruments" and eight more; on Ayer's it restored "to-day I
+**am** perfectly healthy".
+
+**Measured on every recorded boxed advertisement** (the five of `tried["ad"]` that
+close a border): no word gained or lost on any, two unchanged, three read better,
+none worse. `corpus_read.py` in the session's scratchpad holds those assertions.
+`test_border_box.py` is 29 tests with `ColumnText`, on a fixture that now carries
+the whole shape: a full-width heading, a two-column body whose first right-hand
+word box overlaps the rule by 3 px, a short rule standing in a word gap, two words
+sitting low in their line, and a full-width closing line under its own rule.
+Verified by mutation, ten breakages, all ten caught by the suite.
+
+⛔ **What it does not do.** Nothing is printed at a band or column boundary: the
+reading is the same words in the right order, and the OCR text carries almost no
+punctuation of its own, so a period there would be ours and not the page's. If a
+listener should hear where a column ends, that is a separate decision.
+⛔ It is wired to the **boxed** path of the ad lane alone. The block path, the
+market lane and the classified lane are column-bounded by construction
+(`column_bounds`, `local_column`), so they have no columns to interleave; the
+nameplate band and the transcribed lanes are the model's reading, which is
+already in order.
