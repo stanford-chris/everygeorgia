@@ -125,12 +125,12 @@ CLIP = clips.clip                   # swapped by the tests; never call clips.cli
 # pages); ad and market draw from search hits on genre phrases, since their
 # material is on inner pages and the OCR of a display ad cannot say what it
 # is (see clips.py).
-# ⏸ "article" is HELD since the evening of 11 September 2026, his call ("Hold
-# the article lane until the ad test exists"): in the twelve-sample dry run
-# that evening both article picks were grocers' advertisements passing as
-# prose (Americus Times-Recorder 1904, Griffin Daily News 1888). Restore it
-# between "headline" and "ad" once clips.py can tell an ad from an article
-# (HANDOFF.md names the dateline test as the one to try).
+# ✅ "article" since 25 September 2026, his call ("Release the article lane
+# into the rotation"), held from 11 September until clips.py could tell an ad
+# from an article (both picks that evening were grocers' ads). The test is
+# clips.story_shape(): a dateline or wire credit, never merely no ad words;
+# with the headline and column fixes of the same day, 14 of 16 passing crops
+# in two 60-page samples were a single story, headline and first paragraph.
 # ✅ "cartoon" since 12 September 2026, his instruction ("Build the cartoon
 # lane, strips included"): a drawing on any page of a daily, found by the hole
 # it leaves in the OCR and sorted by the model (pictures.py). Title order,
@@ -143,7 +143,7 @@ CLIP = clips.clip                   # swapped by the tests; never call clips.cli
 # and cartoon, so the two OCR-only search lanes sit together.
 # HELD_LANES is the mechanism a lane waits in before it joins: `--lane <x>`
 # runs it, the rotation never reaches it. Empty now.
-LANES = ("nameplate", "headline", "ad", "market", "classified", "cartoon")
+LANES = ("nameplate", "headline", "article", "ad", "market", "classified", "cartoon")
 HELD_LANES = ()
 LANE_LABEL = {"nameplate": "Nameplate", "headline": "Headline", "article": "Article",
               "ad": "Advertisement", "market": "Market report", "cartoon": "Cartoon",

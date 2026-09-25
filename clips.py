@@ -564,7 +564,7 @@ def choose_page(lccn, date, ed, seq=None):
 ABOVE_GAP = 0.8          # of the item's first line height: the most paper between
 ABOVE_MIN, ABOVE_MAX = 0.5, 2.5   # it and a top line the OCR never read, and
 ABOVE_RULE = 0.85        # that line's own height; a row this dark is a rule, a stop
-ABOVE_PAPER = 0.03       # a row this clear is paper
+ABOVE_PAPER = 0.06       # a row this clear is paper (grey film reads 0.03: Atlanta Georgian and News, 28 November 1910)
 
 
 def _display_above(pi, box, inside, floor, words_all=None):

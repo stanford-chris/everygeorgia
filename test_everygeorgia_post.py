@@ -391,9 +391,9 @@ class Lanes(unittest.TestCase):
         s = {"posted": []}
         self.assertEqual(ep.next_lane(s), "nameplate")
         s["posted"] = [{"lane": "nameplate"}, {"lane": "headline"}]
+        self.assertEqual(ep.next_lane(s), "article")
+        s["posted"].append({"lane": "article", "dry": True})  # dry posts count: previews rotate
         self.assertEqual(ep.next_lane(s), "ad")
-        s["posted"].append({"lane": "ad", "dry": True})  # dry posts count: previews rotate
-        self.assertEqual(ep.next_lane(s), "market")
         s["posted"].append({"lane": "cartoon"})           # the last lane wraps
         self.assertEqual(ep.next_lane(s), "nameplate")
 
@@ -405,7 +405,7 @@ class Lanes(unittest.TestCase):
         self.assertEqual(ep.next_lane(s), "nameplate")
 
     def test_a_hand_run_held_lane_falls_back_to_the_post_count(self):
-        s = {"posted": [{"lane": "nameplate"}, {"lane": "article"}]}
+        s = {"posted": [{"lane": "nameplate"}, {"lane": "not-in-the-rotation"}]}
         self.assertEqual(ep.next_lane(s), ep.LANES[2])
 
     def test_cartoon_draws_from_the_credit_line_search_first_then_the_title_order(self):
@@ -443,15 +443,13 @@ class Lanes(unittest.TestCase):
         self.assertEqual(ep.eligible(issues, "cartoon"), {"a": [("1905-01-01", 1)]})
         self.assertEqual(ep.eligible(issues, "nameplate"), issues)   # no floor
 
-    def test_the_article_lane_is_held_on_his_instruction(self):
-        # 11 September 2026: "Hold the article lane until the ad test exists."
-        # Both article picks in that evening's twelve were grocers' ads. A hold
-        # is a decision pending, not a bug: restore it only when he says so, and
-        # move this test with it.
-        self.assertNotIn("article", ep.LANES)
+    def test_the_lanes_are_the_ones_he_released(self):
         # "cartoon" joined 12 September 2026 ("Build the cartoon lane, strips included");
-        # "classified" 20 September 2026 ("Release the lane into the rotation")
-        self.assertEqual(ep.LANES, ("nameplate", "headline", "ad", "market", "classified", "cartoon"))
+        # "classified" 20 September 2026 ("Release the lane into the rotation");
+        # "article" 25 September 2026 ("Release the article lane into the
+        # rotation"), held since 11 September until the ad test existed.
+        self.assertEqual(ep.LANES, ("nameplate", "headline", "article", "ad", "market",
+                                    "classified", "cartoon"))
 
     def test_the_classified_lane_is_a_search_lane_with_an_ocr_alt(self):
         # Built and held 20 September 2026 ("bring me the crops to look at

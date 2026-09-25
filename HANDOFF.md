@@ -439,7 +439,7 @@ cartoon whole across its sky also keeps them together; the model still calls
 it a comic strip and the crop is several strips, legible at 1200 wide. Not a
 slice and not a wrong kind.
 
-## ✅ The article lane's ad test, built 25 September 2026; the lane STAYS HELD
+## ✅ The article lane's ad test, built 25 September 2026 (lane released the same day, below)
 
 His ask: "Build the article test." `clips.story_shape()` requires a story's own
 shape in the transcription rather than the absence of an advertisement's words:
@@ -517,7 +517,13 @@ headline sample exactly one crop changed ("DRAGGED TO DEATH / UNDER CAR WHEELS"
 restored above "IS 5-YEAR-OLD BOY"); on the article sample five of five cut
 tops came back. The article lane's depth caps count from the first line the
 OCR read (`read_top`), or the added line ate the paragraph's allowance. ⚠️ Cost: roughly ten transcriptions
-before a postable article. **The lane is still held; releasing it is his call.**
+before a postable article. ✅ **RELEASED into the rotation the same evening, his
+call ("Release the article lane into the rotation")**: `LANES` is seven, article
+between headline and ad. The release dry run took "SUGAR TRUST WAS FILED ON
+MONDAY" (Atlanta Georgian and News, 28 November 1910, "New York, Nov. 28.—"),
+refusing a Royal Baking Powder ad and a Rosadalis patent-medicine ad on the way;
+its top line, "SUIT TO DISSOLVE", was found only once `ABOVE_PAPER` rose to
+0.06, since that film's paper reads 0.03 (no change on the 80-page sample).
 
 ⚠️ `test_clips.py` had its `unittest.main()` block mid-file, so everything
 appended after it ran under discovery only (71 tests direct, 95 by discovery):
