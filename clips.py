@@ -1067,6 +1067,8 @@ def ad_box(pi, coords, seed):
     return box
 
 
+COLUMN_END_MARKS = ".!?,;:\u201d\""   # column_text(): a column already ending
+                                      # in one of these takes no period
 COLUMN_SPAN = 0.95       # column_text(): a vertical rule is a column
                          # boundary for a band when it spans this much of
                          # the band's own TEXT -- from the top of its first
@@ -1134,6 +1136,13 @@ def column_text(pi, coords, box, is_rule=None):
     first word against a 70-unit tolerance, landing at the end of the line.
     The chain against the previous word absorbs that drift (19 units) while
     the line spacing it must not cross is 460.
+
+    ⚠️ **Each column ends with a period, his call of 25 September 2026**
+    ("Go with A"), because the reading ran "…to a fish hook Furniture One of
+    our stores…" across the Tanner ad's column break. The period is OUR mark,
+    not the page's (the OCR carries almost none), as transcribe.join_items()'s
+    is; it goes at every column and band break but not after the last, and
+    never after a column that already ends in punctuation.
 
     Returns the text; a box with no interior rule and no column rule still
     reads through this, since the line gathering is the better one."""
@@ -1203,9 +1212,12 @@ def column_text(pi, coords, box, is_rule=None):
                     lines[-1].append(w)
                 else:
                     lines.append([w])
-            for line in lines:
-                out.extend(w[4] for w in sorted(line, key=lambda w: w[0]))
-    return " ".join(" ".join(out).split())
+            piece = " ".join(" ".join(
+                w[4] for line in lines for w in sorted(line, key=lambda w: w[0])).split())
+            if piece:
+                out.append(piece)
+    ended = [p if p[-1] in COLUMN_END_MARKS else p + "." for p in out[:-1]]
+    return " ".join(ended + out[-1:])
 
 
 def clip_ad(lccn, date, ed=1, seq=1, phrase=None, log=print):

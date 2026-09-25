@@ -377,8 +377,8 @@ class ColumnText(unittest.TestCase):
                          else f"kitchen furniture at right {i}" for i in range(5))
         self.assertEqual(
             text,
-            "TANNER MERCANTILE COMPANY " + left + " " + right
-            + " TANNER MERCANTILE COMPANY FURNITURE")
+            "TANNER MERCANTILE COMPANY. " + left + ". " + right
+            + ". TANNER MERCANTILE COMPANY FURNITURE")
 
     def test_the_page_wide_reading_interleaves_them(self):
         # what ocr_text gives for the same words, and why this exists
@@ -389,13 +389,15 @@ class ColumnText(unittest.TestCase):
     def test_no_word_is_gained_or_lost(self):
         text, box = self._read("mercantile company")
         old = clips.ocr_text(nameplate.words_in(self.coords["words"], box))
-        self.assertEqual(sorted(old.split()), sorted(text.split()))
+        # the periods at column breaks are ours (see the next class); the
+        # words themselves must be the same words
+        self.assertEqual(sorted(old.split()), sorted(w.rstrip(".") for w in text.split()))
 
     def test_the_full_width_heading_is_not_split_at_the_column_rule(self):
         # the heading's own words cross the rule, which is what says it is
         # not a column boundary for that band
         text, _ = self._read("mercantile company")
-        self.assertTrue(text.startswith("TANNER MERCANTILE COMPANY for sale"))
+        self.assertTrue(text.startswith("TANNER MERCANTILE COMPANY. for sale"))
 
     def test_the_closing_line_is_not_split_either(self):
         text, _ = self._read("mercantile company")
@@ -443,6 +445,23 @@ class ColumnText(unittest.TestCase):
         text, _ = self._read("pressing club")
         self.assertEqual(
             text, " ".join(f"pressing club rates membership {i}" for i in range(5)))
+
+    def test_every_break_but_the_last_ends_in_a_period(self):
+        # his call, 25 September 2026: "…a fish hook Furniture One of our
+        # stores…" ran two columns together; the period goes at the column
+        # break AND the band breaks, and none after the closing line
+        text, _ = self._read("mercantile company")
+        self.assertIn("low prices 4. kitchen furniture at right 0", text)
+        self.assertIn("COMPANY. for sale", text)
+        self.assertIn("at right 4. TANNER", text)
+        self.assertFalse(text.endswith("."))
+
+    def test_a_column_already_ending_in_punctuation_takes_no_second_mark(self):
+        words = [(w[0], w[1], w[2], w[3], w[4] + "," if w[4] == "COMPANY" else w[4])
+                 for w in self.coords["words"]]
+        _, box = self._read("mercantile company")
+        text = clips.column_text(self.pi, dict(self.coords, words=words), box)
+        self.assertTrue(text.startswith("TANNER MERCANTILE COMPANY, for sale"))
 
     def test_a_box_too_thin_to_read_falls_back_to_ocr_text(self):
         box = (0, 0, 1, 1)
@@ -502,7 +521,7 @@ class ClipAdBoxed(unittest.TestCase):
         self.assertIn("kitchen furniture", r["words"].lower())     # the whole ad's words
         self.assertNotIn("pressing club", r["words"].lower())      # not the box above
         # and the words are the COLUMN reading, not the page-wide one
-        self.assertIn("low prices 4 kitchen furniture at right 0", r["words"])
+        self.assertIn("low prices 4. kitchen furniture at right 0", r["words"])
 
     def test_an_unboxed_ad_takes_the_block_with_the_headline_margin(self):
         from unittest import mock

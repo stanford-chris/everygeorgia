@@ -1505,8 +1505,8 @@ has two columns on every row. It now reads through:
 > wife Your credit is good · We are headquarters for anything you want Remember we
 > do more than meet competition TANNER MERCANTILE CO
 
-(the middle dots mark the band and column boundaries; nothing is printed there —
-see "What it does not do" below.)
+(the middle dots mark the band and column boundaries; nothing was printed there
+until 25 September, when each became a period — see below.)
 
 `clips.column_text(pi, coords, box)`, used by `clip_ad` on the boxed path only.
 Bands are the box's own interior rules, columns are the rules inside a band, and
@@ -1559,10 +1559,12 @@ word box overlaps the rule by 3 px, a short rule standing in a word gap, two wor
 sitting low in their line, and a full-width closing line under its own rule.
 Verified by mutation, ten breakages, all ten caught by the suite.
 
-⛔ **What it does not do.** Nothing is printed at a band or column boundary: the
-reading is the same words in the right order, and the OCR text carries almost no
-punctuation of its own, so a period there would be ours and not the page's. If a
-listener should hear where a column ends, that is a separate decision.
+✅ **A period now ends every column and band but the last, his call of 25 September
+2026** ("Go with A", over a period at band breaks only, which would have left the
+"…fish hook Furniture…" break he pointed at unmarked, and over leaving it bare). The
+period is ours, not the page's, as `transcribe.join_items()`'s is; a column already
+ending in `COLUMN_END_MARKS` takes none. The Tanner post was deleted and reposted a
+fourth time to carry it.
 ⛔ It is wired to the **boxed** path of the ad lane alone. The block path, the
 market lane and the classified lane are column-bounded by construction
 (`column_bounds`, `local_column`), so they have no columns to interleave; the
