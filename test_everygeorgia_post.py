@@ -773,6 +773,15 @@ class ApprovedReviewItems(unittest.TestCase):
         lccn, r = ep.choose_approved(s, "nameplate", log=self.log)
         self.assertEqual(lccn, "sn00000002")
 
+    def test_approved_items_alternate_with_the_ordinary_picks(self):
+        ep.decide("sn00000002:1880-01-01", "approve", log=self.log)
+        s = self.state([{"lccn": "sn00000001", "date": "1900-01-01", "lane": "nameplate",
+                         "pass": 1, "approved": True}])
+        self.assertEqual(ep.choose_approved(s, "nameplate", log=self.log), (None, None))
+        self.assertEqual(self.calls, [])
+        s["posted"].append({"lccn": "sn00000009", "date": "1901-01-01", "lane": "nameplate", "pass": 1})
+        self.assertEqual(ep.choose_approved(s, "nameplate", log=self.log)[0], "sn00000002")
+
     def test_refused_recut_is_dropped_not_posted(self):
         ep.decide("sn00000002:1880-01-01", "approve", log=self.log)
         ep.CLIP = lambda lane, l, d, e=1, seq=1, phrase=None: fake_result(l, d, gates.REFUSE)

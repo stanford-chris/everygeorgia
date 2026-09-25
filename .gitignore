@@ -10,3 +10,4 @@ data/post_state.json.tmp
 data/review.jsonl
 __pycache__/
 data/review/
+data/review_decisions.jsonl

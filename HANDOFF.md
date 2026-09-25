@@ -461,7 +461,7 @@ mid-file too (48 tests direct, 50 by discovery); it is last now.
 "All but no. 4 can be added to the pool to post. Reject no. 4." `--approve
 LCCN:DATE[:LANE]` / `--reject` append to `data/review_decisions.jsonl` (gitignored;
 the last decision for an item wins; only a LIVE review line can be decided).
-`pick()` offers approved items first in their lane's turn (`choose_approved()`),
+`pick()` offers an approved item in EVERY OTHER turn of its lane (`choose_approved()`; his call the same morning, "alternate them with the normal picks", so nine take about two months),
 at most `APPROVED_TRIES_PER_RUN` (2) re-cuts a run, skipping one whose title family
 was that lane's last post, so the four Savannah Morning News nameplates interleave
 with other papers. ⚠️ **The item is RE-CUT, and dropped (`state["approved_failed"]`)
@@ -470,7 +470,7 @@ by the words in the mail, since the band is a model transcription. Approval cove
 the vocabulary hold, never rights, era or geometry. First decisions: nine nameplates
 approved, the Savannah Morning News of 8 March 1903 rejected. A dry run the same
 morning re-cut the Morning News of 20 June 1899 onto the approved box.
-`ApprovedReviewItems` in `test_everygeorgia_post.py` (10), five mutations caught.
+`ApprovedReviewItems` in `test_everygeorgia_post.py` (11), six mutations caught.
 
 ## ✅ The article lane's ad test, built 25 September 2026 (lane released the same day, below)
 

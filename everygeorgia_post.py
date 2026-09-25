@@ -817,11 +817,17 @@ def approved_pending(state, lane):
 
 
 def choose_approved(state, lane, log=print):
-    """An approved item for this lane's turn, or (None, None). Skips one from
+    """An approved item for this lane's turn, or (None, None). Every other
+    turn only: none right after an approved post. Skips one from
     the same title family as this lane's last post, so a queue holding four
     Savannah Morning News nameplates does not post them back to back; the
     turn then goes to the ordinary selection and the item waits."""
     mine = [p for p in state.get("posted", []) if p.get("lane") == lane]
+    # ⚠️ Approved items ALTERNATE with the ordinary picks, his call the same
+    # morning ("alternate them with the normal picks"): if this lane's last
+    # post was an approved item, this turn is the title order's.
+    if mine and mine[-1].get("approved"):
+        return None, None
     last = family(mine[-1]["lccn"]) if mine else None
     tries = 0
     for d in approved_pending(state, lane):
@@ -1211,7 +1217,8 @@ def _run(args, state, sources):
             sys.exit(f"post is {len(text)} characters")
         if args.dry_run:
             state.setdefault("posted", []).append(
-                {"lccn": lccn, "date": r["date"], "pass": state["pass"], "lane": r["lane"], "dry": True})
+                {"lccn": lccn, "date": r["date"], "pass": state["pass"], "lane": r["lane"], "dry": True,
+                 **({"approved": True} if r.get("approved") else {})})
             if args.save:
                 os.makedirs(args.save, exist_ok=True)
                 stem = os.path.join(args.save, f"{n + 1:02d}_{r['lane']}_{lccn}_{r['date']}")
