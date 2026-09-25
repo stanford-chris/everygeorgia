@@ -697,5 +697,107 @@ class ReviewMail(unittest.TestCase):
 
 # ⚠️ Keep this LAST: a class defined below it never runs when the file is
 # run directly (25 September 2026, the same trap test_clips.py had).
+
+class ApprovedReviewItems(unittest.TestCase):
+    """26 September 2026, his call on the first review mail: approved items
+    post in their lane's turn, a rejected one never does, a re-cut that is
+    refused or lands elsewhere is dropped, and one title does not post twice
+    running."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self._saved = ep.STATE_FILE, ep.REVIEW_FILE, ep.DECISIONS_FILE, ep.CLIP
+        ep.REVIEW_FILE = os.path.join(self.tmp.name, "review.jsonl")
+        ep.DECISIONS_FILE = os.path.join(self.tmp.name, "review_decisions.jsonl")
+        with open(ep.REVIEW_FILE, "w") as f:
+            for lccn, date, dry in (("sn00000001", "1900-01-01", False),
+                                    ("sn00000001", "1900-02-01", False),
+                                    ("sn00000002", "1880-01-01", False),
+                                    ("sn00000003", "1890-01-01", True)):
+                f.write(json.dumps({"lccn": lccn, "date": date, "edition": 1, "lane": "nameplate",
+                                    "url": f"https://x/lccn/{lccn}/{date}/ed-1/seq-1/",
+                                    "image_box": [0, 0, 100, 10], "words": "APPROVED WORDS",
+                                    "dry": dry, "at": "t"}) + "\n")
+        self.calls = []
+        def clip(lane, lccn, date, ed=1, seq=1, phrase=None):
+            self.calls.append((lccn, date))
+            r = fake_result(lccn, date, gates.REVIEW, page_hits={"negro"})
+            r["words"] = "RE-TRANSCRIBED"
+            return r
+        ep.CLIP = clip
+        self.log = lambda *a: None
+
+    def tearDown(self):
+        ep.STATE_FILE, ep.REVIEW_FILE, ep.DECISIONS_FILE, ep.CLIP = self._saved
+        self.tmp.cleanup()
+
+    def state(self, posted=()):
+        return {"order": [], "pass": 1, "posted": list(posted), "tried": {}}
+
+    def test_approved_item_posts_with_the_words_he_read(self):
+        ep.decide("sn00000002:1880-01-01", "approve", log=self.log)
+        lccn, r = ep.choose_approved(self.state(), "nameplate", log=self.log)
+        self.assertEqual((lccn, r["date"]), ("sn00000002", "1880-01-01"))
+        self.assertTrue(r["approved"])
+        self.assertEqual(r["words"], "APPROVED WORDS")
+
+    def test_rejected_and_undecided_items_never_post(self):
+        ep.decide("sn00000002:1880-01-01", "reject", log=self.log)
+        self.assertEqual(ep.approved_pending(self.state(), "nameplate"), [])
+        self.assertEqual(ep.choose_approved(self.state(), "nameplate", log=self.log), (None, None))
+        self.assertEqual(self.calls, [])
+
+    def test_last_decision_wins(self):
+        ep.decide("sn00000002:1880-01-01", "approve", log=self.log)
+        ep.decide("sn00000002:1880-01-01", "reject", log=self.log)
+        self.assertEqual(ep.approved_pending(self.state(), "nameplate"), [])
+
+    def test_a_dry_runs_line_cannot_be_approved(self):
+        self.assertIsNone(ep.decide("sn00000003:1890-01-01", "approve", log=self.log))
+        self.assertFalse(os.path.exists(ep.DECISIONS_FILE))
+
+    def test_posted_item_is_not_offered_again(self):
+        ep.decide("sn00000002:1880-01-01", "approve", log=self.log)
+        s = self.state([{"lccn": "sn00000002", "date": "1880-01-01", "lane": "nameplate", "pass": 1}])
+        self.assertEqual(ep.approved_pending(s, "nameplate"), [])
+
+    def test_other_lanes_do_not_take_a_nameplate_approval(self):
+        ep.decide("sn00000002:1880-01-01", "approve", log=self.log)
+        self.assertEqual(ep.choose_approved(self.state(), "headline", log=self.log), (None, None))
+
+    def test_same_title_does_not_post_twice_running(self):
+        ep.decide("sn00000001:1900-01-01", "approve", log=self.log)
+        ep.decide("sn00000001:1900-02-01", "approve", log=self.log)
+        ep.decide("sn00000002:1880-01-01", "approve", log=self.log)
+        s = self.state([{"lccn": "sn00000001", "date": "1900-01-01", "lane": "nameplate", "pass": 1}])
+        lccn, r = ep.choose_approved(s, "nameplate", log=self.log)
+        self.assertEqual(lccn, "sn00000002")
+
+    def test_refused_recut_is_dropped_not_posted(self):
+        ep.decide("sn00000002:1880-01-01", "approve", log=self.log)
+        ep.CLIP = lambda lane, l, d, e=1, seq=1, phrase=None: fake_result(l, d, gates.REFUSE)
+        s = self.state()
+        self.assertEqual(ep.choose_approved(s, "nameplate", log=self.log), (None, None))
+        self.assertIn("sn00000002:1880-01-01:nameplate", s["approved_failed"])
+        self.assertEqual(ep.approved_pending(s, "nameplate"), [])
+
+    def test_recut_on_a_different_box_is_dropped(self):
+        ep.decide("sn00000002:1880-01-01", "approve", log=self.log)
+        def clip(lane, l, d, e=1, seq=1, phrase=None):
+            r = fake_result(l, d, gates.REVIEW, page_hits={"negro"})
+            r["image_box"] = (0, 0, 100, 99)
+            return r
+        ep.CLIP = clip
+        s = self.state()
+        self.assertEqual(ep.choose_approved(s, "nameplate", log=self.log), (None, None))
+        self.assertIn("sn00000002:1880-01-01:nameplate", s["approved_failed"])
+
+    def test_pick_takes_an_approved_item_before_the_title_order(self):
+        ep.decide("sn00000002:1880-01-01", "approve", log=self.log)
+        s = self.state()
+        s["tried"]["nameplate"] = {}
+        lccn, r = ep.pick(s, {"nameplate": {"sn00000009": [("1901-01-01", 1)]}}, "nameplate", log=self.log)
+        self.assertEqual(lccn, "sn00000002")
+
 if __name__ == "__main__":
     unittest.main()

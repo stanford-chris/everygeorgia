@@ -456,6 +456,22 @@ before this date have no `"dry"` or `"image"` field. `ReviewMail` in
 `test_everygeorgia_post.py`, five mutations caught. That file's `unittest.main()` was
 mid-file too (48 tests direct, 50 by discovery); it is last now.
 
+## ✅ Approving a review item, 26 September 2026 (his call on the first review mail)
+
+"All but no. 4 can be added to the pool to post. Reject no. 4." `--approve
+LCCN:DATE[:LANE]` / `--reject` append to `data/review_decisions.jsonl` (gitignored;
+the last decision for an item wins; only a LIVE review line can be decided).
+`pick()` offers approved items first in their lane's turn (`choose_approved()`),
+at most `APPROVED_TRIES_PER_RUN` (2) re-cuts a run, skipping one whose title family
+was that lane's last post, so the four Savannah Morning News nameplates interleave
+with other papers. ⚠️ **The item is RE-CUT, and dropped (`state["approved_failed"]`)
+if the re-cut is REFUSED or lands on a different `image_box`**; its words are replaced
+by the words in the mail, since the band is a model transcription. Approval covers
+the vocabulary hold, never rights, era or geometry. First decisions: nine nameplates
+approved, the Savannah Morning News of 8 March 1903 rejected. A dry run the same
+morning re-cut the Morning News of 20 June 1899 onto the approved box.
+`ApprovedReviewItems` in `test_everygeorgia_post.py` (10), five mutations caught.
+
 ## ✅ The article lane's ad test, built 25 September 2026 (lane released the same day, below)
 
 His ask: "Build the article test." `clips.story_shape()` requires a story's own

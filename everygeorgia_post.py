@@ -61,6 +61,8 @@ Usage:
     python3 everygeorgia_post.py --setup-profile # name, bio, avatar
     python3 everygeorgia_post.py --launch        # the six-post thread, pinned
     python3 everygeorgia_post.py --status
+    python3 everygeorgia_post.py --approve LCCN:DATE   # a held review item may post
+    python3 everygeorgia_post.py --reject LCCN:DATE    # recorded, never posts
 """
 import argparse
 import collections
@@ -90,6 +92,8 @@ SCRIPTS = os.path.join(os.path.expanduser("~"), "Scripts")
 DATA = os.path.join(HERE, "data")
 STATE_FILE = os.path.join(DATA, "post_state.json")
 REVIEW_FILE = os.path.join(DATA, "review.jsonl")
+DECISIONS_FILE = os.path.join(DATA, "review_decisions.jsonl")
+APPROVED_TRIES_PER_RUN = 2      # approved items re-cut per run, at most
 # ⚠️ Held crops live in "review/" BESIDE whichever REVIEW_FILE is in use, never
 # a path of their own: a separate constant let the test suite, which redirects
 # REVIEW_FILE only, write 24 fake crops into the real data/review/ on 25 September.
@@ -731,6 +735,124 @@ def review_mail(offset, send=None):
         os.unlink(html_path)
 
 
+
+# ------------------------------------------------------- review decisions
+
+# ✅ Since 26 September 2026, his call on the first review mail ("all but
+# no. 4 can be added to the pool to post. reject no. 4"). A REVIEW item is
+# never posted by the ordinary path; a person's APPROVAL is what lets one
+# through. Decisions are appended to data/review_decisions.jsonl (the last
+# decision for an item wins) and review.jsonl is never rewritten.
+# ⚠️ An approved item is RE-CUT, not posted from the saved JPEG, because the
+# alt needs the clip's fields. Two guards keep the post the thing he saw:
+# the re-cut must land on the SAME image_box, and its words are replaced by
+# the words he read in the mail (the band is a model transcription and can
+# come back differently). A REFUSE on the re-cut (rights, era, geometry) is
+# never overridden: approval covers the vocabulary hold and nothing else.
+
+def _item_key(lccn, date, lane):
+    return f"{lccn}:{date}:{lane or 'nameplate'}"
+
+
+def decide(spec, decision, log=print):
+    """Record `decision` ("approve"/"reject") for the newest LIVE review line
+    matching spec "LCCN:DATE[:LANE]". Returns the decision line, or None."""
+    parts = spec.split(":")
+    if len(parts) not in (2, 3):
+        raise ValueError(f"{spec!r}: expected LCCN:DATE or LCCN:DATE:LANE")
+    lccn, date = parts[0], parts[1]
+    lane = parts[2] if len(parts) == 3 else None
+    match = None
+    try:
+        with open(REVIEW_FILE) as f:
+            for ln in f:
+                try:
+                    it = json.loads(ln)
+                except ValueError:
+                    continue
+                if it.get("dry") is not False:
+                    continue             # a preview's line, or one from before 25 Sep
+                if it["lccn"] == lccn and it["date"] == date and (lane is None or it.get("lane") == lane):
+                    match = it
+    except OSError:
+        pass
+    if match is None:
+        log(f"  {spec}: no live review line matches; nothing recorded")
+        return None
+    line = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "decision": decision, "lccn": lccn, "date": date,
+            "edition": match.get("edition", 1), "lane": match.get("lane") or "nameplate",
+            "seq": int(match["url"].rstrip("/").rsplit("-", 1)[-1]) if match.get("url") else 1,
+            "image_box": match.get("image_box"), "words": match.get("words"),
+            "review_at": match.get("at")}
+    os.makedirs(DATA, exist_ok=True)
+    with open(DECISIONS_FILE, "a") as f:
+        f.write(json.dumps(line, ensure_ascii=False) + "\n")
+    log(f"  {decision.rstrip('e')}ed: {lccn} {date} ({line['lane']})")
+    return line
+
+
+def approved_pending(state, lane):
+    """Approved items for `lane` not yet posted and not given up on, in the
+    order they were approved."""
+    latest = {}
+    try:
+        with open(DECISIONS_FILE) as f:
+            for ln in f:
+                try:
+                    d = json.loads(ln)
+                except ValueError:
+                    continue
+                k = _item_key(d["lccn"], d["date"], d.get("lane"))
+                latest.pop(k, None)          # re-decided: moves to the back
+                latest[k] = d
+    except OSError:
+        return []
+    # a dry run's own picks count too, so `--dry-run --count 3` previews three
+    done = {_item_key(p["lccn"], p["date"], p.get("lane")) for p in state.get("posted", [])}
+    failed = set(state.get("approved_failed", {}))
+    return [d for k, d in latest.items()
+            if d["decision"] == "approve" and (d.get("lane") or "nameplate") == lane
+            and k not in done and k not in failed]
+
+
+def choose_approved(state, lane, log=print):
+    """An approved item for this lane's turn, or (None, None). Skips one from
+    the same title family as this lane's last post, so a queue holding four
+    Savannah Morning News nameplates does not post them back to back; the
+    turn then goes to the ordinary selection and the item waits."""
+    mine = [p for p in state.get("posted", []) if p.get("lane") == lane]
+    last = family(mine[-1]["lccn"]) if mine else None
+    tries = 0
+    for d in approved_pending(state, lane):
+        if family(d["lccn"]) == last:
+            continue
+        if tries >= APPROVED_TRIES_PER_RUN:
+            break
+        tries += 1
+        k = _item_key(d["lccn"], d["date"], lane)
+        try:
+            r = CLIP(lane, d["lccn"], d["date"], d.get("edition", 1), d.get("seq", 1))
+        except (npc.Refused, ghn_api.FetchError, ValueError) as e:
+            log(f"  approved {lane} {d['lccn']} {d['date']}: re-cut failed, {e}")
+            continue                       # transient: tried again next run
+        why = None
+        if r["verdict"].outcome == "REFUSE":      # gates.REFUSE
+            why = f"refused on the re-cut: {'; '.join(r['verdict'].reasons)}"
+        elif d.get("image_box") and list(r.get("image_box") or []) != list(d["image_box"]):
+            why = f"re-cut landed on {r.get('image_box')}, not the approved {d['image_box']}"
+        if why:
+            state.setdefault("approved_failed", {})[k] = why
+            log(f"  approved {lane} {d['lccn']} {d['date']}: dropped, {why}")
+            continue
+        if d.get("words"):
+            r["words"] = d["words"]
+        r["approved"] = True
+        log(f"  approved {lane} {d['lccn']} {d['date']}: posting the item he approved")
+        return d["lccn"], r
+    return None, None
+
+
 def choose(state, issues, log=print, lane="nameplate", full_titles=None):
     """Walk the owed titles and their dates until one clip PASSES. Returns
     (lccn, result) or (None, None) -- the REAL lccn a passing clip was
@@ -846,6 +968,9 @@ def pick(state, sources, lane, log=print):
     # `sources` dict with no "nameplate" key at all, and `choose()`/
     # `next_titles()` already fall back to the lane's own set when
     # `full_titles` is None.
+    lccn, r = choose_approved(state, lane, log=log)
+    if r is not None:
+        return lccn, r
     if lane in SEARCH_LANES:
         return choose_search(state, sources[lane], lane, log=log)
     if lane == "cartoon":
@@ -1008,7 +1133,18 @@ def main():
     ap.add_argument("--setup-profile", action="store_true", help="write name, bio and avatar")
     ap.add_argument("--launch", action="store_true", help="post the pinned thread (once)")
     ap.add_argument("--status", action="store_true")
+    ap.add_argument("--approve", metavar="LCCN:DATE[:LANE]", action="append", default=[],
+                    help="let a held review item post in its lane's next turns")
+    ap.add_argument("--reject", metavar="LCCN:DATE[:LANE]", action="append", default=[],
+                    help="record that a held review item is never to post")
     args = ap.parse_args()
+
+    if args.approve or args.reject:
+        for spec in args.approve:
+            decide(spec, "approve")
+        for spec in args.reject:
+            decide(spec, "reject")
+        return
 
     state = load_state()
     if args.status:
@@ -1095,6 +1231,7 @@ def _run(args, state, sources):
             "lccn": lccn, "date": r["date"], "edition": r["edition"],
             "lane": r["lane"], "seq": r.get("seq", 1),
             "pass": state["pass"], "uri": res.uri,
+            **({"approved": True} if r.get("approved") else {}),
             "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         })
         save_state(state)
