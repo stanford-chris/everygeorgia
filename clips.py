@@ -669,6 +669,55 @@ def _refuse_own_title(words, meta, what):
         raise npc.Refused(f"the {what} crop carries a dateline: {words[:80]!r}")
 
 
+# ⚠️ The article lane's ad test, 25 September 2026, his ask ("Build the article
+# test"). An article must carry a story's own shape, never merely lack an
+# advertisement's words: the Pearline soap copy and the grocers' cards that
+# held the lane on 11 September sell nothing by name until their last line.
+# A wire or out-of-town story opens its first paragraph with a dateline
+# ("Jackson, Oct. 8—", "WASHINGTON, Dec. 8.—", "BERNE (Via Paris), Nov.
+# 24.—") or a wire credit ("By Associated Press"); no advertisement does.
+# Measured on 30 front pages of dailies that day: the crops that reached a
+# transcription were four advertisements (Poole's groceries 1904, G. W.
+# Clark's cabbage and picnic goods 1888 twice, Royal baking powder 1903), a
+# headline with its decks and no paragraph, a crop spanning three stories,
+# and two stories. Only the two stories carry a dateline.
+# ⚠️ The cost is every LOCAL story, which has none: "The mayor said
+# yesterday" is refused. That is the price of positive evidence, and it is
+# his to change, not a bug.
+# ⚠️ TWO dated datelines is two stories in one crop (Atlanta Georgian, 27
+# November 1918: BERNE and NEW YORK, with a third headline between), so it
+# is refused too.
+# ⚠️ A place and a dash with no date ("Washington—After consideration")
+# counts only when the text carries NO advertising word, since "Remember—We
+# have the goods" has the same shape.
+_MON = (r"(?:Jan|Feb|Mar|Apr|Aug|Sept?|Oct|Nov|Dec)\.?"
+        r"|(?:January|February|March|April|May|June|July|August|September|October|November|December)")
+_DASH = r"\s*[.,]?\s*(?:[—–]|--?)"
+_PLACE = r"[A-Z][A-Za-z'’.]+(?:[ -][A-Z][A-Za-z'’.]+){0,2}"
+STORY_DATED = re.compile(rf"\b{_PLACE}(?:\s*\([^)]{{2,30}}\))?,(?:\s*[A-Z][A-Za-z.]{{1,12}},)?"
+                         rf"\s*(?:{_MON})\s*\d{{1,2}}{_DASH}")
+# "JACKSON, Ky.—" (Atlanta Georgian 1909): a place and its state, no date
+STORY_STATE = re.compile(rf"\b{_PLACE},\s*[A-Z][a-z]{{1,5}}\.?{_DASH}")
+STORY_BARE = re.compile(rf"(?:^|[.!?”\"]\s+){_PLACE}{_DASH}\s*[A-Z“\"]")
+STORY_WIRE = re.compile(r"\b(?:By|\(By)\s+(?:the\s+)?(?:Associated|United)\s+Press\b"
+                        r"|\bInternational News Service\b|\bSpecial\s+(?:to|Dispatch)\b|\(Special\.?\)",
+                        re.IGNORECASE)
+
+
+def story_shape(words):
+    """None if the transcription opens a story the way a news story does,
+    else the reason it does not. See the comment above STORY_DATED."""
+    dated = STORY_DATED.findall(words or "")
+    dated += [m for m in STORY_STATE.findall(words or "") if not any(m in d or d in m for d in dated)]
+    if len(dated) > 1:
+        return f"two datelines, two stories in one crop: {dated}"
+    if dated or STORY_WIRE.search(words or ""):
+        return None
+    if STORY_BARE.search(words or "") and not ad_markers(words):
+        return None
+    return "no dateline or wire credit: nothing says this is a story"
+
+
 def clip_headline(lccn, date, ed=1, seq=None, log=print):
     meta = _meta(lccn, date, "headline")
     page = choose_page(lccn, date, ed, seq)
@@ -700,6 +749,14 @@ def clip_headline(lccn, date, ed=1, seq=None, log=print):
 
 ARTICLE_LINES = 10       # lines of the paragraph, at most (14 ran a fifth of the page)
 ARTICLE_MAX_FRAC = 0.22
+# ⚠️ 25 September 2026: a crop wider than this is a banner stack or two
+# stories, never a headline and its first paragraph. Measured over the 24
+# crops of that day's two samples: one story runs 0.06 to 0.23 of the page's
+# width; the Cordele Dispatch's banner stack of 16 January 1924 was 0.68 and
+# reached POSTABLE (a dateline from the story under it), the Griffin Daily
+# News's ad-and-story 0.59, the Augusta Herald's two stories and a photograph
+# 0.40. Checked in the geometry, so it costs no model call.
+ARTICLE_MAX_WIDTH = 0.30
 TIGHT_GAP = 0.6          # lines closer than this (in body heights) are one paragraph
 INDENT = 1.2             # a line starting this far right of the others begins a new one
 
@@ -755,6 +812,9 @@ def _article_span(c, page, diagnostics=None):
     ch = c["height"]
     if hbox[3] > HEADLINE_MAX_FRAC * ch:
         raise npc.Refused("headline item too deep")
+    if hbox[2] > ARTICLE_MAX_WIDTH * c["width"]:
+        raise npc.Refused(f"article item too wide ({hbox[2] / c['width']:.0%} of the page): "
+                          "a banner stack or more than one story")
     med = nameplate.page_median_height(c["words"]) or 1
     x0, x1 = hbox[0], hbox[0] + hbox[2]
     hbot = hbox[1] + hbox[3]
@@ -835,6 +895,9 @@ def clip_article(lccn, date, ed=1, seq=None, log=print):
     # "orders" and was refused as an advertisement at two.
     hits = _check_transcription(words, "article", ad_limit=4)
     _refuse_own_title(words, meta, "article")
+    shape = story_shape(words)
+    if shape:
+        raise npc.Refused(f"article: {shape}: {words[:80]!r}")
     if hits:
         verdict = _review(verdict, f"the transcribed article carries {sorted(hits)}")
     return _result("article", page, meta, date, ed, box, image_box, data,

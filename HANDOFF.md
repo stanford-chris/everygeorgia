@@ -439,6 +439,36 @@ cartoon whole across its sky also keeps them together; the model still calls
 it a comic strip and the crop is several strips, legible at 1200 wide. Not a
 slice and not a wrong kind.
 
+## ✅ The article lane's ad test, built 25 September 2026; the lane STAYS HELD
+
+His ask: "Build the article test." `clips.story_shape()` requires a story's own
+shape in the transcription rather than the absence of an advertisement's words:
+a dated dateline ("Jackson, Oct. 8—", "BERNE (Via Paris), Nov. 24.—"), a place
+and its state ("JACKSON, Ky.—"), a wire credit ("By Associated Press"), or a
+bare place and dash ("Washington—After") when the text carries no advertising
+word. Two datelines is two stories and is refused. `ARTICLE_MAX_WIDTH` (0.30 of
+the page) refuses banner stacks and multi-story crops in the geometry, before a
+model call. `StoryShape` in `test_clips.py`, verified by mutation.
+
+Measured on 90 front pages of dailies (two seeded samples, the 11 September ads
+among them):
+- **Every advertisement that reached a transcription was refused: 8 of 8**
+  (Poole's groceries 1904, G. W. Clark 1888 twice, Royal baking powder 1881 and
+  1903, a balsam 1880, J. A. Kirven 1890, John Blackmar real estate 1880).
+- **The cost is every local story**, which has no dateline: ten were refused
+  in the second sample ("WILL HOLD MARKET DAY HERE TUESDAY", "PLANS COMPLETED
+  BY CHAMBER OF COMMERCE"...). That is the price of positive evidence.
+- **The lane's geometry is the larger problem, and why it stays held**: 59 of
+  90 pages never reached a transcription (no headline item, no paragraph, a
+  paragraph under three lines), and of the four that pass the test, two crop
+  the headline short on the right (Macon Telegraph 8 October 1898, "SENDS
+  APPEA"; Atlanta Georgian 3 May 1909, "ALL ENDE"). The one clean crop was the
+  Macon Telegraph of 3 November 1898, "THIRD GEORGIA GOING TO CUBA", and it
+  is REVIEW on the page's vocabulary. Postable, well-framed articles: 0 of 90.
+- Model commentary ("I'll transcribe the fully legible text visible...")
+  reached the Cordele banner-stack transcription past `transcribe.py`'s guard;
+  the width cap refuses that crop now, but the guard missed the shape.
+
 ## ⏳ Inside pages for headlines and articles: wanted, not yet possible
 
 Chris, 11 September 2026: "I'd eventually like to include inside pages."

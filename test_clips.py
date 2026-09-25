@@ -1733,3 +1733,66 @@ class ClassifiedReview(unittest.TestCase):
         row = [(0, 0, 20, 12, "TO"), (30, 0, 40, 12, "rentT")]
         self.assertEqual(clips.heading_text(row), "TO RENT")
         self.assertEqual(clips.heading_text([(0, 0, 40, 12, "Lost,")]), "LOST")
+
+
+class StoryShape(unittest.TestCase):
+    """25 September 2026: the article lane's ad test. The transcriptions are
+    the ones the lane produced that day on real front pages."""
+
+    def test_the_advertisements_that_held_the_lane_are_refused(self):
+        for words in (
+            # Americus Times-Recorder, 13 July 1904: the first of the two
+            "NOT TOO HOT TO EAT! And Poole’s is the Place, as usual, to get what you "
+            "want. EVERYTHING GOOD TO EAT FRESHEST AND BEST FLOUR, All the Best Brands.",
+            # Griffin Daily News, 9 March 1888: the second, over column fragments
+            "NEW orida Cabb To-day W. CLARK & S am told, that a good led for him, "
+            "and my in­ at the old sailor does not oday to whom he is in­ dness.",
+            # Americus Times-Recorder, 16 May 1903: an ad, fragments, model talk
+            "SURP” confirmed - it’s ”SURP” cut off. BAKING POWDER Absolutely Pure "
+            "E IS NO SUBST VAY STRIKE. men Discuf- ontractors.",
+            "Fancy Groceries. Remember—We have the goods and you fix the price.",
+        ):
+            self.assertIsNotNone(clips.story_shape(words), words[:40])
+
+    def test_a_headline_with_decks_and_no_paragraph_is_refused(self):
+        self.assertIsNotNone(clips.story_shape(
+            "OVER ONE HUNDRED DROWNED British Steamer Mohegan Foundered Off the "
+            "Coast this Morning and Only a Very Few Were Saved. HEROIC ACTS"))
+
+    def test_two_datelines_are_two_stories(self):
+        reason = clips.story_shape(
+            "By ROBERT S. DOMAN BERNE (Via Paris), Nov. 24.—Three hundred American "
+            "officers arrived. (By International News Service.) NEW YORK, Nov. 24.—The trial")
+        self.assertIn("two datelines", reason)
+
+    def test_datelines_and_wire_credits_pass(self):
+        for words in (
+            "SITUATION GETTING WORSE By Associated Press. Jackson, Oct. 8—The yellow fever",
+            "SEC’Y BRYAN OPTIMISTIC But Sec’y of State is Unwilling. Washington—After "
+            "consideration of the Japanese situation today the house committee declined",
+            "FRENCH COUNTER IS REPORT HUNTSVILLE, Ala., April 26.—The",
+            "BIG FIRE SAVANNAH, Ga., Sept. 3.—A fire broke out",
+            "Atlanta, Ga., May 5 -- The legislature met",
+            "BREATHITT CASES ALL ENDE JACKSON, Ky.— charged with the as John",
+        ):
+            self.assertIsNone(clips.story_shape(words), words[:40])
+
+    def test_a_bare_place_and_dash_needs_no_advertising_words(self):
+        self.assertIsNone(clips.story_shape("London.—The king opened parliament today."))
+        self.assertIsNotNone(clips.story_shape("London.—The best goods at the lowest prices."))
+
+    def test_a_local_story_without_a_dateline_is_refused_by_design(self):
+        self.assertIsNotNone(clips.story_shape(
+            "The mayor said yesterday that the council would meet on Thursday."))
+
+    def test_clip_article_applies_it(self):
+        import inspect
+        self.assertIn("story_shape(words)", inspect.getsource(clips.clip_article))
+
+    def test_a_place_and_state_is_one_dateline_not_two(self):
+        self.assertIsNone(clips.story_shape("Jackson, Miss., Oct. 8.—The yellow fever"))
+
+    def test_the_article_width_cap_sits_between_one_story_and_a_banner_stack(self):
+        self.assertTrue(0.23 < clips.ARTICLE_MAX_WIDTH < 0.40)
+        import inspect
+        self.assertIn("ARTICLE_MAX_WIDTH", inspect.getsource(clips._article_span))
