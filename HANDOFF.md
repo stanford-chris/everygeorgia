@@ -505,9 +505,18 @@ are a single story, headline and first paragraph (the Titanic's "1,595 IS FINAL
 TOLL OF DEATH", "GERMAN LOSSES SIX MILLION MEN", "THIRD GEORGIA GOING TO
 CUBA"); one is two stories (1917-07-20, "LAND TITLE LAW" under another's foot);
 one takes a boxed sidebar as the first paragraph (1909-03-03, "HEAVY RAIN AT
-CAPITAL" under "ROOSEVELT REGIME"). ⚠️ **Still open**: a headline whose TOP line
-is set larger starts below it ("WILLIE WHITLA" cut above "IS RESTORED TO HIS
-FATHER"): `box_with_deck` walks down only. ⚠️ Cost: roughly ten transcriptions
+CAPITAL" under "ROOSEVELT REGIME"). ✅ **Fixed the same day, his ask ("Do No. 1")**: a
+headline whose top line the OCR never read ("WILLIE WHITLA" above "IS RESTORED
+TO HIS FATHER") started below it. `clips._display_above()` walks up from the
+PIXELS, up to two lines: a gap of at most `ABOVE_GAP` of a line, a band of
+lettering `ABOVE_MIN`-`ABOVE_MAX` lines tall, stopping at a rule row
+(`ABOVE_RULE`) or the nameplate floor, and refusing a strip where the OCR read
+small type or a dateline (it took "GRIFFIN DAILY NEWS" and the Chronicle's
+"VOL. 91 ... ATHENS, GA., TUESDAY" row until it did). Both lanes: on the 80-page
+headline sample exactly one crop changed ("DRAGGED TO DEATH / UNDER CAR WHEELS"
+restored above "IS 5-YEAR-OLD BOY"); on the article sample five of five cut
+tops came back. The article lane's depth caps count from the first line the
+OCR read (`read_top`), or the added line ate the paragraph's allowance. ⚠️ Cost: roughly ten transcriptions
 before a postable article. **The lane is still held; releasing it is his call.**
 
 ⚠️ `test_clips.py` had its `unittest.main()` block mid-file, so everything

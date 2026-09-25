@@ -561,6 +561,67 @@ def choose_page(lccn, date, ed, seq=None):
     return pages[rng.randint(2, min(len(pages), INNER_MAX_SEQ)) - 1]
 
 
+ABOVE_GAP = 0.8          # of the item's first line height: the most paper between
+ABOVE_MIN, ABOVE_MAX = 0.5, 2.5   # it and a top line the OCR never read, and
+ABOVE_RULE = 0.85        # that line's own height; a row this dark is a rule, a stop
+ABOVE_PAPER = 0.03       # a row this clear is paper
+
+
+def _display_above(pi, box, inside, floor, words_all=None):
+    """`box` grown UP to a line of display type directly above it that the
+    OCR never read, measured from the pixels.
+
+    ⚠️ 25 September 2026. Big display type is what OCR reads worst, and a
+    headline whose top line it missed started below it: "WILLIE WHITLA" above
+    "IS RESTORED TO HIS FATHER", "WARSHIPS ORDERED" above "READY TO STEAM"
+    (Atlanta Georgian, 23 March and 6 December 1909), "GOVERNMENT SELLS" above
+    "$277,718 WORTH" (1927). Measured above each: paper for 0 to 15 rows, then
+    a band of lettering about one line of the item tall (0.3 to 0.6 dark a
+    row). A printed rule (0.98 above "THIRD GEORGIA GOING TO CUBA") or the
+    nameplate stops it, and a band under half a line is body text, never a
+    headline line. One line only."""
+    per = pi.page.scale * pi.scale
+    t0 = min((w[1] for w in inside), default=box[1])   # the first line the OCR read
+    top_row = [w for w in inside if w[1] <= t0 + 0.5 * max(1, min(w[3] for w in inside))] \
+        if inside else []
+    lh = max((w[3] for w in top_row), default=0) * per
+    if lh < 4:
+        return box
+    x0 = int((box[0] + 0.05 * box[2]) * per); x1 = int((box[0] + 0.95 * box[2]) * per)
+    y = pi.y_small(box[1]) - 1
+    stop = pi.y_small(floor) if floor else 0
+    dark = lambda yy: pi.row_dark(x0, x1, yy, yy + 1)[0]
+    gap = 0
+    while y > stop and dark(y) < ABOVE_PAPER:
+        gap += 1; y -= 1
+        if gap > ABOVE_GAP * lh:
+            return box
+    band_bottom, paper = y, 0
+    while y > stop:
+        d = dark(y)
+        if d >= ABOVE_RULE:
+            return box
+        paper = paper + 1 if d < ABOVE_PAPER else 0
+        if paper >= 2:
+            break
+        y -= 1
+    else:
+        return box                              # ran into the nameplate or the page top
+    band = band_bottom - (y + paper)
+    if not ABOVE_MIN * lh <= band <= ABOVE_MAX * lh:
+        return box
+    new_top = int((y + paper) / float(pi.page.scale * pi.scale))
+    # ⚠️ The line taken must be one the OCR MISSED. A strip holding small
+    # type or a dateline is the paper's furniture: without this the walk took
+    # "GRIFFIN DAILY NEWS" and its dateline (11 February 1926) and the
+    # Chronicle's "VOL. 91 ... ATHENS, GA., TUESDAY, MARCH 6, 1923" row.
+    strip = nameplate.words_in(words_all, (box[0], new_top, box[2], box[1] - new_top)) \
+        if words_all is not None else []
+    if any(w[3] * per < 0.5 * lh for w in strip) or DATELINE.search(ocr_text(strip)):
+        return box
+    return (box[0], new_top, box[2], box[1] + box[3] - new_top)
+
+
 def _headline_item(c, page, diagnostics=None, max_width=None):
     """(box, words inside) of the topmost display item below the nameplate
     that is not itself an advertisement, or None. On an inner page there is
@@ -585,7 +646,8 @@ def _headline_item(c, page, diagnostics=None, max_width=None):
         np_box = nameplate.nameplate_box(c["words"], c["width"], c["height"])
         if np_box:
             floor = max(floor, np_box[1] + np_box[3])
-    for s, raw, seg in items.snapped("headline", page, c):
+    pi = rules.PageInk(page)
+    for s, raw, seg in items.snapped("headline", page, c, pi):
         if s[1] < floor:
             continue
         # ⚠️ The article lane asks for one column's item: the topmost item on
@@ -598,10 +660,14 @@ def _headline_item(c, page, diagnostics=None, max_width=None):
         if len(ad_markers(ocr_text(inside))) >= AD_MARKERS:
             continue
         if diagnostics is not None:
-            pi = rules.PageInk(page)
             items.box_with_deck(seg, c["words"], c["width"], c["height"], pi,
                                 diagnostics=diagnostics)
-        return s, inside
+        # Up to two lines: "DRAGGED TO DEATH / UNDER CAR WHEELS" above "IS
+        # 5-YEAR-OLD BOY" (Atlanta Georgian, 17 December 1910) lost both.
+        grown = _display_above(pi, s, inside, floor, c["words"])
+        if grown != s:
+            grown = _display_above(pi, grown, inside, floor, c["words"])
+        return grown, (nameplate.words_in(c["words"], grown) if grown != s else inside)
     return None
 
 
@@ -872,7 +938,15 @@ def _article_span(c, page, diagnostics=None):
         raise npc.Refused("no headline item below the nameplate")
     hbox, inside = chosen
     ch = c["height"]
-    if hbox[3] > HEADLINE_MAX_FRAC * ch:
+    # ⚠️ The depth caps count from the first headline line the OCR READ, not
+    # from a top line _display_above() added from the pixels: counted from
+    # the new top, "WARSHIPS ORDERED" ate the paragraph's allowance and the
+    # Atlanta Georgian of 6 December 1909 was refused for a paragraph under
+    # three lines.
+    med0 = nameplate.page_median_height(c["words"]) or 1
+    read_top = min((w[1] for w in inside if w[3] >= 1.6 * med0), default=hbox[1])
+    read_top = max(hbox[1], read_top)
+    if hbox[1] + hbox[3] - read_top > HEADLINE_MAX_FRAC * ch:
         raise npc.Refused("headline item too deep")
     if hbox[2] > ARTICLE_MAX_WIDTH * c["width"]:
         raise npc.Refused(f"article item too wide ({hbox[2] / c['width']:.0%} of the page): "
@@ -908,7 +982,7 @@ def _article_span(c, page, diagnostics=None):
         if i - start >= 2 and lines[i][2] > left_mode + INDENT * med:
             _note("indent", None, ocr_text(lines[i][3]))
             break                               # an indented line: the next paragraph
-        if lines[i][1] - hbox[1] > ARTICLE_MAX_FRAC * ch:
+        if lines[i][1] - read_top > ARTICLE_MAX_FRAC * ch:
             _note("cap")
             break
         end = i

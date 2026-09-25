@@ -1900,7 +1900,9 @@ class ArticleSkipsABanner(unittest.TestCase):
         banner = ((0, 100, 900, 40), None, None)
         column = ((0, 200, 200, 40), None, None)
         with patch.object(clips.items, "snapped", return_value=[banner, column]), \
-                patch.object(clips, "RUNNING_HEAD", 0):
+                patch.object(clips, "RUNNING_HEAD", 0), \
+                patch.object(clips.rules, "PageInk", lambda page: None), \
+                patch.object(clips, "_display_above", lambda pi, box, inside, floor, words_all=None: box):
             self.assertEqual(clips._headline_item(c, self._Page(), max_width=0.30)[0], column[0])
             self.assertEqual(clips._headline_item(c, self._Page())[0], banner[0])
 
@@ -1918,6 +1920,70 @@ class StoryShapeLineBreakHyphen(unittest.TestCase):
         self.assertIsNotNone(clips.story_shape(
             "NO HANGMAN'S NOOSE The Board met With Colonel Preston, Al- though no decision was made"))
         self.assertIsNone(clips.story_shape("STEAMER IS WRECK Savannah, Ga.—Four of the five bodies"))
+
+
+class DisplayAbove(unittest.TestCase):
+    """25 September 2026: a top line of display type the OCR never read is
+    found from the pixels ("WILLIE WHITLA" above "IS RESTORED TO HIS FATHER")."""
+
+    class _Ink:
+        scale = 1.0
+        class page:
+            scale = 1.0
+        def __init__(self, profile):
+            self.profile = profile                    # {row: darkness}
+        def y_small(self, y):
+            return int(y)
+        def row_dark(self, x0, x1, y0, y1):
+            return [self.profile.get(y, 0.0) for y in range(y0, y1)]
+
+    box = (100, 200, 300, 40)
+    inside = [(110, 200, 120, 40, "IS"), (240, 200, 150, 40, "RESTORED")]
+
+    def _profile(self, gap, band, rule_above=False):
+        prof, y = {}, 199 - gap
+        for i in range(band):
+            prof[y - i] = 0.4
+        if rule_above:
+            prof[y - band - 3] = 1.0
+        return prof
+
+    def test_a_display_line_a_small_gap_above_is_taken(self):
+        box = clips._display_above(self._Ink(self._profile(gap=10, band=40)), self.box, self.inside, 0)
+        self.assertLess(box[1], 160)
+        self.assertEqual(box[1] + box[3], 240)          # the bottom never moves
+
+    def test_a_rule_between_them_stops_it(self):
+        prof = {194: 0.98}                              # a rule in the gap...
+        prof.update({y: 0.4 for y in range(150, 194)})  # ...under a display-tall band
+        self.assertEqual(clips._display_above(self._Ink(prof), self.box, self.inside, 0), self.box)
+
+    def test_headline_item_applies_it(self):
+        import inspect
+        self.assertIn("_display_above(pi, s, inside, floor, c[\"words\"])", inspect.getsource(clips._headline_item))
+
+    def test_body_text_above_is_not_a_headline_line(self):
+        box = clips._display_above(self._Ink(self._profile(gap=6, band=8)), self.box, self.inside, 0)
+        self.assertEqual(box, self.box)
+
+    def test_too_wide_a_gap_is_another_item(self):
+        box = clips._display_above(self._Ink(self._profile(gap=60, band=40)), self.box, self.inside, 0)
+        self.assertEqual(box, self.box)
+
+    def test_a_strip_the_ocr_read_as_small_type_is_furniture(self):
+        dateline = [(110, 165, 200, 12, "GRIFFIN,"), (320, 165, 60, 12, "GA.")]
+        box = clips._display_above(self._Ink(self._profile(gap=10, band=40)), self.box, self.inside, 0,
+                                   self.inside + dateline)
+        self.assertEqual(box, self.box)
+
+    def test_a_strip_the_ocr_left_empty_is_taken(self):
+        box = clips._display_above(self._Ink(self._profile(gap=10, band=40)), self.box, self.inside, 0,
+                                   list(self.inside))
+        self.assertLess(box[1], 160)
+
+    def test_the_nameplate_floor_stops_it(self):
+        box = clips._display_above(self._Ink(self._profile(gap=10, band=40)), self.box, self.inside, 185)
+        self.assertEqual(box, self.box)
 
 
 # ⚠️ Keep this LAST: classes defined below it never run when the file is run
