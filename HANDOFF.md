@@ -450,7 +450,8 @@ page link and transcribed words, the crop embedded (`REVIEW_MAIL_IMAGES`, 12, th
 listed). Through `~/Scripts/estate_mail.py`, which gained `--image` the same day.
 Best-effort: a failed send is printed and changes nothing. A dry run never mails.
 Verified end to end: a test mail read back over IMAP carried text/plain, then
-text/html with the JPEG as a related part under the cid the HTML names. Lines written
+text/html with the JPEG as a related part under the cid the HTML names, and he
+confirmed the crop shows inline in Apple Mail. Lines written
 before this date have no `"dry"` or `"image"` field. `ReviewMail` in
 `test_everygeorgia_post.py`, five mutations caught. That file's `unittest.main()` was
 mid-file too (48 tests direct, 50 by discovery); it is last now.
