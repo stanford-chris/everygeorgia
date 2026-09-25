@@ -439,6 +439,22 @@ cartoon whole across its sky also keeps them together; the model still calls
 it a comic strip and the crop is several strips, legible at 1200 wide. Not a
 slice and not a wrong kind.
 
+## ✅ New review items are MAILED, with their crops (25 September 2026, his ask)
+
+"Is there a way to email me with new review items?", then "Do No. 1, with the crop
+images". `log_review()` saves each held crop to `data/review/` (gitignored) and names
+it in the line, with `"dry"`; `main()` notes where `review.jsonl` ended when the run
+began and, in a `finally`, `review_mail()` mails every non-dry line appended since:
+subject `[georgia in print] review: N new`, each item's lane, paper, date, why held,
+page link and transcribed words, the crop embedded (`REVIEW_MAIL_IMAGES`, 12, the rest
+listed). Through `~/Scripts/estate_mail.py`, which gained `--image` the same day.
+Best-effort: a failed send is printed and changes nothing. A dry run never mails.
+Verified end to end: a test mail read back over IMAP carried text/plain, then
+text/html with the JPEG as a related part under the cid the HTML names. Lines written
+before this date have no `"dry"` or `"image"` field. `ReviewMail` in
+`test_everygeorgia_post.py`, five mutations caught. That file's `unittest.main()` was
+mid-file too (48 tests direct, 50 by discovery); it is last now.
+
 ## ✅ The article lane's ad test, built 25 September 2026 (lane released the same day, below)
 
 His ask: "Build the article test." `clips.story_shape()` requires a story's own

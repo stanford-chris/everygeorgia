@@ -11,12 +11,14 @@ in the other direction: a post goes out and looks fine.
 Stdlib only, no network, no atproto: CLIP is swapped for a fake and the
 state lives in a temp directory.
 """
+import io
 import json
 import os
 import re
 import tempfile
 import unittest
 from unittest import mock
+from unittest.mock import patch
 
 import everygeorgia_post as ep
 import gates
@@ -585,8 +587,6 @@ class Promises(unittest.TestCase):
         self.assertLessEqual(max(ep.SEARCH_TRIES.values()), 20)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class TownTag(unittest.TestCase):
@@ -600,3 +600,98 @@ class TownTag(unittest.TestCase):
     def test_no_city_means_no_third_tag(self):
         text = ep.text_of(ep.compose(fake_result(city="")))
         self.assertTrue(text.endswith("\n\n#Georgia #History"))
+
+
+class ReviewMail(unittest.TestCase):
+    """25 September 2026, his ask: new review items are mailed with their
+    crops, from a LIVE run only. Nothing is sent: the mailer is stubbed."""
+
+    def setUp(self):
+        from PIL import Image
+        self.tmp = tempfile.TemporaryDirectory()
+        self._saved = (ep.REVIEW_FILE, ep.REVIEW_IMAGES, ep.DATA, ep._DRY_RUN)
+        ep.DATA = self.tmp.name
+        ep.REVIEW_FILE = os.path.join(self.tmp.name, "review.jsonl")
+        ep.REVIEW_IMAGES = os.path.join(self.tmp.name, "review")
+        buf = io.BytesIO()
+        Image.new("RGB", (40, 30), "white").save(buf, "JPEG")
+        self.jpeg = buf.getvalue()
+
+    def tearDown(self):
+        ep.REVIEW_FILE, ep.REVIEW_IMAGES, ep.DATA, ep._DRY_RUN = self._saved
+        self.tmp.cleanup()
+
+    def _r(self, lane="article"):
+        verdict = type("V", (), {"reasons": ["the page carries ['negro']; a person decides"]})()
+        return {"lccn": "sn82015433", "date": "1898-11-03", "edition": 1, "seq": 1,
+                "url": "https://example.org/page/", "caption": "", "lane": lane,
+                "image_box": [1, 2, 3, 4], "words": "THIRD GEORGIA GOING TO CUBA",
+                "page_hits": {}, "verdict": verdict, "bytes": self.jpeg}
+
+    def _send(self, calls):
+        def send(cmd, **kw):
+            calls.append((cmd, kw))
+            return type("R", (), {"returncode": 0, "stderr": ""})()
+        return send
+
+    def test_a_live_item_is_saved_with_its_crop_and_mailed(self):
+        start = ep.review_size()
+        ep._DRY_RUN = False
+        ep.log_review(self._r(), {"pass": 1})
+        line = json.loads(open(ep.REVIEW_FILE).read())
+        self.assertFalse(line["dry"])
+        self.assertTrue(os.path.exists(os.path.join(ep.DATA, line["image"])))
+        calls = []
+        with patch.object(ep.npc, "roster", return_value={}):
+            self.assertEqual(ep.review_mail(start, send=self._send(calls)), 1)
+        cmd, kw = calls[0]
+        self.assertIn("[georgia in print] review: 1 new", cmd)
+        self.assertIn("--html", cmd)
+        self.assertEqual(cmd[cmd.index("--image") + 1], os.path.join(ep.DATA, line["image"]))
+        self.assertIn("THIRD GEORGIA GOING TO CUBA", kw["input"])
+
+    def test_a_dry_run_s_items_are_never_mailed(self):
+        start = ep.review_size()
+        ep._DRY_RUN = True
+        ep.log_review(self._r(), {"pass": 1})
+        self.assertTrue(json.loads(open(ep.REVIEW_FILE).read())["dry"])
+        calls = []
+        self.assertEqual(ep.review_mail(start, send=self._send(calls)), 0)
+        self.assertEqual(calls, [])
+
+    def test_only_lines_after_the_run_began_are_mailed(self):
+        ep._DRY_RUN = False
+        ep.log_review(self._r("headline"), {"pass": 1})      # an older item
+        start = ep.review_size()
+        ep.log_review(self._r("article"), {"pass": 1})
+        calls = []
+        with patch.object(ep.npc, "roster", return_value={}):
+            self.assertEqual(ep.review_mail(start, send=self._send(calls)), 1)
+        self.assertIn("Article", calls[0][1]["input"])
+        self.assertNotIn("Headline", calls[0][1]["input"])
+
+    def test_nothing_new_sends_nothing(self):
+        calls = []
+        self.assertEqual(ep.review_mail(ep.review_size(), send=self._send(calls)), 0)
+        self.assertEqual(calls, [])
+
+    def test_a_failed_send_never_raises(self):
+        start = ep.review_size()
+        ep._DRY_RUN = False
+        ep.log_review(self._r(), {"pass": 1})
+        def boom(cmd, **kw):
+            raise OSError("smtp down")
+        with patch.object(ep.npc, "roster", return_value={}):
+            self.assertEqual(ep.review_mail(start, send=boom), 0)
+
+    def test_main_mails_in_a_finally_for_live_runs_only(self):
+        import inspect
+        src = inspect.getsource(ep.main)
+        self.assertIn("finally:", src)
+        self.assertIn("if not args.dry_run:\n            review_mail(review_from)", src)
+
+
+# ⚠️ Keep this LAST: a class defined below it never runs when the file is
+# run directly (25 September 2026, the same trap test_clips.py had).
+if __name__ == "__main__":
+    unittest.main()

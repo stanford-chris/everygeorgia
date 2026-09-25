@@ -90,6 +90,9 @@ SCRIPTS = os.path.join(os.path.expanduser("~"), "Scripts")
 DATA = os.path.join(HERE, "data")
 STATE_FILE = os.path.join(DATA, "post_state.json")
 REVIEW_FILE = os.path.join(DATA, "review.jsonl")
+REVIEW_IMAGES = os.path.join(DATA, "review")   # each held crop, named in its review line
+REVIEW_MAIL_IMAGES = 12         # crops embedded in one review mail; the rest are listed
+_DRY_RUN = False                # set by main(): a dry run's review lines say so, and mail nothing
 
 HANDLE = prof.HANDLE
 KEYCHAIN_SERVICE = "everygeorgia-bluesky"
@@ -617,18 +620,112 @@ def aspect_ratio(data):
 
 
 def log_review(r, state):
-    """Append one line a person can act on. The run does not wait for them."""
+    """Append one line a person can act on. The run does not wait for them.
+
+    ✅ Since 25 September 2026, his ask ("email me with new review items, with
+    the crop images"): the crop itself is saved under data/review/ and named in
+    the line, and a dry run's lines carry "dry": true, so review_mail() can
+    mail a live run's items and never a preview's."""
+    image = None
+    if r.get("bytes"):
+        os.makedirs(REVIEW_IMAGES, exist_ok=True)
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
+        name = f"{stamp}_{r.get('lane') or 'item'}_{r['lccn']}_{r['date']}_p{r.get('seq', 1)}.jpg"
+        try:
+            with open(os.path.join(REVIEW_IMAGES, name), "wb") as f:
+                f.write(fit_image(r["bytes"]))
+            image = os.path.join("review", name)
+        except Exception as e:                      # noqa: BLE001 - the line matters more
+            print(f"  (review crop not saved: {e})")
     line = {
         "at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "lccn": r["lccn"], "date": r["date"], "edition": r["edition"],
         "url": r["url"], "caption": r["caption"], "lane": r.get("lane"),
         "image_box": r.get("image_box"), "words": r.get("words"),
         "page_hits": r["page_hits"], "reasons": r["verdict"].reasons,
-        "pass": state.get("pass"),
+        "pass": state.get("pass"), "image": image, "dry": _DRY_RUN,
     }
     os.makedirs(DATA, exist_ok=True)
     with open(REVIEW_FILE, "a") as f:
         f.write(json.dumps(line, ensure_ascii=False) + "\n")
+
+
+def review_size():
+    try:
+        return os.path.getsize(REVIEW_FILE)
+    except OSError:
+        return 0
+
+
+def review_mail(offset, send=None):
+    """Mail the review lines a LIVE run appended after byte `offset`, with
+    their crops embedded, through ~/Scripts/estate_mail.py. Best-effort: a
+    failure is printed and never changes the run's outcome. Returns the
+    number of items mailed."""
+    import html as _html
+    import tempfile
+    try:
+        with open(REVIEW_FILE, "rb") as f:
+            f.seek(offset)
+            raw = f.read().decode("utf-8", "replace")
+    except OSError:
+        return 0
+    items = []
+    for ln in raw.splitlines():
+        try:
+            it = json.loads(ln)
+        except ValueError:
+            continue
+        if not it.get("dry"):
+            items.append(it)
+    if not items:
+        return 0
+    roster = npc.roster()
+    text, parts, images = [], [], []
+    for i, it in enumerate(items, 1):
+        title = (roster.get(it["lccn"]) or {}).get("title") or it["lccn"]
+        head = f"{i}. {LANE_LABEL.get(it.get('lane'), it.get('lane') or 'Item')}: {title}, {it['date']}"
+        why = "; ".join(it.get("reasons") or [])
+        words = (it.get("words") or "").strip()
+        text += [head, f"   Why held: {why}", f"   Page: {it['url']}"] + \
+            ([f"   Reads: {words[:600]}"] if words else []) + [""]
+        img = os.path.join(DATA, it["image"]) if it.get("image") else None
+        pic = ""
+        if img and os.path.exists(img) and len(images) < REVIEW_MAIL_IMAGES:
+            images.append(img)
+            pic = (f'<p><img src="cid:{_html.escape(os.path.basename(img))}" '
+                   f'style="max-width:100%;border:1px solid #999"></p>')
+        elif img:
+            pic = "<p><i>(crop not embedded: see the page)</i></p>"
+        parts.append(
+            f'<h3>{_html.escape(head)}</h3>{pic}'
+            f'<p><b>Why held:</b> {_html.escape(why)}<br>'
+            f'<a href="{_html.escape(it["url"])}">The page on the Digital Library of Georgia</a></p>'
+            + (f'<p><b>Reads:</b> {_html.escape(words[:600])}</p>' if words else ""))
+    n = len(items)
+    subject = f"[georgia in print] review: {n} new"
+    body = "\n".join([f"{n} clipping{'s' if n != 1 else ''} held for review, never posted.", ""] + text)
+    page = ("<html><body style=\"font-family:-apple-system,Helvetica,sans-serif\">"
+            f"<p>{n} clipping{'s' if n != 1 else ''} held for review, never posted.</p>"
+            + "<hr>".join(parts) + "</body></html>")
+    with tempfile.NamedTemporaryFile("w", suffix=".html", delete=False) as fh:
+        fh.write(page)
+        html_path = fh.name
+    cmd = [sys.executable, os.path.join(SCRIPTS, "estate_mail.py"), subject, "--html", html_path]
+    for img in images:
+        cmd += ["--image", img]
+    try:
+        r = (send or subprocess.run)(cmd, input=body, text=True, capture_output=True, timeout=120)
+        if r.returncode != 0:
+            print(f"  (review mail not sent: {(r.stderr or '').strip()})")
+            return 0
+        print(f"Review mail sent: {n} item(s), {len(images)} crop(s).")
+        return n
+    except Exception as e:                          # noqa: BLE001 - best-effort
+        print(f"  (review mail not sent: {e})")
+        return 0
+    finally:
+        os.unlink(html_path)
 
 
 def choose(state, issues, log=print, lane="nameplate", full_titles=None):
@@ -933,6 +1030,18 @@ def main():
                "classified": clips.classified_candidates(rights),
                "cartoon": eligible(dailies(issues), "cartoon"),
                CARTOON_SEARCH: clips.cartoon_candidates(rights)}
+    global _DRY_RUN
+    _DRY_RUN = bool(args.dry_run)
+    review_from = review_size()
+    try:
+        _run(args, state, sources)
+    finally:
+        # A live run mails what it queued, even when it stopped early.
+        if not args.dry_run:
+            review_mail(review_from)
+
+
+def _run(args, state, sources):
     client = None
     for n in range(args.count):
         if args.lane:
