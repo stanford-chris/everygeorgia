@@ -719,14 +719,23 @@ def choose_search(state, cands, lane, log=print, clip_lane=None, recent_lane=Non
 
 
 def next_lane(state):
-    """The lane this run starts with: the rotation position of the next
-    post, counting every post so far."""
-    # ⚠️ Dry posts count too. Saved state never holds one (a dry run writes
-    # no state), and counting them is what makes `--dry-run --count 4`
-    # preview the rotation instead of four of the same lane, which is what
-    # the first dry run produced.
-    n = len(state.get("posted", []))
-    return LANES[n % len(LANES)]
+    """The lane this run starts with: the one after the lane that last
+    POSTED, not the next position in a count of posts."""
+    # ⚠️ Since 25 September 2026, his call. Counting posts (`LANES[n % 6]`)
+    # gave the lane after a run of empty lanes a DOUBLE turn: market (1 post
+    # in 39) and classified handed their slot to cartoon, and the next run,
+    # counting on from market, landed on classified, failed again and handed
+    # cartoon a second post. Cartoons were 8 of the last 24 posts, twice
+    # their share. Reading the last lane that actually posted means an empty
+    # lane is skipped once, and the rotation goes on from what went out.
+    # ⚠️ Dry posts still count (they carry a lane), which is what makes
+    # `--dry-run --count 4` preview the rotation instead of four of the same
+    # lane. A last post from a lane not in LANES (a held lane run by hand
+    # with `--lane`) falls back to the post count.
+    posted = state.get("posted", [])
+    if posted and posted[-1].get("lane") in LANES:
+        return LANES[(LANES.index(posted[-1]["lane"]) + 1) % len(LANES)]
+    return LANES[len(posted) % len(LANES)]
 
 
 def pick(state, sources, lane, log=print):

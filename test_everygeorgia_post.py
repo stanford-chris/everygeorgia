@@ -387,13 +387,26 @@ class Lanes(unittest.TestCase):
         ep.STATE_FILE, ep.REVIEW_FILE, ep.CLIP = self._state, self._review, self._clip
         self.tmp.cleanup()
 
-    def test_rotation_follows_the_post_count(self):
+    def test_rotation_follows_the_lane_that_last_posted(self):
         s = {"posted": []}
         self.assertEqual(ep.next_lane(s), "nameplate")
         s["posted"] = [{"lane": "nameplate"}, {"lane": "headline"}]
         self.assertEqual(ep.next_lane(s), "ad")
         s["posted"].append({"lane": "ad", "dry": True})  # dry posts count: previews rotate
         self.assertEqual(ep.next_lane(s), "market")
+        s["posted"].append({"lane": "cartoon"})           # the last lane wraps
+        self.assertEqual(ep.next_lane(s), "nameplate")
+
+    def test_an_empty_lane_does_not_give_the_next_one_a_double_turn(self):
+        """25 September 2026: market and classified came up empty, cartoon
+        took the slot, and the post count then pointed at classified, which
+        failed again and handed cartoon a second post in a row."""
+        s = {"posted": [{"lane": x} for x in ("nameplate", "headline", "ad", "cartoon")]}
+        self.assertEqual(ep.next_lane(s), "nameplate")
+
+    def test_a_hand_run_held_lane_falls_back_to_the_post_count(self):
+        s = {"posted": [{"lane": "nameplate"}, {"lane": "article"}]}
+        self.assertEqual(ep.next_lane(s), ep.LANES[2])
 
     def test_cartoon_draws_from_the_credit_line_search_first_then_the_title_order(self):
         """12 September 2026: the search half posts as "cartoon", keeps its
