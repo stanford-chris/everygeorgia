@@ -609,16 +609,14 @@ class ReviewMail(unittest.TestCase):
     def setUp(self):
         from PIL import Image
         self.tmp = tempfile.TemporaryDirectory()
-        self._saved = (ep.REVIEW_FILE, ep.REVIEW_IMAGES, ep.DATA, ep._DRY_RUN)
-        ep.DATA = self.tmp.name
+        self._saved = (ep.REVIEW_FILE, ep._DRY_RUN)
         ep.REVIEW_FILE = os.path.join(self.tmp.name, "review.jsonl")
-        ep.REVIEW_IMAGES = os.path.join(self.tmp.name, "review")
         buf = io.BytesIO()
         Image.new("RGB", (40, 30), "white").save(buf, "JPEG")
         self.jpeg = buf.getvalue()
 
     def tearDown(self):
-        ep.REVIEW_FILE, ep.REVIEW_IMAGES, ep.DATA, ep._DRY_RUN = self._saved
+        ep.REVIEW_FILE, ep._DRY_RUN = self._saved
         self.tmp.cleanup()
 
     def _r(self, lane="article"):
@@ -640,14 +638,14 @@ class ReviewMail(unittest.TestCase):
         ep.log_review(self._r(), {"pass": 1})
         line = json.loads(open(ep.REVIEW_FILE).read())
         self.assertFalse(line["dry"])
-        self.assertTrue(os.path.exists(os.path.join(ep.DATA, line["image"])))
+        self.assertTrue(os.path.exists(os.path.join(self.tmp.name, line["image"])))
         calls = []
         with patch.object(ep.npc, "roster", return_value={}):
             self.assertEqual(ep.review_mail(start, send=self._send(calls)), 1)
         cmd, kw = calls[0]
         self.assertIn("[georgia in print] review: 1 new", cmd)
         self.assertIn("--html", cmd)
-        self.assertEqual(cmd[cmd.index("--image") + 1], os.path.join(ep.DATA, line["image"]))
+        self.assertEqual(cmd[cmd.index("--image") + 1], os.path.join(self.tmp.name, line["image"]))
         self.assertIn("THIRD GEORGIA GOING TO CUBA", kw["input"])
 
     def test_a_dry_run_s_items_are_never_mailed(self):
@@ -683,6 +681,12 @@ class ReviewMail(unittest.TestCase):
             raise OSError("smtp down")
         with patch.object(ep.npc, "roster", return_value={}):
             self.assertEqual(ep.review_mail(start, send=boom), 0)
+
+    def test_crops_go_beside_the_queue_in_use_never_the_real_data_dir(self):
+        ep._DRY_RUN = False
+        ep.log_review(self._r(), {"pass": 1})
+        line = json.loads(open(ep.REVIEW_FILE).read())
+        self.assertTrue(os.path.exists(os.path.join(self.tmp.name, line["image"])))
 
     def test_main_mails_in_a_finally_for_live_runs_only(self):
         import inspect

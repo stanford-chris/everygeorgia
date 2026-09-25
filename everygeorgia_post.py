@@ -90,7 +90,9 @@ SCRIPTS = os.path.join(os.path.expanduser("~"), "Scripts")
 DATA = os.path.join(HERE, "data")
 STATE_FILE = os.path.join(DATA, "post_state.json")
 REVIEW_FILE = os.path.join(DATA, "review.jsonl")
-REVIEW_IMAGES = os.path.join(DATA, "review")   # each held crop, named in its review line
+# ⚠️ Held crops live in "review/" BESIDE whichever REVIEW_FILE is in use, never
+# a path of their own: a separate constant let the test suite, which redirects
+# REVIEW_FILE only, write 24 fake crops into the real data/review/ on 25 September.
 REVIEW_MAIL_IMAGES = 12         # crops embedded in one review mail; the rest are listed
 _DRY_RUN = False                # set by main(): a dry run's review lines say so, and mail nothing
 
@@ -627,12 +629,13 @@ def log_review(r, state):
     the line, and a dry run's lines carry "dry": true, so review_mail() can
     mail a live run's items and never a preview's."""
     image = None
+    base = os.path.dirname(REVIEW_FILE)
     if r.get("bytes"):
-        os.makedirs(REVIEW_IMAGES, exist_ok=True)
+        os.makedirs(os.path.join(base, "review"), exist_ok=True)
         stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S")
         name = f"{stamp}_{r.get('lane') or 'item'}_{r['lccn']}_{r['date']}_p{r.get('seq', 1)}.jpg"
         try:
-            with open(os.path.join(REVIEW_IMAGES, name), "wb") as f:
+            with open(os.path.join(base, "review", name), "wb") as f:
                 f.write(fit_image(r["bytes"]))
             image = os.path.join("review", name)
         except Exception as e:                      # noqa: BLE001 - the line matters more
@@ -689,7 +692,7 @@ def review_mail(offset, send=None):
         words = (it.get("words") or "").strip()
         text += [head, f"   Why held: {why}", f"   Page: {it['url']}"] + \
             ([f"   Reads: {words[:600]}"] if words else []) + [""]
-        img = os.path.join(DATA, it["image"]) if it.get("image") else None
+        img = os.path.join(os.path.dirname(REVIEW_FILE), it["image"]) if it.get("image") else None
         pic = ""
         if img and os.path.exists(img) and len(images) < REVIEW_MAIL_IMAGES:
             images.append(img)
