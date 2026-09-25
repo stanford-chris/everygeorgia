@@ -374,6 +374,64 @@ class DeckLinesDoNotGrow(unittest.TestCase):
         self.assertGreaterEqual(b[1] + b[3], 200)
 
 
+class SecondLineWiderThanTheFirst(unittest.TestCase):
+    """25 September 2026: the crop was only ever as wide as a headline's
+    FIRST line, so "SENDS APPEAL" under "MISSISSIPPI" (Macon Telegraph,
+    8 October 1898) was cut to "SENDS APPEA". Proportions from that page."""
+
+    def test_the_second_line_s_words_past_the_first_line_are_kept(self):
+        head = [(40, 100, 97, 30, "MISSISSIPPI")]
+        line2 = [(76, 138, 50, 28, "SENDS"), (137, 138, 56, 27, "APPEAL")]
+        words = DisplayRows().body() + head + line2
+        b = items.box_with_deck(items.display_rows(words, 1000)[0], words, 700, 1000)
+        self.assertGreaterEqual(b[0] + b[2], 193)          # through "APPEAL"
+        self.assertGreaterEqual(b[1] + b[3], 165)
+
+    def test_a_neighbouring_column_s_headline_is_not_swept_in(self):
+        head = [(40, 100, 97, 30, "MISSISSIPPI")]
+        line2 = [(76, 138, 50, 28, "SENDS"), (137, 138, 56, 27, "APPEAL"),
+                 (300, 138, 90, 28, "ELSEWHERE"), (395, 138, 80, 28, "TODAY")]
+        words = DisplayRows().body() + head + line2
+        b = items.box_with_deck(items.display_rows(words, 1000)[0], words, 700, 1000)
+        self.assertLess(b[0] + b[2], 300)
+
+
+class WholeLineStopsAtAPrintedRule(unittest.TestCase):
+    """25 September 2026: a line grown sideways must stop at a printed rule
+    in the gap, however short (Atlanta Georgian, 23 April 1910: "To Great
+    Republic of France" into "OF JAS. A. PATTEN")."""
+
+    class _Ink:
+        scale = 1.0
+        class page:
+            scale = 1.0
+        def __init__(self, rule_x):
+            self.rule_x = rule_x
+        def y_small(self, y):
+            return int(y)
+        def gutters(self):
+            return []
+        def vrules(self):
+            return []
+        def col_dark_in(self, y0, y1, x0=0, x1=None):
+            return [1.0 if x == self.rule_x else 0.0 for x in range(x0, 400 if x1 is None else x1)]
+
+    def _line(self):
+        take = [(40, 100, 60, 30, "Great"), (105, 100, 60, 30, "France")]
+        other = [(185, 100, 40, 30, "OF"), (230, 100, 60, 30, "PATTEN")]
+        return take, take + other
+
+    def test_no_rule_the_line_grows(self):
+        take, words = self._line()
+        grown = items._whole_line(take, words, self._Ink(rule_x=-1))
+        self.assertEqual([w[4] for w in grown], ["Great", "France", "OF", "PATTEN"])
+
+    def test_a_rule_in_the_gap_stops_it(self):
+        take, words = self._line()
+        grown = items._whole_line(take, words, self._Ink(rule_x=175))
+        self.assertEqual([w[4] for w in grown], ["Great", "France"])
+
+
 class BoxWithDeckDiagnostics(unittest.TestCase):
     """box_with_deck's own "bottom" diagnostic, added 15 September 2026 for
     crop_closure_check.py's headline-lane audit. Only "gap" carries a
@@ -1593,8 +1651,6 @@ class Policies(unittest.TestCase):
         self.assertEqual(gates.check("market", "sn89053135", "1860-01-01").outcome, gates.REFUSE)
 
 
-if __name__ == "__main__":
-    unittest.main()
 
 
 class OwnTitleFragments(unittest.TestCase):
@@ -1774,6 +1830,7 @@ class StoryShape(unittest.TestCase):
             "BIG FIRE SAVANNAH, Ga., Sept. 3.—A fire broke out",
             "Atlanta, Ga., May 5 -- The legislature met",
             "BREATHITT CASES ALL ENDE JACKSON, Ky.— charged with the as John",
+            "$277,718 WORTH OF AMMUNITION TO DIAZ ARMY WASHINGTON.-(UP)—The United States",
         ):
             self.assertIsNone(clips.story_shape(words), words[:40])
 
@@ -1796,3 +1853,74 @@ class StoryShape(unittest.TestCase):
         self.assertTrue(0.23 < clips.ARTICLE_MAX_WIDTH < 0.40)
         import inspect
         self.assertIn("ARTICLE_MAX_WIDTH", inspect.getsource(clips._article_span))
+
+
+class OneColumn(unittest.TestCase):
+    """25 September 2026: an article's box is narrowed to its headline's own
+    column, and refused when the headline straddles a column edge."""
+
+    class _Ink:
+        scale = 1.0
+        class page:
+            scale = 1.0
+        def __init__(self, page=None):
+            pass
+        def y_small(self, y):
+            return int(y)
+        def gutters(self):
+            return [(199, 201)]                       # one clear gutter at x=200
+        def col_dark_in(self, y0, y1, x0=0, x1=None):
+            return [0.0 if 199 <= x <= 201 else 0.3 for x in range(x0, 400 if x1 is None else x1)]
+
+    def _run(self, head):
+        c = {"words": DisplayRows().body() + head, "width": 700, "height": 1000}
+        with patch.object(clips.rules, "PageInk", self._Ink):
+            return clips._one_column(None, c, (20, 100, 360, 40), head, 1000)
+
+    def test_a_neighbour_s_headline_on_the_same_row_is_cut_away(self):
+        head = [(30, 100, 70, 30, "STEAMER"), (105, 100, 30, 30, "IS"), (230, 104, 90, 26, "Requests")]
+        box = self._run(head)
+        self.assertEqual((box[0], box[0] + box[2]), (20, 200))
+
+    def test_a_headline_across_the_gutter_is_refused(self):
+        head = [(30, 100, 70, 30, "Downs"), (150, 100, 110, 30, "Succeeds")]
+        with self.assertRaises(npc.Refused):
+            self._run(head)
+
+
+class ArticleSkipsABanner(unittest.TestCase):
+    """25 September 2026: the article lane passes over a banner to the first
+    headline one column wide, instead of giving up on the page."""
+
+    class _Page:
+        seq = 2                                       # an inner page: no nameplate floor
+
+    def test_the_first_narrow_item_is_taken(self):
+        c = {"words": [], "width": 1000, "height": 1000}
+        banner = ((0, 100, 900, 40), None, None)
+        column = ((0, 200, 200, 40), None, None)
+        with patch.object(clips.items, "snapped", return_value=[banner, column]), \
+                patch.object(clips, "RUNNING_HEAD", 0):
+            self.assertEqual(clips._headline_item(c, self._Page(), max_width=0.30)[0], column[0])
+            self.assertEqual(clips._headline_item(c, self._Page())[0], banner[0])
+
+    def test_the_article_span_narrows_to_one_column(self):
+        import inspect
+        src = inspect.getsource(clips._article_span)
+        self.assertIn("_one_column(page, c, hbox, inside, ch)", src)
+        self.assertIn("max_width=ARTICLE_MAX_WIDTH", src)
+
+
+class StoryShapeLineBreakHyphen(unittest.TestCase):
+    def test_a_word_broken_at_the_line_end_is_not_a_dateline(self):
+        self.assertIsNotNone(clips.story_shape(
+            "REMEMBER G. J. Peacock, Clothing Manufacturer. Cassimeres, Suit- ings and Overcoatings"))
+        self.assertIsNotNone(clips.story_shape(
+            "NO HANGMAN'S NOOSE The Board met With Colonel Preston, Al- though no decision was made"))
+        self.assertIsNone(clips.story_shape("STEAMER IS WRECK Savannah, Ga.—Four of the five bodies"))
+
+
+# ⚠️ Keep this LAST: classes defined below it never run when the file is run
+# directly (25 September 2026: four classes appended after it went unrun).
+if __name__ == "__main__":
+    unittest.main()

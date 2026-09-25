@@ -469,6 +469,51 @@ among them):
   reached the Cordele banner-stack transcription past `transcribe.py`'s guard;
   the width cap refuses that crop now, but the guard missed the shape.
 
+## ✅ Headlines cut short, and one column per article (25 September 2026, his ask: "Do No. 2")
+
+**The headline lane changed too, and it is live.** `items.box_with_deck` searched
+under a headline only inside its FIRST line's span, so a second line set wider
+lost its end ("SENDS APPEA", "CASES AL", "Be Offered By" for "...By Board").
+`items._whole_line()` now grows each taken line sideways to the rest of its
+printed line, judged on the whole line, and stops at a clear column gutter or
+a printed rule in the gap (`GAP_RULE_DARK` 0.5: a rule reads 0.6 and 1.0, a
+word space 0.0, at most 0.43). Measured on 80 front pages with `_headline_item`
+before and after, every changed crop rendered and looked at: 21 changed, 15
+better, 2 the same fault in another shape (Cordele Dispatch 31 May 1925, a
+banner plus the tier beside its deck; Augusta Chronicle 6 March 1923, already a
+three-column crop, now deeper), the rest neutral. Without the rule test it swept
+neighbouring headlines across short printed rules (Atlanta Georgian 23 April
+1910 and 20 November 1907); `vrules()` misses a rule only a headline tall.
+
+**The article lane** (`clips._article_span`) now:
+- skips a banner for the first headline item one column wide
+  (`_headline_item(max_width=ARTICLE_MAX_WIDTH)`); 15 of 60 pages had ended at
+  "too wide";
+- narrows the item to its headline's own column (`_one_column`): the snapped
+  box ran a column wide on the Brunswick News of 2 February 1920 ("STEAMER IS
+  WRECK" plus half of "Requests..."). A gutter clear down the paragraph
+  (`COLUMN_CLEAR`) or a printed rule (`COLUMN_RULE`) is an edge; the column is
+  the one holding the headline's first word; a headline word straddling an
+  edge is two stories under one head and refused (Cordele, 16 January 1924);
+- accepts "(UP)"/"(AP)" as a wire credit, and a place-and-state dateline only
+  with a real dash: a line-end hyphen ("Casimeres, Suit-") passed G. J.
+  Peacock's clothing ad (Columbus Enquirer, 21 April 1882) until it did.
+
+Measured on two fresh 60-page samples: 16 crops pass (was 1 garbled one in 90),
+4 postable, 12 REVIEW, every REVIEW on the page's vocabulary alone. By eye 14
+are a single story, headline and first paragraph (the Titanic's "1,595 IS FINAL
+TOLL OF DEATH", "GERMAN LOSSES SIX MILLION MEN", "THIRD GEORGIA GOING TO
+CUBA"); one is two stories (1917-07-20, "LAND TITLE LAW" under another's foot);
+one takes a boxed sidebar as the first paragraph (1909-03-03, "HEAVY RAIN AT
+CAPITAL" under "ROOSEVELT REGIME"). ⚠️ **Still open**: a headline whose TOP line
+is set larger starts below it ("WILLIE WHITLA" cut above "IS RESTORED TO HIS
+FATHER"): `box_with_deck` walks down only. ⚠️ Cost: roughly ten transcriptions
+before a postable article. **The lane is still held; releasing it is his call.**
+
+⚠️ `test_clips.py` had its `unittest.main()` block mid-file, so everything
+appended after it ran under discovery only (71 tests direct, 95 by discovery):
+the CLAUDE.md trap again. The block is last now, with a comment.
+
 ## ⏳ Inside pages for headlines and articles: wanted, not yet possible
 
 Chris, 11 September 2026: "I'd eventually like to include inside pages."

@@ -561,7 +561,7 @@ def choose_page(lccn, date, ed, seq=None):
     return pages[rng.randint(2, min(len(pages), INNER_MAX_SEQ)) - 1]
 
 
-def _headline_item(c, page, diagnostics=None):
+def _headline_item(c, page, diagnostics=None, max_width=None):
     """(box, words inside) of the topmost display item below the nameplate
     that is not itself an advertisement, or None. On an inner page there is
     no nameplate, and the running head at the top is skipped instead.
@@ -587,6 +587,12 @@ def _headline_item(c, page, diagnostics=None):
             floor = max(floor, np_box[1] + np_box[3])
     for s, raw, seg in items.snapped("headline", page, c):
         if s[1] < floor:
+            continue
+        # ⚠️ The article lane asks for one column's item: the topmost item on
+        # a front page is often a banner across the page, and until
+        # 25 September 2026 that ended the lane's look at the page ("article
+        # item too wide", 15 of 60 pages) when a column headline sat below.
+        if max_width is not None and s[2] > max_width * c["width"]:
             continue
         inside = nameplate.words_in(c["words"], s)
         if len(ad_markers(ocr_text(inside))) >= AD_MARKERS:
@@ -697,9 +703,13 @@ _PLACE = r"[A-Z][A-Za-z'’.]+(?:[ -][A-Z][A-Za-z'’.]+){0,2}"
 STORY_DATED = re.compile(rf"\b{_PLACE}(?:\s*\([^)]{{2,30}}\))?,(?:\s*[A-Z][A-Za-z.]{{1,12}},)?"
                          rf"\s*(?:{_MON})\s*\d{{1,2}}{_DASH}")
 # "JACKSON, Ky.—" (Atlanta Georgian 1909): a place and its state, no date
-STORY_STATE = re.compile(rf"\b{_PLACE},\s*[A-Z][a-z]{{1,5}}\.?{_DASH}")
+# ⚠️ A real dash only, never a lone hyphen: a word broken at the line's end
+# reads the same ("Casimeres, Suit-" in G. J. Peacock's clothing ad,
+# Columbus Enquirer 21 April 1882, and "Colonel Preston, Al-").
+STORY_STATE = re.compile(rf"\b{_PLACE},\s*[A-Z][a-z]{{1,5}}\.?\s*(?:[—–]|--)")
 STORY_BARE = re.compile(rf"(?:^|[.!?”\"]\s+){_PLACE}{_DASH}\s*[A-Z“\"]")
 STORY_WIRE = re.compile(r"\b(?:By|\(By)\s+(?:the\s+)?(?:Associated|United)\s+Press\b"
+                        r"|\((?:UP|AP|INS|A\.\s?P\.|U\.\s?P\.)\)"
                         r"|\bInternational News Service\b|\bSpecial\s+(?:to|Dispatch)\b|\(Special\.?\)",
                         re.IGNORECASE)
 
@@ -777,6 +787,58 @@ def _lines(rows, med):
     return out
 
 
+COLUMN_CLEAR = 0.02      # a gutter this clear down the paragraph's rows is a column's edge
+COLUMN_RULE = 0.8        # ...and a pixel column this dark is a printed column rule
+
+
+def _one_column(page, c, hbox, inside, ch):
+    """The headline item's box narrowed to the ONE column its headline sits
+    in, measured down the rows where its first paragraph will be.
+
+    ⚠️ 25 September 2026. The snapped headline box can run a column wide:
+    on the Brunswick News of 2 February 1920 "STEAMER IS WRECK OFF GEORGIA
+    COAST" came with half the next column's story, and on the Macon
+    Telegraph of 24 October 1898 "LION'S LOW GROWLING" with "SAMPSON DID NOT
+    BITE EASILY" beside it. Measured there, a gutter reads 0.0 dark down the
+    paragraph and a printed rule 0.8 or more; a word space inside one column
+    never stays clear for a whole paragraph. A headline whose OWN words
+    straddle such an edge is set over two stories (the Cordele Dispatch of
+    16 January 1924, "Downs Succeeds Former President Winburn" over "JACK
+    FROST" and "FREIGHT TRAFFIC") and is refused."""
+    pi = rules.PageInk(page)
+    per = pi.page.scale * pi.scale
+    hbot = hbox[1] + hbox[3]
+    y0 = pi.y_small(hbot)
+    y1 = pi.y_small(min(c["height"], hbot + ARTICLE_MAX_FRAC * ch))
+    cols = pi.col_dark_in(y0, max(y0 + 1, y1))
+    xa, xb = hbox[0] + 0.05 * hbox[2], hbox[0] + 0.95 * hbox[2]
+    walls = []
+    for g0, g1 in pi.gutters():
+        x = (g0 + g1) / 2.0 / per
+        seg = cols[g0:g1] or [0.5]
+        if xa < x < xb and (min(seg) <= COLUMN_CLEAR or max(seg) >= COLUMN_RULE):
+            walls.append(x)
+    if not walls:
+        return hbox
+    med = nameplate.page_median_height(c["words"]) or 1
+    head = [w for w in inside if w[3] >= 1.6 * med]
+    if any(w[0] + 0.1 * w[2] < x < w[0] + 0.9 * w[2] for w in head for x in walls):
+        raise npc.Refused("the headline is set across two columns: more than one story below it")
+    # The headline's own column is the one holding its first word in
+    # reading order: the leftmost word of its first row. A neighbour's
+    # headline the OCR set on the same row ("STEAMER IS | Requests") lies
+    # in another column and is left out.
+    top = min(w[1] for w in head) if head else hbox[1]
+    first = min((w for w in head if w[1] <= top + 0.5 * max(w[3] for w in head)),
+                key=lambda w: w[0], default=None)
+    anchor = first[0] + first[2] / 2.0 if first else hbox[0] + hbox[2] / 2.0
+    edges = [hbox[0]] + sorted(walls) + [hbox[0] + hbox[2]]
+    for a, z in zip(edges, edges[1:]):
+        if a <= anchor <= z:
+            return (int(a), hbox[1], int(z - a), hbox[3])
+    return hbox
+
+
 def _article_span(c, page, diagnostics=None):
     """The headline item's box plus the row range of its first paragraph, as
     clip_article() builds it -- factored out so crop_closure_check.py can
@@ -805,7 +867,7 @@ def _article_span(c, page, diagnostics=None):
             diagnostics["bottom"] = None if reason is None else \
                 {"reason": reason, "ratio": ratio, "text": text}
 
-    chosen = _headline_item(c, page)
+    chosen = _headline_item(c, page, max_width=ARTICLE_MAX_WIDTH)
     if chosen is None:
         raise npc.Refused("no headline item below the nameplate")
     hbox, inside = chosen
@@ -816,6 +878,7 @@ def _article_span(c, page, diagnostics=None):
         raise npc.Refused(f"article item too wide ({hbox[2] / c['width']:.0%} of the page): "
                           "a banner stack or more than one story")
     med = nameplate.page_median_height(c["words"]) or 1
+    hbox = _one_column(page, c, hbox, inside, ch)
     x0, x1 = hbox[0], hbox[0] + hbox[2]
     hbot = hbox[1] + hbox[3]
     below = [w for w in c["words"] if x0 <= w[0] + w[2] / 2.0 < x1 and w[1] >= hbot - med]

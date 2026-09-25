@@ -24,6 +24,8 @@ AD_LO, AD_HI = 0.5, 1.0
 MAX_ITEM_FRAC = 0.30     # deeper than this of the page is a runaway, refused
 SAME_MAX = 1.25          # a continuation line is at most this much taller than
                          # the head; taller is another item (a nameplate)
+GAP_RULE_DARK = 0.5       # a pixel column this dark down a line, between two
+                          # of its words, is a printed rule (see _whole_line)
 DECK_GROW_TOL = 1.05     # a deck line taller than this multiple of the deck
                          # line just accepted is a different headline, not a
                          # further line of this one's own decks -- see the
@@ -206,6 +208,71 @@ def _next_line(words, x0, x1, cur):
     return min(w[1] for w in line), line
 
 
+def _whole_line(take, words, pi=None):
+    """`take` grown sideways to the rest of its printed line: words on the
+    same row, each within SPLIT_GAP of its neighbour, whatever the window.
+
+    ⚠️ 25 September 2026. box_with_deck searches under a headline only inside
+    its FIRST line's span, so a second line set wider than the first lost
+    the words past that edge, and the crop cut the headline short: "SENDS
+    APPEAL" under "MISSISSIPPI" (Macon Telegraph, 8 October 1898) posted as
+    "SENDS APPEA", and "CASES ARE NOW" under "BREATHITT" (Atlanta Georgian,
+    3 May 1909) as "CASES ALL". A growth that makes the line a tier (a
+    neighbouring column's headline at the same height) is not taken."""
+    top = min(w[1] for w in take); bot = max(w[1] + w[3] for w in take)
+    h = max(w[3] for w in take)
+    mid = lambda w: w[1] + w[3] / 2.0
+    row = sorted((w for w in words if top <= mid(w) <= bot and 0.6 * h <= w[3] <= 1.6 * h),
+                 key=lambda w: w[0])
+    line = sorted(take, key=lambda w: w[0])
+    ids = {id(w) for w in line}
+    grown = list(line)
+    lo, hi = line[0][0], line[-1][0] + line[-1][2]
+    # ⚠️ Never across a column gutter that is clear on this row. Without it,
+    # on the Macon Telegraph of 1 July 1898, a tier of column headlines set
+    # closer than a word gap apart chained "TEACHERS AT" into all of its
+    # neighbours and the box ran the width of the page.
+    per = pi.page.scale * pi.scale if pi is not None else None
+    if per:
+        y0 = pi.y_small(top); y1 = pi.y_small(bot)
+        cols = pi.col_dark_in(y0, max(y0 + 1, y1))
+        bounds = [g[0] / per for g in pi.gutters()
+                  if min(cols[g[0]:g[1]] or [1]) <= rules.GUTTER_CROSSED]
+        # ⚠️ ...and never across a printed column rule beside this row. A rule
+        # reads DARK, so the gutter test above counts it as crossed ink: on
+        # the Atlanta Georgian of 20 November 1907 "Will Atlanta Join Her?"
+        # grew across three rules into a tier of column headlines.
+        bounds += [x / per for x, rt, rb in pi.vrules()
+                   if min(rb, y1) - max(rt, y0) >= 0.5 * max(1, y1 - y0)]
+    else:
+        bounds, y0, y1 = [], 0, 0
+
+    def walled(a, z):
+        if any(a < gx < z for gx in bounds):
+            return True
+        # ⚠️ A printed rule in the gap itself, however short. vrules() wants
+        # a rule a good share of the page tall, and the rule between "To
+        # Great Republic of France" and "OF JAS. A. PATTEN" (Atlanta Georgian,
+        # 23 April 1910) is a headline tall. Measured over the 80-page sample
+        # of 25 September 2026: a rule's darkest pixel column in the gap
+        # reads 0.6 and 1.0 of the row; a word space 0.0, at most 0.43.
+        if per is None:
+            return False
+        xa, xb = int(a * per) + 1, int(z * per) - 1
+        return xb > xa and max(pi.col_dark_in(y0, max(y0 + 1, y1), xa, xb)) >= GAP_RULE_DARK
+    for w in reversed([w for w in row if w[0] + w[2] <= lo and id(w) not in ids]):
+        if lo - (w[0] + w[2]) > SPLIT_GAP * max(h, w[3]) or walled(w[0] + w[2], lo):
+            break
+        grown.insert(0, w); lo = w[0]
+    for w in (w for w in row if w[0] >= hi and id(w) not in ids):
+        if w[0] - hi > SPLIT_GAP * max(h, w[3]) or walled(hi, w[0]):
+            break
+        grown.append(w); hi = w[0] + w[2]
+    if len(grown) == len(line) or is_tier(grown, pi):
+        return take
+    return grown
+
+
 def box_with_deck(seg, words, page_width, page_height, pi=None, diagnostics=None):
     """The segment's box plus the smaller-but-not-body lines directly under
     it in the same horizontal span (lanes._box_of, minus its padding: the
@@ -234,6 +301,7 @@ def box_with_deck(seg, words, page_width, page_height, pi=None, diagnostics=None
     h = max(w[3] for w in seg)
     med = nameplate.page_median_height(words) or 1
     span = float(x1 - x0)
+    bx0, bx1 = x0, x1        # the box's own edges: the window stays the first line's
     cur = y1
     top_prev, h_prev = y0, h
     # ⚠️ Three kinds of line sit under a headline's first row, and each is
@@ -280,6 +348,10 @@ def box_with_deck(seg, words, page_width, page_height, pi=None, diagnostics=None
         # 9 June 1915 it was the nameplate itself (973 against a 699 skyline
         # headline above it), which the crop then carried and the alt read.
         if 0.85 * h <= hl <= SAME_MAX * h:
+            # ⚠️ Judged on the WHOLE printed line (see _whole_line): "SENDS"
+            # alone filled 51 percent of "MISSISSIPPI" and the line was
+            # refused as another column's; "SENDS APPEAL" fills 63.
+            line = _whole_line(line, words, pi)
             lo = min(w[0] for w in line); hi = max(w[0] + w[2] for w in line)
             if (min(hi, x1) - max(lo, x0)) / span >= 0.6:
                 take = line
@@ -319,6 +391,9 @@ def box_with_deck(seg, words, page_width, page_height, pi=None, diagnostics=None
         if is_tier(take, pi):
             _note("tier", None, " ".join(w[4] for w in sorted(take, key=lambda w: w[0])))
             break
+        take = _whole_line(take, words, pi)
+        bx0 = min(bx0, min(w[0] for w in take))
+        bx1 = max(bx1, max(w[0] + w[2] for w in take))
         cur = max(w[1] + w[3] for w in take)
         top_prev, h_prev = min(w[1] for w in take), max(w[3] for w in take)
         if cur - y0 > 6 * h:
@@ -329,7 +404,7 @@ def box_with_deck(seg, words, page_width, page_height, pi=None, diagnostics=None
     y1 = cur
     if (y1 - y0) > MAX_ITEM_FRAC * page_height:
         return None
-    return (x0, y0, x1 - x0, y1 - y0)
+    return (bx0, y0, bx1 - bx0, y1 - y0)
 
 
 def candidates(lane, words, page_width, page_height, nameplate_bottom=0, pi=None):
