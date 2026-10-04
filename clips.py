@@ -677,6 +677,216 @@ def _headline_item(c, page, diagnostics=None, max_width=None):
     return None
 
 
+# _picture_box(): a headline that titles a picture inside a printed box is
+# cropped to the box. His call, 5 October 2026, on the Atlanta Georgian and
+# News of 23 November 1910 ("New Jewish Alliance Building"), with the whole
+# box drawn as the reference: the headline lane shipped the title line alone,
+# 1.6 percent of the page, with the top of the architect's drawing cut off
+# under it. Every figure below was measured on that page, in small-image
+# pixels (1400 wide).
+# ⚠️ border_box() cannot see that box, and loosening it to do so would move
+# the ad lane's tuned pages: the box has no top border of its own (it hangs
+# from the page's dateline rule) and its right side is a column rule that
+# runs on down the page, so its sides bridge into the nameplate (run_t 60
+# against a top rule at 179) and the pair reads as a page cell. vrules()
+# cannot even offer the sides: every column of the halftone is a "rule" at
+# BOX_MIN_VRULE, and the merge ran 598 to 1174 as one band, picture, type,
+# right border and gutter together, its mean at 884.
+# So the sides are read on the HEADLINE'S OWN ROWS, where there is no
+# picture to blur them: there the border columns are solid (1.0 inked at
+# 583-590 and 1154/1161) and nothing else comes close.
+PICBOX_SIDE_INK = 0.9    # a border column on the headline's rows is at least
+                         # this inked
+PICBOX_SIDE_REACH = 0.12 # ...and within this of the page's width of the
+                         # headline (68 and 80 px measured: the title is
+                         # centred in the box)
+PICBOX_SIDE_GAP = 4      # ...a double line's two strokes are this close (px)
+PICBOX_RUN_GAP = 2       # a side's own stroke is unbroken: rows bridged (px)
+PICBOX_TOP_REACH = 4     # the top rule is within this many text heights above
+                         # the headline
+PICBOX_DARK = 0.80       # a picture row: this share of the box's width inked
+PICBOX_PICTURE = 10      # ...for at least this many text heights of rows
+PICBOX_WORDS = 0.15      # ...and the OCR read words on at most this share of
+                         # those rows: a halftone is a hole in the OCR
+PICBOX_MAX_FRAC = 0.50   # a box deeper than this of the page is not one item
+
+
+def _picture_box(pi, coords, box):
+    """The printed box round a headline that titles a picture, as an OCR-
+    space box, or None, in which case the caller crops as it always has.
+    See the comment above PICBOX_SIDE_INK for why border_box() is not used.
+
+    1. SIDES: walking out from the headline on its own rows, the first column
+       at least PICBOX_SIDE_INK inked on each side, within PICBOX_SIDE_REACH,
+       taken with any second stroke PICBOX_SIDE_GAP beyond it (a double line).
+    2. TOP: the first full-width rule (rule_finder) above the headline within
+       PICBOX_TOP_REACH text heights; else the headline's own top.
+    3. BOTTOM: walking down, the first full-width rule at which a side's own
+       stroke ENDS. The rule under the picture's caption (row 570) is crossed
+       by both sides and walked past; at the box's bottom rule (779-782) the
+       left side stops at 782. A column rule that runs on is not an end, so
+       an ordinary headline between column rules never closes here.
+    4. A PICTURE between the headline and the bottom: PICBOX_PICTURE text
+       heights of rows at least PICBOX_DARK inked across the box, with the
+       OCR reading words on few of them. Without one this is a headline in a
+       column and the lane keeps its own crop.
+    5. No deeper than PICBOX_MAX_FRAC of the page."""
+    med = nameplate.page_median_height(coords["words"]) or 1
+    per = pi.page.scale * pi.scale
+    text_h = med * per
+    sx, sy, sw, sh = (int(v) for v in pi.from_ocr(box))
+    sy0, sy1 = max(0, sy), min(pi.h, sy + sh)
+    if sy1 <= sy0:
+        return None
+    cd = pi.col_dark_in(sy0, sy1)
+    reach = int(pi.w * PICBOX_SIDE_REACH)
+
+    def side(start, stop, step):
+        x = start
+        while x != stop and 0 <= x < pi.w:
+            if cd[x] >= PICBOX_SIDE_INK:
+                inner = outer = x
+                k = x + step
+                while 0 <= k < pi.w and abs(k - outer) <= PICBOX_SIDE_GAP:
+                    if cd[k] >= PICBOX_SIDE_INK:
+                        outer = k
+                    k += step
+                return inner, outer
+            x += step
+        return None
+
+    left = side(sx - 1, max(-1, sx - 1 - reach), -1)
+    right = side(sx + sw, min(pi.w, sx + sw + reach), 1)
+    if not left or not right:
+        return None
+    li, lo = left                                # inner, outer
+    ri, ro = right
+    if ro - lo < pi.w * rules.MIN_CELL_W or li - lo > pi.w * rules.BORDER_MAX_W \
+            or ro - ri > pi.w * rules.BORDER_MAX_W:
+        return None
+    xa, xb = li + 3, ri - 2
+    words = [(w[0] * per, w[1] * per, w[2] * per, w[3] * per, w[4]) for w in coords["words"]]
+    is_rule = pi.rule_finder(text_h, words)
+
+    def stroke_end(a, b):
+        """Last row of the side strip [a, b] inked without a break longer
+        than PICBOX_RUN_GAP, walking down from the headline."""
+        y, gap, last = sy0, 0, None
+        while y < pi.h:
+            if any(pi.is_ink(x, y) for x in range(a, b + 1)):
+                gap, last = 0, y
+            else:
+                gap += 1
+                if gap > PICBOX_RUN_GAP:
+                    break
+            y += 1
+        return last
+
+    ends = [stroke_end(lo, li), stroke_end(ri, ro)]
+    if None in ends:
+        return None
+    top = sy0
+    for y in range(sy0 - 1, max(-1, sy0 - 1 - int(PICBOX_TOP_REACH * text_h)), -1):
+        if is_rule(y, xa, xb):
+            while y > 0 and is_rule(y - 1, xa, xb):
+                y -= 1
+            top = y
+            break
+    snap = max(3, int(text_h))
+    bottom = None
+    y = sy1
+    while y < min(pi.h, sy0 + int(pi.h * PICBOX_MAX_FRAC)):
+        if not is_rule(y, xa, xb):
+            y += 1
+            continue
+        j = y
+        while j + 1 < pi.h and is_rule(j + 1, xa, xb):
+            j += 1
+        if any(abs(e - j) <= snap for e in ends):
+            bottom = j
+            break
+        y = j + 1
+    if bottom is None or bottom - top > pi.h * PICBOX_MAX_FRAC:
+        return None
+    word_rows = set()
+    for wx, wy, ww, wh, t in words:
+        if sum(ch.isalpha() for ch in t) >= 3 and xa <= wx + ww / 2.0 < xb:
+            word_rows.update(range(int(wy), int(wy + wh) + 1))
+    dark = [yy for yy in range(sy1, bottom) if pi.row_share(yy, xa, xb) >= PICBOX_DARK]
+    if len(dark) < PICBOX_PICTURE * text_h or \
+            sum(1 for yy in dark if yy in word_rows) > PICBOX_WORDS * len(dark):
+        return None
+    return pi.to_ocr((lo, top, ro + 1 - lo, bottom + 1 - top))
+
+
+# A picture box's alt describes the picture, his call the same morning
+# ("describe the picture in the alt"): the headline lane's alt named the
+# title alone, and the crop now shows a drawing a reader cannot see. The
+# cartoon lane's shape (pictures.compose_alt): the description labelled as
+# the model's, the printed caption labelled as transcribed.
+PICBOX_PROMPT = (
+    "The file {name} in this directory is a clipping from a Georgia newspaper "
+    "printed in {year}: a boxed item with a printed title over a picture. "
+    "Answer in exactly two lines, each beginning with its label.\n"
+    "PICTURE: one or two plain sentences saying what the picture shows, for a "
+    "reader who cannot see it: what is pictured, the setting, anything "
+    "prominent in it. Describe only what is visible in the picture itself; do "
+    "not repeat its title, and do not describe the type around it.\n"
+    "CAPTION: the caption printed directly beneath the picture, exactly as "
+    "printed, on this one line; write [illegible] for a word you cannot read; "
+    "or NONE.\n"
+    "Reply with those two lines and nothing else: no preamble, no commentary, "
+    "no markdown. If the image is unreadable reply exactly CANNOT_READ."
+)
+PICBOX_LINE = re.compile(r"^\s*(PICTURE|CAPTION)\s*:\s*(.*?)\s*$", re.IGNORECASE | re.MULTILINE)
+
+
+def parse_picbox(raw):
+    """{"picture", "caption"} from the model's reply, or None."""
+    found = {k.lower(): v for k, v in PICBOX_LINE.findall(raw or "")}
+    picture = (found.get("picture") or "").strip()
+    if not picture or picture.upper() == "NONE":
+        return None
+    caption = (found.get("caption") or "").strip().strip('"“”')
+    if caption.upper() in ("NONE", "N/A"):
+        caption = ""
+    return {"picture": picture, "caption": caption}
+
+
+def describe_picture_box(image_bytes, year, log=print):
+    """The model's description of a picture box, parsed and curled, or None.
+    Two tries, the tool-talk guard and the length caps are the cartoon
+    lane's (pictures.classify)."""
+    import pictures
+    for _ in range(2):
+        raw = transcribe.ask(image_bytes, year, PICBOX_PROMPT, log=log)
+        if raw is None:
+            return None
+        r = parse_picbox(raw)
+        if r is None:
+            log(f"  (picture box reply unparseable: {raw[:80]!r})")
+            continue
+        if pictures.TOOL_TALK.search(r["picture"] + " " + r["caption"]):
+            log(f"  (picture box reply reads as tool talk: {r['picture'][:80]!r})")
+            continue
+        for k, cap in (("picture", pictures.MAX_PICTURE_CHARS), ("caption", pictures.MAX_WORDS_CHARS)):
+            if len(r[k]) > cap:
+                r[k] = r[k][:cap].rsplit(" ", 1)[0] + "…"
+        return {k: pictures.curl(v) for k, v in r.items()}
+    return None
+
+
+def picture_alt_tail(pb):
+    """What a picture box adds after the headline's own alt sentence: the
+    description, labelled as the model's, then the caption, labelled as
+    transcribed."""
+    import pictures
+    tail = f" {pictures.PREFIX_DESCRIBED}, the picture beneath it: {pb['picture'].rstrip('.')}."
+    if pb.get("caption"):
+        tail += f" {transcribe.PREFIX}, the caption reads: “{pb['caption']}”"
+    return tail
+
+
 def headline_closure_margins(c, page):
     """ADVISORY ONLY, mirroring closure_margins() below but for the headline
     item's own down-walk (items.box_with_deck): why did it stop growing the
@@ -820,13 +1030,34 @@ def clip_headline(lccn, date, ed=1, seq=None, log=print):
     words = transcribe.transcribe(tight, date[:4], log=log, prompt=transcribe.HEADLINE_PROMPT)
     if not words:
         raise npc.Refused("headline could not be transcribed")
-    image_box, data = _fetch(page, _loosen(box, c, LOOSE_W, LOOSE_H))
+    # A headline over a picture in a printed box takes the box (see
+    # _picture_box), and the page gate then reads every word the reader
+    # will be shown, not the headline's alone.
+    pbox = _picture_box(rules.PageInk(page), c, box)
+    if pbox:
+        verdict, page_hits = _verdict("headline", lccn, date, nameplate.words_in(c["words"], pbox),
+                                      c["words"], True)
+        image_box, data = _fetch(page, _loosen(pbox, c, BOX_MARGIN_W, BOX_MARGIN_H))
+    else:
+        image_box, data = _fetch(page, _loosen(box, c, LOOSE_W, LOOSE_H))
     hits = _check_transcription(words, "headline")
     _refuse_own_title(words, meta, "headline")
     if hits:
         verdict = _review(verdict, f"the transcribed headline carries {sorted(hits)}")
+    extra = None
+    if pbox:
+        # the crop shows a picture, so the alt says what it shows (his call,
+        # 5 October 2026); a picture box the model could not describe is
+        # refused, never posted with the title alone
+        described = describe_picture_box(data, date[:4], log=log)
+        if not described:
+            raise npc.Refused("picture box could not be described")
+        extra = {"picture_box": described}
+        cap_hits = vocabulary_hits(described["caption"])
+        if cap_hits:
+            verdict = _review(verdict, f"the picture's caption carries {sorted(cap_hits)}")
     return _result("headline", page, meta, date, ed, box, image_box, data,
-                   verdict, page_hits, _curl(words), True)
+                   verdict, page_hits, _curl(words), True, extra)
 
 
 ARTICLE_LINES = 10       # lines of the paragraph, at most (14 ran a fifth of the page)

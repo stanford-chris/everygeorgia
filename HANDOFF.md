@@ -1603,3 +1603,67 @@ market lane and the classified lane are column-bounded by construction
 (`column_bounds`, `local_column`), so they have no columns to interleave; the
 nameplate band and the transcribed lanes are the model's reading, which is
 already in order.
+
+## ✅ A headline over a picture is cropped to its printed box, 5 October 2026
+
+His call, on the Atlanta Georgian and News of 23 November 1910 (posted
+4 October, `3mx2ldshs4t2w`), with the whole box drawn by hand as the reference:
+the headline lane shipped "New Jewish Alliance Building" alone, 1199x217, 1.6
+percent of the page, with the top of the architect's drawing cut off under it.
+The title was a picture's, and the item was the box: title, drawing, caption
+and, in the same border, the "Growth and Progress of the New South" feature.
+
+`clips._picture_box()` now runs in `clip_headline()` after the transcription.
+When it finds a box the crop is the box plus `BOX_MARGIN_W`/`BOX_MARGIN_H`, as
+for a boxed advertisement, and the page gate is re-run on **every word inside
+the box**, since the reader is shown all of it. When it finds none the lane
+crops exactly as before. The transcription still comes from the tight
+headline crop, so the alt reads the title alone.
+
+⚠️ **`border_box()` was tried first and cannot see this box, and it was
+deliberately not loosened**: its constants are the ad lane's, set on named
+pages. Three things stop it, all measured on this page in small-image pixels:
+- `vrules()` merges adjacent qualifying columns into one rule at their mean x,
+  and every column of a halftone qualifies at `BOX_MIN_VRULE`. The merge ran
+  598 to 1174 as one band (picture, type, right border and gutter), mean 884,
+  so no candidate ever sat on either border.
+- With the sides supplied by hand, the box has no top border of its own: it
+  hangs from the page's dateline rule, and its sides, bridged at
+  `BORDER_BREAK` (36 px), run up into the nameplate (run_t 60 against the rule
+  at 179), so no top edge closes.
+- Its right side is a column rule that runs on down the page.
+
+So `_picture_box()` reads the sides on the **headline's own rows**, where
+there is no picture to blur them (1.0 inked at 583-590 and 1154/1161; nothing
+else reaches `PICBOX_SIDE_INK`). It closes at the first full-width rule where a
+side's own unbridged stroke ends (the left side stops at 782 on the 779-782
+bottom rule; the rule under the caption, at 570, is crossed by both and walked
+past), and it **requires a picture**: ten text heights of rows at least 0.80
+inked across the box, the OCR reading words on at most 15 percent of them.
+Without a picture this would close round an ordinary headline between column
+rules wherever one rule ended; the picture is what makes it this case.
+
+Swept the same morning over 60 random daily front pages 1900-1930 and 30
+Atlanta Georgian front pages 1909-1912: it fired on none of the 90. No false
+box, and no other picture box either, so the shape is rare; most pages leave
+at step 1, finding no solid column beside the headline.
+`test_picture_box.py` (5 tests, synthetic page of this shape), verified by
+five mutations on a scratch copy (close at the first rule, no picture test,
+sides from any column, both sides must end, no top walk), each caught.
+✅ **The picture is described in the alt, his call the same morning** ("describe
+the picture in the alt"): `describe_picture_box()` asks the model, through the
+cartoon lane's confined `transcribe.ask()`, for PICTURE and CAPTION lines
+(`PICBOX_PROMPT`), with that lane's tool-talk guard and length caps, and
+`picture_alt_tail()` appends "A.I.-described, the picture beneath it: ..." and
+"A.I.-transcribed, the caption reads: “...”" after the headline sentence. A
+picture box the model cannot describe is REFUSED, never posted with the title
+alone; vocabulary in the caption is REVIEW. The model is called only after
+the transcription checks pass. ⚠️ **There is no verifier here, as there is
+none in the cartoon lane**: the first live description said "a small figure
+stands near the entrance", and the only figure in the drawing is at the far
+left in front of the side wing. That post was deleted within two minutes and
+reposted with a fresh description, read against the image first. The Old
+Seoul lesson stands: a "small figure" in a model's description is the claim
+to check. Post `3mx2ldshs4t2w` deleted, `3mx3kvi6suy2p` deleted, now
+`3mx3kxhvw3m2f`; the state entry was updated in place, so the rotation is
+unchanged. `test_picture_box.py` is 11 tests with this.

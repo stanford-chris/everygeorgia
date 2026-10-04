@@ -594,6 +594,14 @@ def alt_text(r):
     lead = f"{transcribe.PREFIX} {what}" if r.get("generated") else what.capitalize()
     alt = (f"{lead} from “{title},” {where}, {npc.post_date(r['date'])}, page {seq}, "
            f"reading: “{r['words']}”")
+    if r.get("picture_box"):
+        # a headline over a picture, cropped to its box: the picture is
+        # described and its caption transcribed (clips.picture_alt_tail)
+        import clips
+        alt += clips.picture_alt_tail(r["picture_box"])
+        if len(alt) > ALT_MAX:
+            alt = alt[:ALT_MAX - 1].rstrip() + "…"
+        return alt
     if len(alt) > ALT_MAX:
         alt = alt[:ALT_MAX - 2].rstrip() + "…”"
     return alt
