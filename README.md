@@ -4,15 +4,14 @@
 a Bluesky account posting clippings from **Georgia Historic Newspapers**, the
 archive run by the Digital Library of Georgia at UGA. Unofficial.
 
-> ✅ **Permission to publish arrived on 10 September 2026** from UGA Libraries,
-> with one condition: credit the Digital Library of Georgia. Every post ends
-> "Presented online by the Digital Library of Georgia." The poster was built on
-> 11 September; the account was created by hand the same day. See `HANDOFF.md`.
+UGA Libraries gave permission to publish on 10 September 2026, with one
+condition: credit the Digital Library of Georgia. Every post ends "Courtesy of
+the Digital Library of Georgia.", with the link to the page on those words.
 
 ## Why this project exists
 
 I'm a Georgia native and a UGA Grady College graduate whose first newspaper job
-was at *The Augusta Chronicle*. The DLG's own Twitter account used to post exactly
+was at "The Augusta Chronicle". The DLG's own Twitter account used to post exactly
 this kind of clipping and stopped in December 2024.
 
 ## Two APIs, and they are complementary
@@ -22,166 +21,169 @@ this kind of clipping and stopped in December 2024.
 | **Open ONI** at `gahistoricnewspapers.galileo.usg.edu` | Page images, word-level OCR coordinates, full page text in `ocr_eng` on every search result, and a level-2 IIIF image server at `iiif-ha.galib.uga.edu` allowing arbitrary region crops. The only source of pages, text and images. |
 | **DLG** at `dlg.usg.edu/about/api` | 1,084,812 records across all of DLG; GHN is its largest collection at 371,998, issue-level, no OCR, no IIIF. Its value is **machine-readable rights statements**. |
 
+## What it posts
+
+Two runs a day, one clipping each. The lanes take turns in this order
+(`LANES` in `everygeorgia_post.py`); a lane that comes up empty hands its slot
+to the next, and the rotation continues from the lane that last posted.
+
+| Lane | Source | From | Text in the alt |
+| --- | --- | --- | --- |
+| nameplate | front page, title order | any date | the band under the masthead, model-transcribed |
+| headline | front page of a daily, title order | 1880 | headline and decks, model-transcribed |
+| article | front page of a daily, title order | 1880 | headline and first paragraph, one column; must carry a dateline or wire credit |
+| ad | search on advertising phrases | 1867 | OCR if legible, else model-transcribed; a boxed ad is cropped to its printed border |
+| market | search on market-report phrases | 1867 | OCR; the whole headed section |
+| classified | search on want-ad phrases | 1867 | OCR; a run of items in one column |
+| cartoon | syndicate credit-line search, then title order (dailies) | 1900 | a model description plus the printed words |
+
+`HELD_LANES` is where a lane waits before joining the rotation (`--lane <x>`
+runs it by hand). It is currently empty.
+
+Selection is one issue per **title**, titles in a fixed shuffled order, so every
+paper posts once before any posts twice. Only issues DLG marks "No Copyright -
+United States" are used; there is no year cutoff of our own. Model-written words
+are labelled `A.I.-transcribed` (cartoon descriptions `A.I.-described`) wherever
+they reach a reader. Post text is the paper's name and date, the credit, and
+`#Georgia #History`.
+
+## Review
+
+`gates.py` returns PASS, REVIEW or REFUSE. REVIEW means the crop or the page it
+links to carries slavery, lynching or Klan vocabulary: a person decides. A
+REVIEW item is never posted by the ordinary path and never blocks the run.
+
+1. The item is appended to `data/review.jsonl` with its crop saved under
+   `data/review/`, and the run moves on.
+2. After each live run, new items are mailed with their crops embedded (through
+   the estate's `estate_mail.py`, outside this repo). Dry runs are logged but
+   not mailed.
+3. A person decides:
+   ```bash
+   python3 everygeorgia_post.py --approve LCCN:DATE[:LANE]
+   python3 everygeorgia_post.py --reject LCCN:DATE[:LANE]
+   ```
+   Decisions go to `data/review_decisions.jsonl`; the latest per item wins.
+4. Approved items post in their lane's turn, alternating with ordinary picks
+   and never back to back from one title family. Each is re-cut first: it is
+   dropped if the re-cut is refused (rights, era, geometry) or lands on a
+   different crop, and the alt uses the words the reviewer read. Approval
+   lifts the vocabulary hold and nothing else.
+
+## Running it
+
+```bash
+python3 everygeorgia_post.py                 # post one, live
+python3 everygeorgia_post.py --dry-run       # choose and print, post nothing
+python3 everygeorgia_post.py --lane cartoon  # one lane instead of the rotation
+python3 everygeorgia_post.py --status
+```
+
+A bare run posts; unknown flags are rejected. The Bluesky app password is read
+from the Keychain (service `everygeorgia-bluesky`).
+
 ## Files
 
-- `georgia_roster.py` → `data/georgia_roster.csv`. 1,158 of 1,164 titles across 158
-  counties. Six unresolved, listed in the build log.
-- `rights_join.py` → `data/georgia_rights.csv`. Joins the roster against DLG's
-  per-issue rights. **Not yet run to completion:** DLG was returning 503 on roughly
-  three requests in four on 21 August. The script now probes first and refuses to
-  start rather than grind against a struggling service.
-- `ghn_api.py` — Open ONI manifests, word-level OCR coordinates and IIIF region
-  crops. Read-only, cached, and it cannot post. ⚠️ **The OCR coordinate space is
-  not the image space** and is not consistent between pages: measured from
-  796x1190 to 22839x31677 against images of 3080x4607 and 4879x6435, so it is
-  both smaller and larger than the image depending on the page. Always scale
-  through `Page.to_image()`. ⚠️ The manifest's inline IIIF profile claims
-  `level0`; the server's own `info.json` says **level2** and arbitrary region
-  crops demonstrably work. Trust `info.json`.
-- `nameplate.py` — the nameplate detector, by geometry and never by text.
-- `gates.py` — the decision layer: PASS / REVIEW / REFUSE. ⚠️ **REVIEW is not a
-  refusal.** The page-level vocabulary gate returns REVIEW precisely so that a
-  blanket deny does not erase the Black press, which has three postable issues
-  of "The Colored Tribune" to lose. The advertisement lane's era floor is
-  1867, measured: publishers carried the standing slave-sale rate card for a
-  year after the war.
-- `lanes.py` — provisional crop geometries for the headline and advertisement
-  lanes, plus the text-block bound. ⚠️ Neither lane is designed, so these
-  measure an assumption; they are drawn generously on purpose.
-- `nameplate_crop.py` — one clipping: image, caption and alt text, six gates.
-  ⚠️ **Gate 4 reads the pixels**, because the OCR band ends where the OCR words
-  end and display type is what the OCR reads worst: two unread headlines shipped
-  as furniture and three crops were cut before it existed. See HANDOFF.md.
-- `everygeorgia_post.py` — the poster. One issue per title in a fixed shuffled
-  order; the GHN FAQ citation as the post; REVIEW logged to `data/review.jsonl`
-  and skipped; `--launch` for the pinned thread; `--setup-profile`.
-- `profile.py` — the bio and the six-post thread as data.
-- `rules.py` — the page's grid from its pixels: gutters, rules, film edge, and
-  the snapping of an OCR box to its cell; since 22 September 2026 also
-  `border_box()`, the printed border round a boxed advertisement, which the
-  advertisement lane crops to whole, with no size cap, when the search phrase
-  sits inside one (his rule: err looser, never a crop cut on a column gutter). ⚠️ Gutters over the whole page, never
-  over an item's own rows; interior dark columns are rules, not film.
-- `items.py` — display rows split at column gaps, boxed with their decks.
-- `clips.py` — one clipping from any lane; the block-of-text builder for the
-  search-driven lanes; the search candidate lists. ✅ Also `column_text()` (23
-  September 2026): a boxed advertisement is one item but not one column, so its
-  words are read band by band and column by column, split at the box's own
-  printed rules, instead of by the page-wide rows that interleave them. ✅ Also the **classified lane**
-  (`clip_classified`, built and released 20 September 2026): a run of want-ad
-  items around a search phrase, in a column read from the pixels at the image's own
-  resolution (`local_column`: a want-ad department is set at its own measure inside a
-  border, on no page-level gutter, and its gutter is 20px with a dotted rule that reads
-  as grain at 1400px), items cut at rules, gaps and headings (`classified_block`), the
-  20th-century `LEAD—` form and the 19th-century heading-over-paragraph form both
-  recognised, wanted-notice vocabulary REVIEW. HANDOFF.md has the traps.
-- `transcribe.py` — the words in a clipping, by `claude -p` vision, prefixed
-  `A.I.-transcribed` wherever they reach a reader.
-- `pictures.py` — the cartoon lane: a drawing found by the hole it leaves in the
-  OCR (line art cannot be told from type by its ink; it can by its OCR-box
-  coverage, 0.22 against 0.51), framed by the page's grid, sorted by kind by the
-  model, described and transcribed by it. The one lane whose alt is a
-  description, labelled `A.I.-described`. See HANDOFF.md.
-- `crop_frequency.py` — the crop-level measurement above, plus `--titles`.
-- `permission_followup.py` — the UGA reminder. ⛔ Mails Chris, never UGA.
-- `test_nameplate.py` — 67 tests, stdlib only. `test_everygeorgia_post.py` — 25.
-- `avatar/avatar_G_dark_72.png` — a blackletter G from the *Georgia Weekly Telegraph
-  and Georgia Journal & Messenger*, Macon, 23 February 1875. Source image kept
-  alongside it so the provenance travels with the asset.
+- `everygeorgia_post.py`: the poster, the rotation, the review queue and mail,
+  `--launch` (pinned thread), `--setup-profile`.
+- `profile.py`: the bio and the six-post pinned thread as data.
+- `gates.py`: PASS / REVIEW / REFUSE, with each lane's era floor. The ad lane's
+  1867 floor is measured: publishers carried the standing slave-sale rate card
+  for a year after the war.
+- `clips.py`: one clipping from any lane, the search candidate lists, the block
+  and column builders.
+- `nameplate.py`, `nameplate_crop.py`: the nameplate detector (by geometry,
+  never by text) and the nameplate clipping. Gate 4 reads the pixels, because
+  the OCR reads display type worst.
+- `rules.py`: the page's grid from its pixels: gutters, rules, film edge and the
+  printed border of a boxed ad.
+- `items.py`: display rows split at column gaps, boxed with their decks.
+- `pictures.py`: the cartoon lane. A drawing is found by the hole it leaves in
+  the OCR, not by its ink, and the model sorts it by kind.
+- `transcribe.py`: words in a clipping, by `claude -p` vision.
+- `ghn_api.py`: Open ONI manifests, OCR coordinates and IIIF crops. Read-only,
+  cached, cannot post. The OCR coordinate space is not the image space and
+  varies by page: always scale through `Page.to_image()`. The manifest claims
+  IIIF `level0`; the server's `info.json` says `level2`, which is right.
+- `georgia_roster.py` -> `data/georgia_roster.csv`: 1,158 of 1,164 titles across
+  158 counties.
+- `rights_join.py` -> `data/georgia_rights.csv`: the roster joined to DLG's
+  per-issue rights. Run once (22 August 2026): 843 of 1,158 titles postable.
+- `crop_frequency.py`, `lanes.py`: the crop-level vocabulary measurement below.
+- `crop_closure_check.py`: weekly read-only check that each lane's crop closed
+  with room to spare.
+- `permission_followup.py`: the permission reminder, now resolved and silent.
+- `test_*.py`: stdlib tests, run by path.
+- `avatar/avatar_G_dark_72.png`: a blackletter G from the "Georgia Weekly
+  Telegraph and Georgia Journal & Messenger", Macon, 23 February 1875, with its
+  source image.
 
 ## Things learned the hard way
 
-**Rights are not a date rule.** "No Copyright – United States" runs to 1928 while
-"In Copyright" begins in 1924, so the 1920s overlap and are decided title by title.
-Any cutoff year invented here would override DLG's own item-level determination.
+**Rights are not a date rule.** "No Copyright - United States" runs to 1928 while
+"In Copyright" begins in 1924, so the 1920s overlap and are decided title by
+title, and DLG marks thousands of later issues No Copyright too. Any cutoff year
+invented here would override DLG's own item-level determination.
 
-**DLG does not hold every issue.** 371,998 records against 518,801 issues in GHN, so
-roughly 28% carry no rights statement. That state is `unknown`, and it is not the
-same as `none`. Neither may be treated as permission.
+**DLG does not hold every issue.** 371,998 records against 518,801 issues in GHN,
+so roughly 28% carry no rights statement. That state is `unknown`, not `none`,
+and neither is permission.
 
 **The corpus is not neutral, and a random draw is not viable.** Measured 21 August
 2026 against 2,272,709 pre-1931 pages, of which 353,576 are front pages:
 
 | term | all pages | front pages |
 | --- | --- | --- |
-| `slave` (stems `slaves`) | 197,981 — 8.7% | 39,818 — **11.3%** |
-| `lynch*` | 118,518 — 5.2% | 27,283 — **7.7%** |
-| `ku klux` | 17,000 — 0.7% | 4,886 — 1.4% |
-| `negro for sale` | 8,673 — 0.4% | 1,950 — 0.6% |
-| any of those three subjects | 318,881 — 14.0% | 68,315 — **19.3%** |
-| `negro` alone | 719,394 — 31.7% | 166,982 — **47.2%** |
+| `slave` (stems `slaves`) | 197,981: 8.7% | 39,818: **11.3%** |
+| `lynch*` | 118,518: 5.2% | 27,283: **7.7%** |
+| `ku klux` | 17,000: 0.7% | 4,886: 1.4% |
+| `negro for sale` | 8,673: 0.4% | 1,950: 0.6% |
+| any of those three subjects | 318,881: 14.0% | 68,315: **19.3%** |
+| `negro` alone | 719,394: 31.7% | 166,982: **47.2%** |
 
-Roughly **one pre-1931 front page in five** carries slavery, lynching or Klan
-vocabulary before "negro" is counted at all, and nearly half mention it. Sampling
-real daily front pages 1885–1908, a keyword blocklist rejected **15 of 24** — a
-result these proportions predict rather than contradict. The filter removes the
-era, not an occasional problem.
+Roughly one pre-1931 front page in five carries slavery, lynching or Klan
+vocabulary. Three cautions:
 
-Three cautions travel with the table, and none of them are pedantry:
+- **It counts vocabulary, not subject.** "Slave" catches classical allusion;
+  "negro" spans neutral news and the Black press writing about itself. Every
+  figure is an upper bound on subject.
+- **It is page-level, and the lanes are crops.** Measured at crop level
+  (`crop_frequency.py`): the nameplate crop carries 0.0% against 27.0% at page
+  level, and none of the 843 postable titles carries the vocabulary in its name.
+  Headline crops run 5.6% and display ads 1.1%, but a crop is blind to the page
+  around it, so every lane also gates on the whole page.
+- **The index stems.** `lynch`, `lynched` and `lynching` all return 118,518. Never
+  quote a figure as the count of one literal word.
 
-- **It counts vocabulary, not subject.** Same rule as everywhere else here:
-  search finds shape, never genre. "Slave" catches classical allusion and
-  temperance rhetoric; "negro" spans neutral news, church notices and the Black
-  press writing about itself. Every figure is an **upper bound** on subject.
-- **It is page-level, and the lanes are crops.** A nameplate is the top band of a
-  page. A page mentioning lynching almost never mentions it in the masthead, so
-  the nameplate lane's real exposure is far below 7.7%. That is why it is the
-  lane to launch with. ✅ **The crop-level measure has now been made**
-  (26 August 2026): on the same pages and by the same method, slavery/lynching/
-  Klan vocabulary runs **27.0% at page level and 0.0% in the nameplate crop**,
-  and "negro" **54.8% against 0.0%**. Held out on a second sample the
-  thresholds had never seen, both stayed 0.0%. And exactly, with no sampling:
-  **none of the 843 postable titles carries that vocabulary in its own name.**
-  Run it with `crop_frequency.py`. ✅ **The advertisement and headline lanes were
-  measured on 26 August 2026 too**, and they are a different picture: headline
-  crops 5.6%, display-ad crops 1.1%, any text block 5.5% of crops but **62.6%
-  of pages**. ⚠️ **A low crop figure there is not safety.** On pages whose body
-  text already carries the vocabulary, a headline crop carries it only 16.3% of
-  the time: the crop is blind to the page around it, so those lanes cannot
-  screen themselves and must gate on the whole page. And before 1865, **68.8%
-  of front pages carry a slave-sale-shaped block** which turns out to be the
-  paper's own standing legal-notice rate card, not an advertisement. See
-  HANDOFF.md.
-- **⚠️ The index stems, so no count here names a single word.** `lynch`,
-  `lynched`, `lynching` and `lynchings` all return 118,518; `slave` and `slaves`
-  both return 197,981. `slavery` is separate at 91,544. Never quote one of these
-  figures as the count of a literal word — post 3 did, and was corrected.
+**`date1`/`date2` take ISO dates, and a wrong format is silently ignored.**
+`date1=1763&date2=1930&dateFilterType=yearRange` returns the whole corpus with an
+HTTP 200. Use `date1=1763-01-01&date2=1930-12-31&dateFilterType=range&searchType=advanced`.
+`sequence=1` restricts to front pages.
 
-⚠️ **`date1`/`date2` take ISO dates, and a wrong format is silently ignored.**
-`date1=1763&date2=1930&dateFilterType=yearRange` returns the **whole corpus**
-with an HTTP 200 and no warning — 4,564,007 pages read as a plausible answer. Use
-`date1=1763-01-01&date2=1930-12-31&dateFilterType=range&searchType=advanced`, and
-sanity-check any new filter against a range you can predict. `sequence=1`
-restricts to front pages.
+**A blocklist silences the Black press.** It rejected front pages of "The Colored
+American" (Augusta, 1866) and "The Colored Tribune" (Savannah), which share
+vocabulary with slave-sale advertisements. That is why REVIEW goes to a person
+rather than being a refusal.
 
-**The blocklist silences the Black press.** It rejected the front pages of *The
-Colored American* (Augusta, 6 Jan 1866) and *The Colored Tribune* (Savannah), because
-they share vocabulary with slave-sale advertisements. This is why the judgment stays
-with a person, and it is named in the email.
+**Search finds shape, never genre.** "Salutatory" in Georgia papers mostly means a
+commencement address; "the editor regrets" returned a poem. Selectors work when
+the phrase is genre-specific ("sarsaparilla" only appears in advertising).
 
-**Search finds shape, never genre.** "Salutatory" in Georgia papers overwhelmingly
-means a commencement address; "prospectus" is one-in-seven the newspaper sense;
-"the editor regrets" returned a poem about a rejection slip. Selectors that work do
-so because the phrase is genre-specific ("sarsaparilla" only appears in advertising).
+**Rights are issue-level, not edition-level.** Identifiers are
+`/lccn/<lccn>/<date>/ed-1/seq-<n>/`; DLG marks issues, so "an issue per title"
+means `ed-1` unless a title genuinely printed more than once a day.
 
-**"Issue" and "edition" are different units, and only one of them is what DLG
-marks.** An edition sits *inside* an issue: every identifier is
-`/lccn/<lccn>/<date>/ed-1/seq-<n>/`, and on a sampled record the `edition` field
-comes back `None` with an empty `edition_label`, because nearly every paper here
-printed once a day. A morning and an evening printing would be two editions of
-one issue. **DLG's rights statements are issue-level** — 371,998 records against
-518,801 issues — so any sentence about what is postable has to say "issues".
-"Editions" was proposed for post 2 on 21 August 2026 as the more natural word and
-rejected for exactly this: it would name a unit DLG does not mark, in the one
-sentence where the account stakes its permission claim. It is also the unit to
-get right when building the lanes — picking "an issue per title" means picking
-`ed-1` unless a title genuinely has more.
+**Carry identifiers through; never reconstruct them.** Guessed LCCNs produced
+wrong links.
 
-**Carry identifiers through; never reconstruct them.** Guessing LCCNs put two wrong
-links into sample posts and killed a lookup outright.
+**A curl 200 is not arrival.** Turnstile returns its challenge page with status
+200. Check `url_effective`.
 
-**A curl 200 is not arrival.** Turnstile returns its challenge page with status 200,
-so every "verified" link check was passing on a challenge. Check `url_effective`.
+**DLG sheds load and serves browsers first.** During the rights join its API
+returned 503 on most requests from our identifying User-Agent while a browser UA
+got through. The join probed for health before starting, cached every page so
+it could resume, and never spoofed a browser UA: under load, humans should come
+first.
 
 ## The editorial test for difficult material
 
@@ -189,69 +191,3 @@ A caption does not travel with a screenshot. The question is not "can I frame th
 but **"is the image defensible with no words attached?"** A Georgia bishop's headline
 calling the Klan un-American passes. A 1920 paper printing the Klan founder's denial
 as news fails, because the image alone is Klan publicity whatever the caption says.
-
-## The rights join is done
-
-✅ **Completed 11:45 on 22 August 2026**, from 910 of 1,088 DLG pages: 843 of
-1,158 titles postable, **218,505 pre-1931 NoC-US issues** across 840 titles.
-`com.chrisstanford.everygeorgiarights` was booted out and both copies of its
-plist deleted on 26 August. The section below is kept because the reasoning in
-it outlives the job.
-
-## How the rights join ran itself
-
-`com.chrisstanford.everygeorgiarights` fires `rights_join_tick.sh` **every 15
-minutes**, and that job is the only thing that needs to happen for
-`data/georgia_rights.csv` to appear.
-
-⚠️ **It is a timer, not a resident watcher, and that is the point.** launchd
-re-fires a `StartInterval` job after the machine wakes; a long-lived process
-polling in a loop does not survive sleep. The first attempt at this was a
-`nohup` loop, which would have died at the first lid-close.
-
-⚠️ **It probes before it works.** DLG was returning 503 on 7 of 8 requests on
-21 August 2026, and the join makes 1,088 of them. Only a clean 3/3 health check
-starts it; anything less logs a line and exits. Starting into a degraded service
-would mean thousands of retries against a host already shedding load, days after
-we emailed UGA promising to be a light touch.
-
-⚠️ **Every partial attempt is progress.** Pages are cached under `data/rights/`,
-so a run interrupted at page 900 resumes there. The script exits immediately and
-silently once the csv exists, so the job costs nothing after it succeeds.
-
-⚠️ **DLG is not down; it is shedding load, and it serves browsers first.**
-Measured 21 August 2026. The 503 is DLG's own application response — `text/plain`,
-`retry-after: 60`, body "The Digital Library of Georgia is currently unavailable
-- please try again shortly", **no Cloudflare headers and no `cf-ray`** — so it is
-not a bot challenge and there is no cookie or session a browser visit could
-establish for us to reuse. Loading a page by hand in Safari does nothing for the
-scripts. Across three spaced rounds a Safari user-agent returned 200 every time
-(4 of 4 across all tests that evening) while our own identifying UA returned 503,
-200, 503, on the same URL seconds apart.
-
-⛔ **Do not spoof a browser user-agent to get through.** Our UA names the project
-and carries the same address that emailed UGA asking permission. If DLG is under
-load and serving humans before bots, that is the right priority, and working
-around it would take capacity from a struggling service while our request sits
-unanswered in their inbox.
-
-⚠️ **This may mean the 3/3 gate never fires.** The probe was calibrated for "is
-DLG up?", but the real condition is "is DLG willing to talk to *us* right now?"
-If our UA succeeds around one time in three while browsers are served cleanly,
-three consecutive clean probes may effectively never occur, and the job will
-decline forever against a service that would answer slowly. Do not loosen it to
-fire 1,088 requests into a host that is shedding load. If it persists beyond a
-day or two, raise it with UGA alongside the permission chase — they run the API
-and may have a bulk route or be willing to let a known client through.
-
-The plist lives in `~/Library/LaunchAgents`; the copy here is a **mirror, not the
-loaded file**. A job bootstrapped from `~/Scripts` does not survive a reboot.
-Verify which is live before trusting either:
-
-```bash
-launchctl print gui/$UID/com.chrisstanford.everygeorgiarights | grep 'path ='
-tail -5 ~/Scripts/everygeorgia/data/await_dlg.log
-```
-
-Once the csv lands, this job can be booted out and its plist deleted — but do it
-from outside the job, never from within it.
