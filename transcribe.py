@@ -164,6 +164,23 @@ def claude_env():
     return env
 
 
+# ⚠️ A word the printer broke at the line's end comes back as two halves:
+# the prompt says "exactly as printed" with a single space between lines, so
+# "REPRESENTA-" + "TIVES" reads "REPRESENTA- TIVES". His call, 5 October
+# 2026, option 1 of four: join it in code. Seen once the article's
+# transcription crop reached its column's gutters (clips._to_column_edges)
+# and the hyphens at the line ends came into the picture; before that they
+# were cut off with the line ends themselves. Letter, hyphen, space, letter
+# only: an em dash, a spaced hyphen and a digit range are left alone. The
+# known cost: a compound broken at its own hyphen ("well- known") joins as
+# "wellknown", which is rare in a column and was accepted.
+BROKEN_WORD = re.compile(r"(?<=[A-Za-z])- (?=[A-Za-z])")
+
+
+def join_broken_words(text):
+    return BROKEN_WORD.sub("", text)
+
+
 def clean(text):
     text = re.sub(r"^```[a-z]*\n?|\n?```$", "", text.strip()).strip()
     text = " ".join(text.split()).strip().strip('"').strip()
@@ -362,6 +379,7 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
             # the guards above read the flattened reply; the reader gets the
             # items with a period between them (see join_items)
             text = join_items(items_of(raw_stdout))
+        text = join_broken_words(text)
         if not (MIN_CHARS <= len(text) <= max_chars):
             log(f"  (transcription rejected: {len(text)} chars)")
             return "return", None

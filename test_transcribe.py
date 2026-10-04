@@ -187,5 +187,18 @@ class Periods(unittest.TestCase):
         self.assertTrue(out.startswith("GERMANS"))
 
 
+class BrokenWordsAreJoined(unittest.TestCase):
+    """The Cordele Dispatch article of 31 March 1920, 5 October 2026."""
+
+    def test_a_word_broken_at_the_line_end_is_joined(self):
+        self.assertEqual(transcribe.join_broken_words(
+            "LABOR REPRESENTA- TIVES to Demi- cratic the ques- tionnaire"),
+            "LABOR REPRESENTATIVES to Demicratic the questionnaire")
+
+    def test_dashes_ranges_and_spaced_hyphens_are_left_alone(self):
+        for s in ("Mar. 31.—William", "pages 1- 2", "Smith - Jones", "well-known"):
+            self.assertEqual(transcribe.join_broken_words(s), s)
+
+
 if __name__ == "__main__":
     unittest.main()
