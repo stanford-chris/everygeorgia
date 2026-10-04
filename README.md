@@ -45,7 +45,8 @@ paper posts once before any posts twice. Only issues DLG marks "No Copyright -
 United States" are used; there is no year cutoff of our own. Model-written words
 are labelled `A.I.-transcribed` (cartoon descriptions `A.I.-described`) wherever
 they reach a reader. Post text is the paper's name and date, the credit, and
-`#Georgia #History`.
+`#Georgia #History` plus a tag for the paper's town (`#FortValley`) when the
+roster knows it.
 
 ## Review
 
