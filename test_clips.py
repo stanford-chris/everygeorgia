@@ -1986,6 +1986,52 @@ class DisplayAbove(unittest.TestCase):
         self.assertEqual(box, self.box)
 
 
+class ArticleTranscriptionReachesTheGutters(unittest.TestCase):
+    """_to_column_edges(): the Cordele Dispatch of 31 March 1920 shipped
+    "CANDIDATE FO PRESIDENCY Y ... Willia McAdoo" because the transcription
+    crop stopped at the headline's OCR boxes, short of the column's gutter.
+    One small-image pixel per OCR unit here; gutters are (x0, x1) runs."""
+
+    class Ink:
+        def __init__(self, gutters, dark):
+            self.page = type("P", (), {"scale": 1.0})()
+            self.scale = 1.0
+            self._g, self._dark = gutters, dark
+
+        def gutters(self):
+            return self._g
+
+        def y_small(self, y):
+            return int(y)
+
+        def col_dark_in(self, y0, y1, x0=0, x1=None):
+            return [self._dark.get(x, 0.5) for x in range(0, 1000)]
+
+    def widen(self, gutters, dark, box=(200, 0, 300, 100), width=1000):
+        with patch.object(rules, "PageInk", lambda page: self.Ink(gutters, dark)):
+            return clips._to_column_edges(None, {"width": width}, box)
+
+    def test_short_right_edge_reaches_the_clear_gutter(self):
+        clear = {x: 0.0 for x in range(530, 541)}
+        self.assertEqual(self.widen([(530, 540)], clear), (200, 0, 335, 100))
+
+    def test_a_gutter_beyond_reach_is_left_alone(self):
+        clear = {x: 0.0 for x in range(600, 611)}
+        self.assertEqual(self.widen([(600, 610)], clear), (200, 0, 300, 100))
+
+    def test_a_gap_that_is_not_clear_down_the_article_is_not_an_edge(self):
+        # word spaces: ink in the gap on the article's own rows
+        self.assertEqual(self.widen([(530, 540)], {x: 0.3 for x in range(530, 541)}),
+                         (200, 0, 300, 100))
+
+    def test_a_printed_rule_counts_and_the_nearest_gutter_wins(self):
+        dark = {x: 0.9 for x in range(150, 153)}
+        dark.update({x: 0.0 for x in range(520, 531)})
+        dark.update({x: 0.0 for x in range(550, 561)})
+        self.assertEqual(self.widen([(150, 152), (520, 530), (550, 560)], dark),
+                         (151, 0, 374, 100))
+
+
 # ⚠️ Keep this LAST: classes defined below it never run when the file is run
 # directly (25 September 2026: four classes appended after it went unrun).
 if __name__ == "__main__":

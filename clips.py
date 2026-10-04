@@ -1012,6 +1012,44 @@ def article_closure_margins(c, page):
     return diagnostics
 
 
+# _to_column_edges(): the article's TRANSCRIPTION crop reaches its column's
+# gutters. 5 October 2026, on the first article post (the Cordele Dispatch of
+# 31 March 1920): the alt read "CANDIDATE FO PRESIDENCY Y ... Willia McAdoo"
+# because the box's width is the headline's OCR word boxes, the OCR read
+# nothing for "FOR" or "YET", and the body under it inherited an edge at
+# 18018 with the column's gutter at 18737 and its words running to 18440.
+# The posted picture was whole, only because the loose crop's margin covered
+# the gap; the model reads the tight one. So the tight crop is widened, each
+# side to the nearest page gutter within COLUMN_REACH of the page's width,
+# and only where that gutter is clear (or a printed rule) down the article's
+# own rows, the test _one_column() already trusts. The posted crop is not
+# changed. A gutter is a column's edge, so this never reaches into the
+# neighbouring story.
+COLUMN_REACH = 0.06      # 0.036 of the page measured on the Cordele page
+
+
+def _to_column_edges(page, c, box):
+    """`box` widened, each side to the nearest clear gutter within
+    COLUMN_REACH, for the transcription crop only."""
+    pi = rules.PageInk(page)
+    per = pi.page.scale * pi.scale
+    y0 = pi.y_small(box[1])
+    cols = pi.col_dark_in(y0, max(y0 + 1, pi.y_small(box[1] + box[3])))
+    x0, x1 = box[0], box[0] + box[2]
+    reach = COLUMN_REACH * c["width"]
+    left, right = x0, x1
+    for g0, g1 in pi.gutters():
+        x = (g0 + g1) / 2.0 / per
+        seg = cols[g0:g1] or [0.5]
+        if not (min(seg) <= COLUMN_CLEAR or max(seg) >= COLUMN_RULE):
+            continue
+        if x1 < x <= x1 + reach and (right == x1 or x < right):
+            right = x
+        if x0 - reach <= x < x0 and (left == x0 or x > left):
+            left = x
+    return (int(left), box[1], int(right - left), box[3])
+
+
 def clip_article(lccn, date, ed=1, seq=None, log=print):
     """The headline item plus its first paragraph. His ask, 11 September
     2026: "a headline and first graf." See _article_span() above for how
@@ -1022,7 +1060,7 @@ def clip_article(lccn, date, ed=1, seq=None, log=print):
     hbox, box = _article_span(c, page)
     words_in = nameplate.words_in(c["words"], box)
     verdict, page_hits = _verdict("article", lccn, date, words_in, c["words"], True)
-    _, tight = _fetch(page, box)
+    _, tight = _fetch(page, _to_column_edges(page, c, box))
     words = transcribe.transcribe(tight, date[:4], log=log)
     if not words:
         raise npc.Refused("article could not be transcribed")
