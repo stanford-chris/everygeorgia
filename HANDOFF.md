@@ -1658,12 +1658,41 @@ cartoon lane's confined `transcribe.ask()`, for PICTURE and CAPTION lines
 "A.I.-transcribed, the caption reads: “...”" after the headline sentence. A
 picture box the model cannot describe is REFUSED, never posted with the title
 alone; vocabulary in the caption is REVIEW. The model is called only after
-the transcription checks pass. ⚠️ **There is no verifier here, as there is
-none in the cartoon lane**: the first live description said "a small figure
-stands near the entrance", and the only figure in the drawing is at the far
-left in front of the side wing. That post was deleted within two minutes and
+the transcription checks pass. The first live description said "a small
+figure stands near the entrance", and the only figure in the drawing is at the
+far left in front of the side wing. That post was deleted within two minutes and
 reposted with a fresh description, read against the image first. The Old
 Seoul lesson stands: a "small figure" in a model's description is the claim
 to check. Post `3mx2ldshs4t2w` deleted, `3mx3kvi6suy2p` deleted, now
 `3mx3kxhvw3m2f`; the state entry was updated in place, so the rotation is
 unchanged. `test_picture_box.py` is 11 tests with this.
+
+✅ **The description is VERIFIED before it posts, his call the same morning**
+("Add the verifier check before posting"). `describe_picture_box()` now runs
+the check `image_alt.py` runs for Old Seoul and Holmes: a second confined call
+(`PICBOX_VERIFY_PROMPT`) asked to LOCATE each claim, FOUND or ABSENT; a
+rejected claim is banned by name in the retry (`PICBOX_REDO`, every claim
+rejected so far), two retries (`PICBOX_REDESCRIBE`), then the description is
+dropped and the item refused. Only the PICTURE line is checked: the caption is
+a transcription of type, not a claim about what is shown.
+⚠️ **One change from `image_alt.py`: placement is part of the claim.** That
+verifier judges presence only, and this morning's error was a figure that IS
+in the drawing, just not where the description put it. Measured on the posted
+crop: the old sentence was rejected on both of two checks, the first naming
+the figure exactly ("small figure is near the lower building/porch on the left
+side, not near the colonnaded entrance"); the posted description passed both.
+Three end-to-end runs: the describer put a figure at the entrance twice ("for
+scale", then "a person"), the verifier caught both, and the retries came back
+right; about 30 s with a retry, 15 s without.
+⚠️ **The verifier errs in both directions, as image_alt.py's does**: its
+second check of the old sentence called the figure FOUND and wrongly called
+"trees on both sides" ABSENT. A wrong ABSENT costs a retry, not a post; a
+wrong FOUND ships. The Old Seoul finding stands: a small, low-contrast detail
+is the claim this cannot be trusted on.
+⚠️ **An unverifiable description is REFUSED** (a failed call, or a reply with
+no verdict lines), where image_alt.py ships it marked unverified: there the
+alternative is a bare citation, here it is one headline skipped among
+thousands. `PictureBoxVerifier` in `test_picture_box.py` (18 tests now), the
+model scripted; six mutations caught on a scratch copy (unverifiable passing,
+no ban list, no placement rule, no retries, no brace escaping, an ABSENT
+ignored).

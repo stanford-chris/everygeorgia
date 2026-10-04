@@ -853,26 +853,121 @@ def parse_picbox(raw):
     return {"picture": picture, "caption": caption}
 
 
-def describe_picture_box(image_bytes, year, log=print):
-    """The model's description of a picture box, parsed and curled, or None.
-    Two tries, the tool-talk guard and the length caps are the cartoon
-    lane's (pictures.classify)."""
+# ⚠️ The description is VERIFIED before it is used, his call of 5 October 2026
+# ("Add the verifier check before posting"), after the first live one said "a
+# small figure stands near the entrance" of the Jewish Alliance drawing: the
+# only figure in it stands at the far left, in front of the side wing. The
+# check is the one image_alt.py runs for Old Seoul and Holmes (a second call
+# asked to LOCATE each claim, not to judge the writing; every rejected claim
+# banned by name on the retry; two retries), with one change: a claim's
+# PLACEMENT is part of the claim. image_alt.py judges presence only, which is
+# blind to exactly this error, since the figure is there, just not where the
+# description put it.
+# ⚠️ An unverifiable description is REFUSED here, where image_alt.py ships it
+# marked unverified: its alternative is a post with a bare citation, this
+# lane's is one headline skipped among thousands, and a confident wrong
+# sentence about a picture is the thing he asked to stop.
+PICBOX_VERIFY_PROMPT = (
+    "Look at the image {name}, a clipping from a Georgia newspaper printed in "
+    "{year}. A description of the PICTURE in it appears at the end of this "
+    "message. Your job is to LOCATE things in the picture, not to judge the "
+    "writing.\n"
+    "Take every concrete thing the description asserts: each object, person, "
+    "structure, feature or number, together with WHERE the description places "
+    "it or what it says it is next to or doing. For each one output exactly "
+    "one line:\n"
+    "FOUND | <the claim in a few words> | <where it is in the picture>\n"
+    "ABSENT | <the claim in a few words> | <what is actually there instead>\n"
+    "Rules:\n"
+    "- Be strict. If you cannot point to it, it is ABSENT.\n"
+    "- A thing that is present but not where the description places it, or "
+    "not doing what it says, is ABSENT.\n"
+    "- Look carefully at small and low-contrast details before calling them "
+    "FOUND.\n"
+    "- Judge presence and placement only, never wording, style or "
+    "completeness. Skip claims about the medium itself (\"drawing\", "
+    "\"photograph\").\n"
+    "- Output only those lines and nothing else.\n"
+    "Description: {desc}"
+)
+PICBOX_REDO = (
+    "\nEarlier attempts at the PICTURE line asserted the following, and a check "
+    "against the image could not find them where they were said to be:\n{bad}\n"
+    "Write it again WITHOUT them. Do not mention any of these things again, in "
+    "these words or in any others, and do not describe the same feature under "
+    "a different name. Everything else may stay. A shorter description is the "
+    "right answer here."
+)
+PICBOX_REDESCRIBE = 2          # image_alt.MAX_REDESCRIBE, for its reasons
+_ABSENT = re.compile(r"^\s*ABSENT\s*\|\s*(.+?)\s*(?:\||$)", re.MULTILINE)
+_FOUND = re.compile(r"^\s*FOUND\s*\|", re.MULTILINE)
+
+
+def _braces(s):
+    """A string made safe to sit inside a prompt template that is .format()ed."""
+    return s.replace("{", "{{").replace("}", "}}")
+
+
+def unsupported_claims(raw):
+    """The ABSENT claims in a verifier's reply: [] when every claim was
+    found, None when the reply carries no verdict lines at all. ⚠️ None is
+    not []: a failed call and a clean check otherwise read the same."""
+    if raw is None:
+        return None
+    absent = _ABSENT.findall(raw)
+    if not absent and not _FOUND.search(raw):
+        return None
+    return absent
+
+
+def _read_picbox(image_bytes, year, prompt, log):
+    """One description call, parsed, guarded and capped, or None."""
     import pictures
-    for _ in range(2):
-        raw = transcribe.ask(image_bytes, year, PICBOX_PROMPT, log=log)
-        if raw is None:
-            return None
-        r = parse_picbox(raw)
+    raw = transcribe.ask(image_bytes, year, prompt, log=log)
+    if raw is None:
+        return None
+    r = parse_picbox(raw)
+    if r is None:
+        log(f"  (picture box reply unparseable: {raw[:80]!r})")
+        return None
+    if pictures.TOOL_TALK.search(r["picture"] + " " + r["caption"]):
+        log(f"  (picture box reply reads as tool talk: {r['picture'][:80]!r})")
+        return None
+    for k, cap in (("picture", pictures.MAX_PICTURE_CHARS), ("caption", pictures.MAX_WORDS_CHARS)):
+        if len(r[k]) > cap:
+            r[k] = r[k][:cap].rsplit(" ", 1)[0] + "…"
+    return r
+
+
+def describe_picture_box(image_bytes, year, log=print):
+    """The model's description of a picture box, VERIFIED against the image,
+    parsed and curled, or None. Only the PICTURE line is verified: the
+    caption is a transcription of printed type, not a claim about what is
+    shown."""
+    import pictures
+    r = _read_picbox(image_bytes, year, PICBOX_PROMPT, log)
+    if r is None:                                   # one more try, as before
+        r = _read_picbox(image_bytes, year, PICBOX_PROMPT, log)
+    rejected = []
+    for attempt in range(PICBOX_REDESCRIBE + 1):
         if r is None:
-            log(f"  (picture box reply unparseable: {raw[:80]!r})")
-            continue
-        if pictures.TOOL_TALK.search(r["picture"] + " " + r["caption"]):
-            log(f"  (picture box reply reads as tool talk: {r['picture'][:80]!r})")
-            continue
-        for k, cap in (("picture", pictures.MAX_PICTURE_CHARS), ("caption", pictures.MAX_WORDS_CHARS)):
-            if len(r[k]) > cap:
-                r[k] = r[k][:cap].rsplit(" ", 1)[0] + "…"
-        return {k: pictures.curl(v) for k, v in r.items()}
+            break
+        verdict = transcribe.ask(image_bytes, year,
+                                 PICBOX_VERIFY_PROMPT.replace("{desc}", _braces(r["picture"])),
+                                 log=log)
+        bad = unsupported_claims(verdict)
+        if bad is None:
+            log("  (picture box description could not be verified: refused)")
+            return None
+        if not bad:
+            return {k: pictures.curl(v) for k, v in r.items()}
+        log(f"  (picture box description failed verification: {'; '.join(bad)})")
+        if attempt == PICBOX_REDESCRIBE:
+            break
+        rejected += [b for b in bad if b not in rejected]
+        r = _read_picbox(image_bytes, year, PICBOX_PROMPT + _braces(PICBOX_REDO.format(
+            bad="\n".join(f"- {b}" for b in rejected))), log)
+    log("  (picture box description dropped: could not be verified against the image)")
     return None
 
 

@@ -176,5 +176,59 @@ class PictureBoxDescription(unittest.TestCase):
         self.assertTrue(alt.endswith("A.I.-described, the picture beneath it: A drawing of a building."))
 
 
+class PictureBoxVerifier(unittest.TestCase):
+    """describe_picture_box() with the model replaced by a script of replies,
+    so each test says exactly what the describer and the verifier answered."""
+    DESC = "PICTURE: A building with arched windows{extra}.\nCAPTION: NONE"
+    CLEAN = "FOUND | building | centre\nFOUND | arched windows | upper floor"
+
+    def run_with(self, replies):
+        from unittest import mock
+        prompts = []
+
+        def ask(image_bytes, year, prompt, log=print):
+            prompts.append(prompt)
+            return replies.pop(0)
+        with mock.patch.object(clips.transcribe, "ask", side_effect=ask):
+            r = clips.describe_picture_box(b"img", "1910", log=lambda *a: None)
+        return r, prompts
+
+    def test_a_clean_check_returns_the_description(self):
+        r, prompts = self.run_with([self.DESC.format(extra=""), self.CLEAN])
+        self.assertEqual(r["picture"], "A building with arched windows.")
+        self.assertIn("Description: A building with arched windows.", prompts[1])
+
+    def test_a_misplaced_claim_is_banned_by_name_on_the_retry(self):
+        bad = self.DESC.format(extra=", and a small figure stands near the entrance")
+        verdict = (self.CLEAN + "\nABSENT | small figure near the entrance | "
+                   "the figure is at the far left, by the side wing")
+        r, prompts = self.run_with([bad, verdict, self.DESC.format(extra=""), self.CLEAN])
+        self.assertEqual(r["picture"], "A building with arched windows.")
+        self.assertIn("- small figure near the entrance", prompts[2])
+
+    def test_a_reply_with_no_verdict_lines_is_refused_not_passed(self):
+        r, _ = self.run_with([self.DESC.format(extra=""), "I looked at it and it seems fine."])
+        self.assertIsNone(r)
+
+    def test_a_failed_verifier_call_is_refused(self):
+        r, _ = self.run_with([self.DESC.format(extra=""), None])
+        self.assertIsNone(r)
+
+    def test_three_failures_drop_the_description(self):
+        bad = self.DESC.format(extra=", and a dog")
+        verdict = self.CLEAN + "\nABSENT | dog | nothing"
+        r, prompts = self.run_with([bad, verdict, bad, verdict, bad, verdict])
+        self.assertIsNone(r)
+        self.assertEqual(len(prompts), 6)
+
+    def test_braces_in_a_description_do_not_break_the_template(self):
+        r, prompts = self.run_with([self.DESC.format(extra=" marked {1910}"), self.CLEAN])
+        self.assertIn("{{1910}}", prompts[1])
+        self.assertIsNotNone(r)
+
+    def test_the_verifier_is_told_placement_is_part_of_the_claim(self):
+        self.assertIn("not where the description places it", clips.PICBOX_VERIFY_PROMPT)
+
+
 if __name__ == "__main__":
     unittest.main()
