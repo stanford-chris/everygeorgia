@@ -378,7 +378,13 @@ def tabular(words):
 
 
 def _curl(s):
-    return s.replace("'", "’").replace('"', "”")
+    """Quotes curled by position, by pictures.curl(). Until 5 October 2026
+    this closed every double quote, so a quotation inside a transcription
+    opened with a closing mark: the Cordele Dispatch article of 31 March
+    1920 read ”labor”. The cartoon lane had already met it and written the
+    positional curler; this is the same function, not a second copy."""
+    from pictures import curl
+    return curl(s)
 
 
 def _loosen(box, coords, wfrac, hfrac):

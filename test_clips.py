@@ -2032,6 +2032,18 @@ class ArticleTranscriptionReachesTheGutters(unittest.TestCase):
                          (151, 0, 374, 100))
 
 
+class TranscriptionQuotesOpenAndClose(unittest.TestCase):
+    """_curl(): the Cordele Dispatch article of 31 March 1920 shipped
+    ”labor”, an opening quote closed."""
+
+    def test_a_quotation_opens_and_closes(self):
+        self.assertEqual(clips._curl('of the "labor" and'), "of the “labor” and")
+
+    def test_apostrophes_and_a_leading_quote(self):
+        self.assertEqual(clips._curl('"I think," he wrote. M\'ADOO'),
+                         "“I think,” he wrote. M’ADOO")
+
+
 # ⚠️ Keep this LAST: classes defined below it never run when the file is run
 # directly (25 September 2026: four classes appended after it went unrun).
 if __name__ == "__main__":
