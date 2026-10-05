@@ -375,7 +375,14 @@ def box_with_deck(seg, words, page_width, page_height, pi=None, diagnostics=None
             # file already documents as a genuine over-inclusion bug. A
             # small margin (DECK_GROW_TOL) allows ordinary OCR height noise
             # between two lines that are visually "the same size."
-            if hl > DECK_GROW_TOL * h_prev:
+            # ⚠️ ...except a line that STARTS LOWERCASE: it carries on the
+            # line above (a broken word, or a sentence), and a new headline
+            # never starts that way. 5 October 2026: "DIRECT CABLE NOW" (the
+            # Macon News, 21 June 1898) posted its deck as "...Established
+            # Between Wash-", because "ington and Guantanamo" carries a
+            # descender and its OCR box read taller than the descender-free
+            # line above it. Not the hyphen: the OCR read that word "Wash".
+            if hl > DECK_GROW_TOL * h_prev and not _continues(line):
                 _note("deck-grew", None, " ".join(w[4] for w in sorted(line, key=lambda w: w[0])))
                 break
             take = line
@@ -407,6 +414,12 @@ def box_with_deck(seg, words, page_width, page_height, pi=None, diagnostics=None
     return (bx0, y0, bx1 - bx0, y1 - y0)
 
 
+def _continues(line):
+    """True if the line's first word starts with a lowercase letter."""
+    first = min(line, key=lambda w: w[0], default=None)
+    return bool(first) and first[4][:1].islower()
+
+
 def candidates(lane, words, page_width, page_height, nameplate_bottom=0, pi=None):
     """(box_ocr, seg) for each candidate, in reading order (top first)."""
     lo, hi = (HEAD_LO, HEAD_HI) if lane == "headline" else (AD_LO, AD_HI)
@@ -422,6 +435,24 @@ def candidates(lane, words, page_width, page_height, nameplate_bottom=0, pi=None
             out.append((b, seg))
     out.sort(key=lambda t: (t[0][1], t[0][0]))
     return out
+
+
+def _rule_pieces(seg, pi):
+    """`seg` cut only where a printed rule stands in the gap between two of
+    its words (GAP_RULE_DARK on the row's own band, the test _whole_line's
+    walled() uses). One piece if there is none."""
+    if pi is None or len(seg) < 2:
+        return [list(seg)]
+    per = pi.page.scale * pi.scale
+    y0 = pi.y_small(min(w[1] for w in seg))
+    y1 = max(y0 + 1, pi.y_small(max(w[1] + w[3] for w in seg)))
+    pieces = [[seg[0]]]
+    for a, b in zip(seg, seg[1:]):
+        xa, xb = int((a[0] + a[2]) * per) + 1, int(b[0] * per) - 1
+        if xb > xa and max(pi.col_dark_in(y0, y1, xa, xb)) >= GAP_RULE_DARK:
+            pieces.append([])
+        pieces[-1].append(b)
+    return pieces
 
 
 def split_at_gutters(cands, words, cw, ch, pi):
@@ -457,6 +488,16 @@ def split_at_gutters(cands, words, cw, ch, pi):
     for b, seg in cands:
         seg = sorted(seg, key=lambda w: w[0])
         pieces = _gutter_pieces(seg, pi)
+        if any(len(p) < 2 for p in pieces):
+            # ⚠️ The one-word guard threw the WHOLE split away, so a row
+            # with one coincidental gutter stayed joined even across a
+            # printed rule: on the 1918 page above the pieces came out
+            # "FRENCH DESTROY | MEMORIAL | DAY" (a gutter of the columns
+            # below runs under "MEMORIAL DAY"), the guard refused it, and
+            # "FRENCH DESTROY MEMORIAL DAY" was the headline item again
+            # (found 5 October 2026). A printed rule between two words is
+            # not a coincidence of the grid, so fall back to those alone.
+            pieces = _rule_pieces(seg, pi)
         if len(pieces) < 2 or any(len(p) < 2 for p in pieces):
             nb = box_with_deck(seg, words, cw, ch, pi)
             if nb:

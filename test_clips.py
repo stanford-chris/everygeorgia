@@ -2044,6 +2044,51 @@ class TranscriptionQuotesOpenAndClose(unittest.TestCase):
                          "“I think,” he wrote. M’ADOO")
 
 
+class HeadlineItemBoundaries(unittest.TestCase):
+    """5 October 2026: a deck cut at a broken word, and two column
+    headlines read as one."""
+
+    def w(self, x, text):
+        return (x, 100, 80, 40, text)
+
+    def test_a_line_starting_lowercase_continues_the_deck(self):
+        # "ington and Guantanamo" under "...Between Wash-" (Macon News, 1898)
+        self.assertTrue(items._continues([self.w(10, "ington"), self.w(100, "and")]))
+        self.assertFalse(items._continues([self.w(10, "TROOPS"), self.w(100, "ARRIVED")]))
+
+    class Ink:
+        page = type("P", (), {"scale": 1.0})()
+        scale = 1.0
+
+        def __init__(self, dark_from, dark_to):
+            self.a, self.b = dark_from, dark_to
+
+        def y_small(self, y):
+            return int(y)
+
+        def col_dark_in(self, y0, y1, x0=0, x1=None):
+            return [0.9 if self.a <= x < self.b else 0.0 for x in range(x0, x1)]
+
+    def test_a_printed_rule_between_words_splits_the_row(self):
+        seg = [self.w(0, "FRENCH"), self.w(100, "DESTROY"),
+               self.w(200, "MEMORIAL"), self.w(300, "DAY")]
+        pieces = items._rule_pieces(seg, self.Ink(185, 188))
+        self.assertEqual([[x[4] for x in p] for p in pieces],
+                         [["FRENCH", "DESTROY"], ["MEMORIAL", "DAY"]])
+        self.assertEqual(len(items._rule_pieces(seg, self.Ink(900, 901))), 1)
+
+    def test_a_refused_gutter_split_falls_back_to_the_rules(self):
+        seg = [self.w(0, "FRENCH"), self.w(100, "DESTROY"),
+               self.w(200, "MEMORIAL"), self.w(300, "DAY")]
+        one_word = [seg[:2], seg[2:3], seg[3:]]
+        with patch.object(items, "_gutter_pieces", return_value=one_word), \
+             patch.object(items, "_rule_pieces", return_value=[seg[:2], seg[2:]]), \
+             patch.object(items, "box_with_deck", side_effect=lambda p, *a, **k: (p[0][0], 100, 1, 1)):
+            out = items.split_at_gutters([((0, 100, 380, 40), seg)], [], 1000, 1000, None)
+        self.assertEqual([[x[4] for x in s] for _, s in out],
+                         [["FRENCH", "DESTROY"], ["MEMORIAL", "DAY"]])
+
+
 # ⚠️ Keep this LAST: classes defined below it never run when the file is run
 # directly (25 September 2026: four classes appended after it went unrun).
 if __name__ == "__main__":
