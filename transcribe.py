@@ -262,8 +262,67 @@ HEADLINE_PROMPT = (
     "nothing else: no description, no summary, no commentary, no quotation marks "
     "around it, no preamble. If the image is unreadable reply exactly CANNOT_READ."
 )
+# The headline lane's crop is two columns of a page or a banner's span since
+# 5 October 2026 (clips._headline_spread), so its alt names every headline a
+# reader sees: each headline and deck, column by column. The dateline and the
+# paper's name are left out, since clips._refuse_own_title() refuses a
+# transcription carrying either; the body type is left out, since the alt is
+# the headlines.
+SPREAD_PROMPT = (
+    "The file {name} in this directory is a clipping from the top of a Georgia "
+    "newspaper page printed in {year}: columns of headlines, each with decks "
+    "beneath it, and the opening lines of the stories. Transcribe every "
+    "HEADLINE and DECK exactly as printed, column by column, left to right, top "
+    "to bottom, with a banner across columns first. Keep the printed lines of "
+    "one headline or deck on consecutive lines, and put ONE BLANK LINE between "
+    "one headline or deck and the next, so that a headline set in two printed "
+    "lines and its deck in three come back as two blocks. Leave out the "
+    "dateline row (the town, the day and the date), the paper's own name, "
+    "credit lines, and the body type of the stories. Keep the original "
+    "spelling and capitalisation. Write [illegible] for any word you cannot "
+    "read. Reply with the transcription and nothing else: no description, no "
+    "summary, no commentary, no quotation marks, no preamble. If the image is "
+    "unreadable reply exactly CANNOT_READ."
+)
 # the prompts whose reply is one item per line, joined by join_items()
 ITEM_PROMPTS = (BAND_PROMPT, HEADLINE_PROMPT)
+
+
+def blocks_of(text):
+    """SPREAD_PROMPT's reply as items: one per block of lines between blank
+    lines, its printed lines joined by a space, a word broken at a line's end
+    ("Es-" / "tablished") rejoined. ⚠️ Asked for one item per line, the model
+    gave one PRINTED line per line on a dense spread, and the alt read
+    "DIRECT. CABLE NOW. Communication Has Been Es-. tablished Between Wash-."
+    (Macon News, 21 June 1898); it marks printed lines reliably, so the
+    boundary is asked for as a blank line instead. A reply with no blank line
+    at all is read a line to an item, hyphens still rejoined."""
+    text = re.sub(r"^```[a-z]*\n?|\n?```$", "", text.strip()).strip()
+    blocks = [b for b in re.split(r"\n\s*\n", text) if b.strip()]
+    if len(blocks) == 1:
+        blocks = text.splitlines()
+    out = []
+    for b in blocks:
+        # a soft hyphen at a line's end is the printer's break too ("Suffer\u00ad"
+        # / "ing", Augusta Herald, 6 March 1924)
+        lines = [" ".join(l.replace("\u00ad", "-").split()).strip().strip('"').strip()
+                 for l in b.splitlines()]
+        item = ""
+        for l in [l for l in lines if l]:
+            if item.endswith("-") and l[:1].islower():
+                item = item[:-1] + l
+            else:
+                item = (item + " " + l).strip()
+        if item:
+            out.append(item)
+    # a block ending mid-word runs on into the next
+    merged = []
+    for it in out:
+        if merged and merged[-1].endswith("-") and it[:1].islower():
+            merged[-1] = merged[-1][:-1] + it
+        else:
+            merged.append(it)
+    return merged
 
 
 def _strip_fences(text):
@@ -375,7 +434,9 @@ def transcribe(image_bytes, year, *, env=None, model=MODEL, timeout=TIMEOUT, log
         if "CANNOT_READ" in text:
             log("  (transcription: model could not read the clip)")
             return "return", None
-        if any(prompt is p for p in ITEM_PROMPTS):
+        if prompt is SPREAD_PROMPT:
+            text = join_items(blocks_of(raw_stdout))
+        elif any(prompt is p for p in ITEM_PROMPTS):
             # the guards above read the flattened reply; the reader gets the
             # items with a period between them (see join_items)
             text = join_items(items_of(raw_stdout))

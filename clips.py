@@ -819,6 +819,350 @@ def _picture_box(pi, coords, box):
     return pi.to_ocr((lo, top, ro + 1 - lo, bottom + 1 - top))
 
 
+# _headline_spread(): the headline lane's crop is two columns, his call of
+# 5 October 2026 ("Build option 1"), on the Macon News of 21 June 1898 with his
+# own crop as the reference: "DIRECT CABLE NOW" had shipped as its headline
+# and decks alone, the margin slicing the next column's "FIFTY / WER" and the
+# next headline's "TROOPS ARRIVED" mid-letter, with no line of story. He
+# wanted the headline's column and the one beside it, from under the
+# nameplate down to where the stories have begun. Every lane but this one
+# already posted whole items (articles 13-22 percent of the page, cartoons
+# 24-52); headlines ran 1.6 to 8.8.
+HEADLINE_SPREAD = False  # ⏸ held for his look at the eight renders, 5 October
+                         # 2026; True turns the two-column crop on
+SPREAD_BODY_H = 1.3      # a body line's words are at most this many page
+                         # medians tall; a deck or a headline is taller
+SPREAD_BODY_RUN = 3      # body type has begun where this many body lines run
+                         # in a row
+SPREAD_BODY_LINES = 3    # ...and the crop takes this many lines of it (6
+                         # ran the Macon neighbour into its next story's head)
+SPREAD_MAX_FRAC = 0.60   # a spread deeper than this of the page is not one
+SPREAD_WIDTH = 1600      # pixels: the nameplate's width, since a banner's
+                         # spread carries several columns of type
+SPREAD_MAX_CHARS = 1500  # the transcribed headlines of a spread, at most
+SPREAD_MIN_COL = 0.06    # a column is at least this of the page wide
+SPREAD_INK = 0.04        # a row of a strip carrying more ink than this is type
+SPREAD_PICTURE = 15      # ...and a run of such rows taller than this many text
+                         # heights is a picture, which a crop may cut (6 read
+                         # "BONDS BEING SOLD HERE", ten tall, as a picture)
+SPREAD_DISPLAY = 1.6     # a line this many text heights tall is display type
+SPREAD_STACK_GAP = 1.5   # ...and one starting within this under another is the
+                         # same headline's next line
+SPREAD_EVEN = 0.8        # a neighbour narrower than this of the headline's own
+                         # column was split by a stray gutter and is widened
+SPREAD_BANNER = 0.40     # a headline whose column is this much of the page is
+                         # a banner: the banner is the width, no neighbour
+
+
+def _spread_lines(words, med):
+    """OCR words grouped into lines by their vertical centres, top down, as
+    (top, bottom, tallest word height)."""
+    out = []
+    for w in sorted(words, key=lambda w: w[1] + w[3] / 2.0):
+        cy = w[1] + w[3] / 2.0
+        if out and abs(cy - out[-1][3]) <= 0.5 * med:
+            t, b, h, _ = out[-1]
+            out[-1] = (min(t, w[1]), max(b, w[1] + w[3]), max(h, w[3]), cy)
+        else:
+            out.append((w[1], w[1] + w[3], w[3], cy))
+    return [(t, b, h) for t, b, h, _ in out]
+
+
+def _story_start(words, med, top):
+    """(bottom of the crop, body found) for one column's words below `top`:
+    SPREAD_BODY_LINES lines into the first run of SPREAD_BODY_RUN body-size
+    lines; None if the column holds no such run."""
+    lines = _spread_lines([w for w in words if w[1] >= top], med)
+    run = 0
+    for i, (t, b, h) in enumerate(lines):
+        if h <= SPREAD_BODY_H * med:
+            run += 1
+            if run == SPREAD_BODY_RUN:
+                start = i - SPREAD_BODY_RUN + 1
+                end = min(len(lines) - 1, start + SPREAD_BODY_LINES - 1)
+                return lines[end][1]
+        else:
+            run = 0
+    return None
+
+
+def _no_cut(rect, words, min_h, max_y1=None):
+    """`rect` (x0, y0, x1, y1) moved until no DISPLAY word (taller than
+    `min_h`) straddles an edge: the top down past one it crosses, the bottom
+    DOWN past one (up above it only where down would pass `max_y1`), the
+    sides out to take one in (his rule of 22 September 2026: err looser,
+    never through lettering). ⚠️ A bottom moved UP climbed a page of stacked
+    banners and second-tier heads to a strip (the Atlanta Georgian of
+    27 September 1918, the Cordele Dispatch of 7 December 1924); moved down
+    it passes a headline into its story, which is what the crop is for.
+    ⚠️ Display type only. Body lines in neighbouring columns sit at offset
+    heights, so a bottom moved up above one meets the next column's and climbs
+    to the decks (the first try left three banner crops as strips); the
+    dateline crosses every gutter, so sides moved out for it took in a third
+    column. Both of his reference crops end through a line of body type,
+    which is the natural place for a crop of the top of a page to stop."""
+    x0, y0, x1, y1 = rect
+    words = [w for w in words if w[3] > min_h]
+    for _ in range(20):
+        moved = False
+        for wx, wy, ww, wh, _t in words:
+            if wx + ww <= x0 or wx >= x1 or wy + wh <= y0 or wy >= y1:
+                continue
+            if wy < y0 < wy + wh:
+                y0, moved = wy + wh + 1, True
+            if wy < y1 < wy + wh:
+                if max_y1 is None or wy + wh + 1 <= max_y1:
+                    y1, moved = wy + wh + 1, True
+                else:
+                    y1, moved = wy - 1, True
+            if wx < x0 < wx + ww:
+                x0, moved = wx, True
+            if wx < x1 < wx + ww:
+                x1, moved = wx + ww, True
+        # ...and a headline is not ended between its lines: display type
+        # starting within one display height under the bottom carries it on
+        # ("DAYTON STILL IN" / "CRITICAL SHAPE", Cordele Dispatch, 7 December
+        # 1924, stopped after the first line)
+        for wx, wy, ww, wh, _t in words:
+            if wx + ww > x0 and wx < x1 and y1 <= wy <= y1 + min_h \
+                    and (max_y1 is None or wy + wh + 1 <= max_y1):
+                y1, moved = wy + wh + 1, True
+        if not moved:
+            break
+    return x0, y0, x1, y1
+
+
+def _ink_runs(pi, a, b, y_from, y_to):
+    """Lines of type in the strip [a, b) between two rows, read from the
+    pixels: (top, bottom) runs of rows carrying ink, a paper row ending one."""
+    runs, start = [], None
+    for y in range(max(0, y_from), min(pi.h, y_to)):
+        if pi.row_share(y, a, b) > SPREAD_INK:
+            if start is None:
+                start = y
+        elif start is not None:
+            runs.append((start, y - 1))
+            start = None
+    if start is not None:
+        runs.append((start, min(pi.h, y_to) - 1))
+    return runs
+
+
+def _settle_bottom(pi, x0, x1, y1, text_h, cap, strip):
+    """The bottom moved down until, in every column-wide strip, it neither
+    runs through a line of type nor stops between the lines of a headline:
+    a line taller than SPREAD_DISPLAY text heights just above the bottom,
+    with another such line starting within SPREAD_STACK_GAP text heights
+    below it, carries the bottom past that one too. Never past `cap`."""
+    tall, gap = SPREAD_DISPLAY * text_h, SPREAD_STACK_GAP * text_h
+    look = int((SPREAD_PICTURE + 1) * text_h)    # wide enough to measure any line whole
+    for _ in range(30):
+        moved = False
+        a = x0
+        while a < x1:
+            b = min(x1, a + strip)
+            # a run taller than SPREAD_PICTURE text heights is a picture,
+            # not a line: a crop may cut a picture, and backing off above the
+            # Atlanta Georgian's stretcher-drill photograph (27 September
+            # 1918) climbed the bottom to the banners
+            runs = [r for r in _ink_runs(pi, a, b, y1 - look, y1 + look)
+                    if r[1] - r[0] + 1 <= SPREAD_PICTURE * text_h]
+            for t, e in runs:
+                if t < y1 <= e:                           # cut through a line:
+                    if e + 1 <= cap:                      # take it, or, past
+                        y1, moved = e + 1, True           # the cap, leave it
+                    elif t - 1 < y1:                      # out ("BONDS BEING
+                        # SOLD HERE"), with half a text height of clearance:
+                        # a faint top edge reads as paper and left a sliver.
+                        # ⚠️ The cap follows it up: otherwise the next line
+                        # pushes the bottom back down and the two oscillate,
+                        # which left the Atlanta Georgian of 27 September
+                        # 1918 cut through the very line it had backed off
+                        y1, moved = t - max(2, int(text_h / 2)), True
+                        cap = y1
+            above = [r for r in runs if r[1] < y1]
+            below = [r for r in runs if r[0] >= y1]
+            if above and below:
+                (ta, ea), (tb, eb) = above[-1], below[0]
+                if ea - ta + 1 >= tall and eb - tb + 1 >= tall and tb - y1 <= gap:
+                    if eb + 1 <= cap:
+                        y1, moved = eb + 1, True
+                    else:
+                        # a stack that cannot be finished under the cap is
+                        # left out whole ("UPRISING IN / GERMANY IS
+                        # PREDICTED", Atlanta Georgian, 27 September 1918)
+                        y1, moved = ta - max(2, int(text_h / 2)), True
+                        cap = y1
+            a = b
+        if not moved:
+            break
+    return y1
+
+
+def _headline_spread(pi, coords, box, inside, floor, page_seq):
+    """The headline's column and the one beside it (or, under a banner, every
+    column the banner spans), from the dateline row on a front page down to
+    SPREAD_BODY_LINES lines into the story that starts lowest, as an
+    OCR-space box; or None, and the caller crops as before.
+
+    ⚠️ Columns come from PageInk.column_bounds() (gutters, not rules): the
+    Macon News of 21 June 1898 rules its columns too faintly for vrules() to
+    see, and the first try took three columns as one. The headline's own
+    column is judged on its own rows, where a banner crossing gutters widens
+    it as it should; every OTHER column is judged on body rows below the
+    headline, since display type crossing a gutter on the headline's rows
+    widened the Cordele Dispatch's neighbour (26 April 1918) and the crop cut
+    "MEMORIAL DA". ⚠️ The page-level gutter list was tried for columns and
+    rejected: a 2-px paper run inside Macon's first column read as a gutter.
+    The neighbour is the column to the right, or the left one when the
+    headline is in the last column; one that reads as advertising, or whose
+    story never starts, is passed over. No edge cuts display type
+    (_no_cut)."""
+    H = coords["height"]
+    med = nameplate.page_median_height(coords["words"]) or 1
+    per = pi.page.scale * pi.scale
+    text_h = med * per
+    min_col = pi.w * SPREAD_MIN_COL
+    sb = tuple(int(v) for v in pi.from_ocr(box))
+    sx, sy, sw, sh = sb
+    own = pi.column_bounds(sb)
+    if own is None or own[1] - own[0] < min_col:
+        return None
+    probe = max(4, int(text_h))
+    body_y = min(pi.h - 1, sy + sh + int(6 * text_h))
+    body_h = max(probe, min(int(20 * text_h), pi.h - body_y))
+
+    def column_at(x):
+        if x < 0 or x + probe >= pi.w:
+            return None
+        cb = pi.column_bounds((x, body_y, probe, body_h))
+        return cb if cb and cb[1] - cb[0] >= min_col else None
+
+    words = [(w[0] * per, w[1] * per, w[2] * per, w[3] * per, w[4]) for w in coords["words"]]
+    floor_s = int(floor * per) if (page_seq == 1 and floor) else 0
+    banner = own[1] - own[0] >= pi.w * SPREAD_BANNER
+
+    def col_words(a, b, top_ocr):
+        cb = pi.to_ocr((a, 0, b - a, pi.h))
+        return nameplate.words_in(coords["words"], (cb[0], top_ocr, cb[2], H - top_ocr))
+
+    if banner:
+        options = [None]
+    else:
+        # step outward until a probe lands in a column: a first probe can
+        # land in a gutter wider than itself, which is no column
+        # step outward until a probe lands in the NEXT column: a probe in a
+        # gutter reads as spanning both columns, which is no neighbour
+        def first(xs, ok):
+            for x in xs:
+                cb = column_at(x)
+                if cb and ok(cb):
+                    return cb
+            return None
+        right = first(range(own[1] + probe, min(pi.w, own[1] + int(min_col)), probe),
+                      lambda cb: cb[0] >= own[1] - 2)
+        left = first(range(own[0] - 2 * probe, max(-1, own[0] - int(min_col)), -probe),
+                     lambda cb: cb[1] <= own[0] + 2)
+
+        # ⚠️ A page's columns are near-equal, so a neighbour much narrower than
+        # the headline's own column has been split by a stray gutter (a run of
+        # paper down a column, at x 1075 inside the Cordele Dispatch's second
+        # column, 26 April 1918, which cut every line "from al"): it is
+        # widened across the next gutter while it stays near the own width
+        ow = own[1] - own[0]
+
+        def widen(cb, step):
+            for _ in range(3):
+                if cb is None or cb[1] - cb[0] >= SPREAD_EVEN * ow:
+                    break
+                x = cb[1] + probe if step > 0 else cb[0] - 2 * probe
+                if x < 0 or x + probe >= pi.w:
+                    break
+                nxt = pi.column_bounds((x, body_y, probe, body_h))
+                if not nxt:
+                    break
+                grown = (cb[0], max(cb[1], nxt[1])) if step > 0 else (min(cb[0], nxt[0]), cb[1])
+                if grown == cb or grown[1] - grown[0] > (2 - SPREAD_EVEN) * ow:
+                    break
+                cb = grown
+            return cb
+        right, left = widen(right, 1), widen(left, -1)
+        options = [c for c in ((right, left) if own[1] < pi.w * 0.85 else (left, right)) if c]
+    for nb in options:
+        x0, x1 = own if nb is None else (min(own[0], nb[0]), max(own[1], nb[1]))
+        # the top: on a front page the dateline row over the headline
+        # ("ESTABLISHED 1884 ... TUESDAY JUNE 21 1898"), as his crop has it,
+        # never above the nameplate; else the headline's own top less the
+        # lane's margin. ⚠️ Small type only: a banner above the headline is
+        # not a dateline (Cordele, 26 April 1918, "...R KEMMER")
+        top_s = max(floor_s, sy - int(pi.h * LOOSE_H))
+        if page_seq == 1:
+            above = [w for w in words if x0 <= w[0] + w[2] / 2 < x1 and w[3] <= SPREAD_BODY_H * text_h * 1.5
+                     and sy - 8 * text_h <= w[1] + w[3] < sy and w[1] >= floor_s]
+            if above:
+                top_s = max(floor_s, int(min(w[1] for w in above) - text_h))
+        top = int(top_s / per)
+        under = box[1] + box[3]
+        if nb is None:
+            # ⚠️ A banner over the page (three of the eight headline posts
+            # measured on 5 October 2026) has no neighbour: its span is the
+            # width, and each column under it is found on body rows
+            ends, x = [], own[0] + probe
+            while x < own[1] - probe:
+                cb = column_at(x)
+                if cb is None:
+                    x += probe
+                    continue
+                ends.append(_story_start(col_words(cb[0], cb[1], under), med, under))
+                x = cb[1] + probe
+            ends = [e for e in ends if e is not None]
+            if not ends:
+                continue
+        else:
+            nwords = col_words(nb[0], nb[1], top)
+            ends = [_story_start(col_words(own[0], own[1], box[1]), med, box[1]),
+                    _story_start(nwords, med, top)]
+            if None in ends:
+                continue
+        bottom = max(ends) + int(0.5 * med)
+        if nb is not None:
+            # ⚠️ The ad test reads only what the crop will show: read to the
+            # foot of the page, the Macon News's second column met the
+            # advertisements at its bottom and the neighbour was refused
+            if len(ad_markers(ocr_text([w for w in nwords if w[1] < bottom]))) >= AD_MARKERS:
+                continue
+        # an edge column's outer side is the page margin and the film's edge:
+        # stop a margin's width beyond the type instead
+        bot_s = bottom * per
+        pad = int(pi.w * LOOSE_W / 2)
+        span = [w for w in words if x0 <= w[0] + w[2] / 2 < x1 and top_s <= w[1] < bot_s]
+        if span:
+            x0 = max(x0, int(min(w[0] for w in span)) - pad)
+            x1 = min(x1, int(max(w[0] + w[2] for w in span)) + pad)
+        cap = top_s + SPREAD_MAX_FRAC * H * per
+        # a word whose middle is inside the crop is never cut at a side: the
+        # measured column edge can fall inside the real one ("from al",
+        # Cordele Dispatch, 26 April 1918). Middles only, so this cannot creep
+        # across a column the way the dateline row did
+        for w in words:
+            if top_s <= w[1] + w[3] / 2 < bot_s:
+                cx = w[0] + w[2] / 2
+                if x0 <= cx < x1:
+                    x0, x1 = min(x0, int(w[0]) - 1), max(x1, int(w[0] + w[2]) + 1)
+        x0, y0, x1, y1 = _no_cut((x0, top_s, x1, bot_s), words, SPREAD_BODY_H * text_h,
+                                 max_y1=cap)
+        # ⚠️ ...and then settled on the PIXELS, column strip by column strip
+        # (_settle_bottom): the OCR often never read the display type a
+        # bottom crosses, so the word rule cannot see it ("JEWISH DRIVE IS /
+        # CONTINUED UNTIL", Griffin Daily News, 18 May 1926, and "BONDS BEING
+        # SOLD HERE", Atlanta Georgian, 27 September 1918, were clipped)
+        y1 = _settle_bottom(pi, int(x0), int(x1), int(y1), text_h, int(cap), int(min_col))
+        if y1 <= sy + sh or (y1 - y0) / per > SPREAD_MAX_FRAC * H:
+            continue
+        return pi.to_ocr((int(x0), int(y0), int(x1 - x0), int(y1 - y0)))
+    return None
+
+
 # A picture box's alt describes the picture, his call the same morning
 # ("describe the picture in the alt"): the headline lane's alt named the
 # title alone, and the crop now shows a drawing a reader cannot see. The
@@ -1119,6 +1463,25 @@ def story_shape(words):
     return "no dateline or wire credit: nothing says this is a story"
 
 
+def _drop_furniture(text, meta):
+    """A spread's transcribed headlines without the page's furniture: an item
+    carrying a dateline, or two consecutive words of the paper's own title,
+    is dropped. The prompt asks the model to leave the dateline out and it
+    did not always (Griffin Daily News, 18 May 1926), and the crop takes the
+    dateline row on purpose, so _refuse_own_title() would refuse the post
+    for a line the alt should simply not carry; the chosen headline's own
+    words have already passed that check."""
+    tt = [t for t in re.findall(r"[a-z]+", (meta.get("title") or "").lower()) if t != "the"]
+    pairs = {(a, b) for a, b in zip(tt, tt[1:]) if len(a) + len(b) >= 6}
+    keep = []
+    for item in re.split(r"(?<=[.!?”])\s+", text.strip()):
+        wt = re.findall(r"[a-z]+", item.lower())
+        if DATELINE.search(item) or any((a, b) in pairs for a, b in zip(wt, wt[1:])):
+            continue
+        keep.append(item)
+    return " ".join(keep).strip()
+
+
 def clip_headline(lccn, date, ed=1, seq=None, log=print):
     meta = _meta(lccn, date, "headline")
     page = choose_page(lccn, date, ed, seq)
@@ -1147,12 +1510,50 @@ def clip_headline(lccn, date, ed=1, seq=None, log=print):
         verdict, page_hits = _verdict("headline", lccn, date, nameplate.words_in(c["words"], pbox),
                                       c["words"], True)
         image_box, data = _fetch(page, _loosen(pbox, c, BOX_MARGIN_W, BOX_MARGIN_H))
-    else:
-        image_box, data = _fetch(page, _loosen(box, c, LOOSE_W, LOOSE_H))
-    hits = _check_transcription(words, "headline")
+    spread = None
+    if not pbox:
+        # the headline's column and the one beside it, or a banner's span
+        # (see _headline_spread); none found, and the lane crops as before
+        floor = 0
+        if page.seq == 1:
+            np_box = nameplate.nameplate_box(c["words"], c["width"], c["height"])
+            if np_box:
+                floor = np_box[1] + np_box[3]
+        inside = nameplate.words_in(c["words"], box)
+        if HEADLINE_SPREAD:
+            spread = _headline_spread(rules.PageInk(page), c, box, inside, floor, page.seq)
+    try:
+        hits = _check_transcription(words, "headline")
+    except npc.Refused as e:
+        # ⚠️ With a spread the alt reads every headline in the crop, so a
+        # chosen headline whose tight crop reads short ("FRENCH DESTROY.",
+        # Cordele Dispatch, 26 April 1918) is no reason to refuse; every
+        # other refusal of the chosen headline stands
+        if not (spread and "too short" in str(e)):
+            raise
+        hits = vocabulary_hits(words)
     _refuse_own_title(words, meta, "headline")
+    if not pbox:
+        if spread:
+            verdict, page_hits = _verdict("headline", lccn, date,
+                                          nameplate.words_in(c["words"], spread), c["words"], True)
+            image_box, data = _fetch(page, spread, width=SPREAD_WIDTH)
+        else:
+            image_box, data = _fetch(page, _loosen(box, c, LOOSE_W, LOOSE_H))
     if hits:
         verdict = _review(verdict, f"the transcribed headline carries {sorted(hits)}")
+    if spread:
+        # the alt reads every headline the crop shows, not the one the lane
+        # chose; a spread whose headlines cannot be read posts nothing
+        all_words = transcribe.transcribe(data, date[:4], log=log, prompt=transcribe.SPREAD_PROMPT,
+                                          max_chars=SPREAD_MAX_CHARS)
+        all_words = _drop_furniture(all_words or "", meta)
+        if not all_words:
+            raise npc.Refused("the spread's headlines could not be transcribed")
+        more = vocabulary_hits(all_words)
+        if more:
+            verdict = _review(verdict, f"the transcribed headlines carry {sorted(more)}")
+        words = all_words
     extra = None
     if pbox:
         # the crop shows a picture, so the alt says what it shows (his call,
@@ -1165,7 +1566,9 @@ def clip_headline(lccn, date, ed=1, seq=None, log=print):
         cap_hits = vocabulary_hits(described["caption"])
         if cap_hits:
             verdict = _review(verdict, f"the picture's caption carries {sorted(cap_hits)}")
-    return _result("headline", page, meta, date, ed, box, image_box, data,
+    if spread:
+        extra = dict(extra or {}, spread=True)
+    return _result("headline", page, meta, date, ed, spread or box, image_box, data,
                    verdict, page_hits, _curl(words), True, extra)
 
 

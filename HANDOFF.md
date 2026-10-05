@@ -1760,3 +1760,73 @@ The check locates "a man" at the boy and calls it FOUND. The descriptions
 already posted on those strips, written before the check, made the same
 mistake ("two old men, Elmer and Clem"). Age and sex are the next thing to
 ask the verifier about, if this is worth closing.
+
+## ⏸ The headline lane's two-column crop, built 5 October 2026, HELD for his look
+
+His call ("Overall, I find the crops on Georgia in Print too tight", then
+"Build option 1 and show me the eight"), with two hand crops of the Macon News
+of 21 June 1898 as the reference: the headline's column and the one beside
+it, from the dateline row down to where the stories have begun. Measured
+first: headline crops ran 1.6 to 8.8 percent of the page against 12-60 for
+every other lane, and their margin cut the next column mid-letter.
+⏸ **Off until he approves the renders: `clips.HEADLINE_SPREAD = False`.** With
+it off the lane crops exactly as before; the picture box (above) is not
+affected.
+
+`clips._headline_spread()`, in order (every rule has a named page in its
+comment, all eight of them the last eight headline posts):
+- **Columns from `column_bounds()`**: the headline's own on its own rows (a
+  banner crossing gutters widens it, as it should), every other one on BODY
+  rows six text heights below, where no display type crosses a gutter.
+  ⚠️ Rejected on measurement: `vrules()` (Macon's rules are too faint, three
+  columns read as one) and the page-level gutter list (a 2-px paper run
+  inside Macon's first column read as a gutter). A neighbour narrower than
+  `SPREAD_EVEN` of the own column was split by a stray gutter and is widened
+  across it (Cordele, 26 April 1918, cut every line "from al").
+- **Neighbour**: right, or left from the last column; one that reads as
+  advertising IN THE CROPPED PART (read to the foot of the page, Macon's
+  second column met its ads) or whose story never starts is passed over. A
+  banner (`SPREAD_BANNER`, 0.40 of the page) takes no neighbour: its span is
+  the width.
+- **Top**: on a front page the dateline row above the headline, small type
+  only (a banner above is not a dateline: Cordele's "...R KEMMER"), never
+  above the nameplate. Found in the OCR, not by the rule under it, since
+  `rule_finder()` needs a rule reaching both ends and Macon's stops short.
+- **Bottom**: `SPREAD_BODY_LINES` (3) lines into whichever story starts
+  lowest (`_story_start`: the first run of `SPREAD_BODY_RUN` body-size
+  lines), then `_no_cut()` on DISPLAY words only (down past one, out at the
+  sides; body type is cut, as both of his crops cut it; the dateline crossed
+  every gutter and widened the sides when body words counted), then
+  `_settle_bottom()` on the PIXELS, strip by strip, because the OCR often
+  never read the display type a bottom crosses: a line the bottom runs
+  through is taken, a headline is not ended between its lines, a run over
+  `SPREAD_PICTURE` (15) text heights is a picture and may be cut, and past
+  `SPREAD_MAX_FRAC` (0.60) a line or a stack is left out whole and the cap
+  follows the bottom up (without that the two moves oscillated and the
+  Atlanta Georgian of 27 September 1918 was cut through "BONDS BEING SOLD
+  HERE").
+- A word whose MIDDLE is inside the crop is never cut at a side.
+
+**The alt reads every headline in the crop** (`transcribe.SPREAD_PROMPT`,
+"A.I.-transcribed headlines"), each headline and deck a block, blocks
+separated by a blank line (`transcribe.blocks_of`): asked for one item per
+line, the model gave one PRINTED line per line ("DIRECT. CABLE NOW.
+Communication Has Been Es-. tablished"). Words broken at a line's end,
+soft hyphens included, are rejoined. Dateline and own-title items are
+dropped (`_drop_furniture`), not refused; the chosen headline's own words
+still pass `_refuse_own_title()`. With a spread, a chosen headline whose tight
+transcription is merely too short ("FRENCH DESTROY.") is not refused. The
+page gate reads every OCR word in the crop. Fetched at `SPREAD_WIDTH` 1600.
+Known: on a dense page the alt can carry a byline or a sentence of body type
+(Augusta Herald, 6 March 1924).
+
+Measured on the eight: all eight crop (seven spreads, the picture box on the
+Georgian of 23 November 1910), depths 0.13 to 0.59 of the page, the two
+page-wide banners the deepest. ⚠️ **The Cordele Dispatch of 26 April 1918 now
+picks "FRENCH DESTROY ONE TEUTON WEAPON" under the banner "FRENCH COUNTER FOR
+KEMMEL HILL"**, which was what posted: the item change of the same day
+(d54ea88, another session's) chose differently, and the spread leaves the
+banner above it out. `test_headline_spread.py`, 23 tests (a synthetic
+three-column page, the bottom's rules, the alt's blocks and furniture); nine
+mutations, six caught, three masked by a neighbouring rule (bottom up versus
+down, the cap held, a gutter probe as neighbour), each named in the session.

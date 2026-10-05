@@ -591,6 +591,8 @@ def alt_text(r):
     seq = r["url"].rstrip("/").rsplit("-", 1)[-1]
     what = {"headline": "headline", "article": "article", "ad": "advertisement",
             "market": "market report", "classified": "classified advertisements"}[lane]
+    if r.get("spread"):
+        what = "headlines"          # every headline in a two-column or banner crop
     lead = f"{transcribe.PREFIX} {what}" if r.get("generated") else what.capitalize()
     alt = (f"{lead} from “{title},” {where}, {npc.post_date(r['date'])}, page {seq}, "
            f"reading: “{r['words']}”")
