@@ -1696,3 +1696,40 @@ thousands. `PictureBoxVerifier` in `test_picture_box.py` (18 tests now), the
 model scripted; six mutations caught on a scratch copy (unverifiable passing,
 no ban list, no placement rule, no retries, no brace escaping, an ABSENT
 ignored).
+
+## ✅ Five transcription and item fixes, 5 October 2026
+
+From the morning brief's open finding on the article lane, then a check of
+the headline lane he asked for. Each was measured on posted pages first.
+
+- **Article transcription crop reaches its column's gutters** (`22c53ae`).
+  The first article post (the Cordele Dispatch of 31 March 1920) read
+  "CANDIDATE FO PRESIDENCY Y ... Willia McAdoo": the picture was whole, but
+  `clip_article()` transcribes the TIGHT box, whose width came from the
+  headline's OCR boxes, and the OCR read nothing for "FOR" or "YET".
+  `_to_column_edges()` widens the transcription crop only, to the nearest
+  clear gutter within `COLUMN_REACH` (0.06 of the page). Posted crop unchanged.
+- **Quotes curled by position** (`9abf742`). `clips._curl()` closed every
+  double quote (”labor”); it now calls `pictures.curl()`.
+- **Words broken at a line's end are joined** (`cedec41`,
+  `transcribe.join_broken_words`, his option 1 of four). The wider crop
+  brought the printer's line-end hyphens into view ("REPRESENTA- TIVES").
+  Letter, hyphen, space, letter only; a compound broken at its own hyphen
+  joins too, accepted as rare.
+- **A deck runs on past a broken word** (`d54ea88`, `items._continues`).
+  The Macon News of 21 June 1898 posted "...Established Between Wash-":
+  "ington and Guantanamo" has a descender, read taller than the line above,
+  and the deck-grew test cut it. A line starting lowercase now passes that
+  test. Not the hyphen: the OCR read the word "Wash".
+- **A refused gutter split falls back to printed rules** (`d54ea88`,
+  `items._rule_pieces`). The 26 April 1918 Cordele page's row split as
+  "FRENCH DESTROY | MEMORIAL | DAY", the one-word guard refused it, and the
+  two column headlines came back as one item. Rules only now. ⚠️ The OCR
+  read nothing for "ONE TEUTON WEAPON" under "FRENCH DESTROY", so that item
+  is one line deep and the three-token floor refuses it; an OCR hole, not
+  fixed here.
+
+The Cordele article was deleted and reposted with the fixed alt
+(`3mx3l2mqced2t`, `reposted_from` in its state entry). Headline lane checked
+on all 11 posted headlines: no right-edge truncation. A 45-page before/after
+of `_headline_item` and `_article_span` changed only the Macon item.
