@@ -828,8 +828,8 @@ def _picture_box(pi, coords, box):
 # nameplate down to where the stories have begun. Every lane but this one
 # already posted whole items (articles 13-22 percent of the page, cartoons
 # 24-52); headlines ran 1.6 to 8.8.
-HEADLINE_SPREAD = False  # ⏸ held for his look at the eight renders, 5 October
-                         # 2026; True turns the two-column crop on
+HEADLINE_SPREAD = True   # on since 5 October 2026, his call on the eight
+                         # renders ("I prefer all the new crops")
 SPREAD_BODY_H = 1.3      # a body line's words are at most this many page
                          # medians tall; a deck or a headline is taller
 SPREAD_BODY_RUN = 3      # body type has begun where this many body lines run

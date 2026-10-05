@@ -1761,7 +1761,7 @@ already posted on those strips, written before the check, made the same
 mistake ("two old men, Elmer and Clem"). Age and sex are the next thing to
 ask the verifier about, if this is worth closing.
 
-## ⏸ The headline lane's two-column crop, built 5 October 2026, HELD for his look
+## ✅ The headline lane's two-column crop, 5 October 2026, ON ("I prefer all the new crops")
 
 His call ("Overall, I find the crops on Georgia in Print too tight", then
 "Build option 1 and show me the eight"), with two hand crops of the Macon News
@@ -1769,9 +1769,9 @@ of 21 June 1898 as the reference: the headline's column and the one beside
 it, from the dateline row down to where the stories have begun. Measured
 first: headline crops ran 1.6 to 8.8 percent of the page against 12-60 for
 every other lane, and their margin cut the next column mid-letter.
-⏸ **Off until he approves the renders: `clips.HEADLINE_SPREAD = False`.** With
-it off the lane crops exactly as before; the picture box (above) is not
-affected.
+✅ **Turned on the same evening, his call on the eight renders: "I prefer all
+the new crops."** `clips.HEADLINE_SPREAD` is the switch; False puts the lane
+back to the old crop, and the picture box (above) is not affected either way.
 
 `clips._headline_spread()`, in order (every rule has a named page in its
 comment, all eight of them the last eight headline posts):
