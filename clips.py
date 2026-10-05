@@ -854,7 +854,8 @@ def parse_picbox(raw):
 
 
 # ⚠️ The description is VERIFIED before it is used, his call of 5 October 2026
-# ("Add the verifier check before posting"), after the first live one said "a
+# ("Add the verifier check before posting"; the cartoon lane the same day,
+# "Add the same verifier to the cartoon lane", via verified_description()), after the first live one said "a
 # small figure stands near the entrance" of the Jewish Alliance drawing: the
 # only figure in it stands at the far left, in front of the side wing. The
 # check is the one image_alt.py runs for Old Seoul and Holmes (a second call
@@ -939,15 +940,14 @@ def _read_picbox(image_bytes, year, prompt, log):
     return r
 
 
-def describe_picture_box(image_bytes, year, log=print):
-    """The model's description of a picture box, VERIFIED against the image,
-    parsed and curled, or None. Only the PICTURE line is verified: the
-    caption is a transcription of printed type, not a claim about what is
-    shown."""
-    import pictures
-    r = _read_picbox(image_bytes, year, PICBOX_PROMPT, log)
-    if r is None:                                   # one more try, as before
-        r = _read_picbox(image_bytes, year, PICBOX_PROMPT, log)
+def verified_description(image_bytes, year, r, reread, log=print, what="description"):
+    """`r` (a reading carrying a "picture" line) once that line has passed the
+    check against the image, or None. `reread(extra)` asks the model again
+    with `extra` appended to its own prompt and returns a new reading or
+    None. Shared by the picture box (describe_picture_box) and the cartoon
+    lane (pictures.clip_cartoon), his call of 5 October 2026: see the comment
+    above PICBOX_VERIFY_PROMPT for the check and why it refuses rather than
+    ships an unverified description."""
     rejected = []
     for attempt in range(PICBOX_REDESCRIBE + 1):
         if r is None:
@@ -957,18 +957,32 @@ def describe_picture_box(image_bytes, year, log=print):
                                  log=log)
         bad = unsupported_claims(verdict)
         if bad is None:
-            log("  (picture box description could not be verified: refused)")
+            log(f"  ({what} could not be verified: refused)")
             return None
         if not bad:
-            return {k: pictures.curl(v) for k, v in r.items()}
-        log(f"  (picture box description failed verification: {'; '.join(bad)})")
+            return r
+        log(f"  ({what} failed verification: {'; '.join(bad)})")
         if attempt == PICBOX_REDESCRIBE:
             break
         rejected += [b for b in bad if b not in rejected]
-        r = _read_picbox(image_bytes, year, PICBOX_PROMPT + _braces(PICBOX_REDO.format(
-            bad="\n".join(f"- {b}" for b in rejected))), log)
-    log("  (picture box description dropped: could not be verified against the image)")
+        r = reread(_braces(PICBOX_REDO.format(bad="\n".join(f"- {b}" for b in rejected))))
+    log(f"  ({what} dropped: could not be verified against the image)")
     return None
+
+
+def describe_picture_box(image_bytes, year, log=print):
+    """The model's description of a picture box, VERIFIED against the image,
+    parsed and curled, or None. Only the PICTURE line is verified: the
+    caption is a transcription of printed type, not a claim about what is
+    shown."""
+    import pictures
+    r = _read_picbox(image_bytes, year, PICBOX_PROMPT, log)
+    if r is None:                                   # one more try, as before
+        r = _read_picbox(image_bytes, year, PICBOX_PROMPT, log)
+    r = verified_description(image_bytes, year, r,
+                             lambda extra: _read_picbox(image_bytes, year, PICBOX_PROMPT + extra, log),
+                             log=log, what="picture box description")
+    return None if r is None else {k: pictures.curl(v) for k, v in r.items()}
 
 
 def picture_alt_tail(pb):

@@ -383,7 +383,7 @@ class Lane(unittest.TestCase):
     """clip_cartoon against stubbed pages: the kind gate, the caricature
     REVIEW and the vocabulary REVIEW, with no network and no model."""
 
-    def _run(self, reply, kinds_seen_expected=None):
+    def _run(self, reply, kinds_seen_expected=None, verdicts=None):
         import clips
         import gates
         c = synthetic_coords(hole=(1000, 2000, 1200, 900))
@@ -422,8 +422,51 @@ class Lane(unittest.TestCase):
              mock.patch.object(clips, "_fetch", return_value=((1000, 2000, 1200, 900), buf.getvalue())), \
              mock.patch.object(clips, "_meta", return_value={"title": "Atlanta Georgian.", "city": "Atlanta", "postable": "yes"}), \
              mock.patch.object(gates, "roster", return_value={"sn89053729": {"postable": "yes"}}), \
-             mock.patch.object(pictures.transcribe, "ask", return_value=reply):
+             mock.patch.object(pictures.transcribe, "ask", side_effect=self._model(reply, verdicts)):
             return pictures.clip_cartoon("sn89053729", "1919-01-15", log=lambda m: None)
+
+    CLEAN = "FOUND | five men | centre"
+
+    def _model(self, reply, verdicts):
+        """The describer always answers `reply`; the verifier (its prompt asks
+        to LOCATE claims) answers from `verdicts` in turn, clean by default.
+        Every prompt is kept in self.prompts."""
+        self.prompts = []
+        verdicts = list(verdicts or [])
+
+        def ask(image_bytes, year, prompt, log=print):
+            self.prompts.append(prompt)
+            if "LOCATE" in prompt:
+                return verdicts.pop(0) if verdicts else self.CLEAN
+            return reply(len(self.prompts)) if callable(reply) else reply
+        return ask
+
+    def test_the_description_is_checked_before_the_cartoon_is_taken(self):
+        self._run(Reply.GOOD)
+        self.assertTrue(any("LOCATE" in p for p in self.prompts))
+
+    def test_a_failed_claim_is_banned_by_name_and_the_reread_posts(self):
+        bad = "ABSENT | five men | four men"
+        r = self._run(Reply.GOOD, verdicts=[bad])
+        self.assertTrue(r["postable"])
+        reread = [p for p in self.prompts if "LOCATE" not in p][1]
+        self.assertIn("- five men", reread)
+
+    def test_three_failures_refuse_and_say_why(self):
+        bad = "ABSENT | five men | four men"
+        with self.assertRaises(pictures.npc.Refused) as cm:
+            self._run(Reply.GOOD, verdicts=[bad, bad, bad])
+        self.assertIn("failed the check against the image", str(cm.exception))
+
+    def test_an_unverifiable_description_is_refused_not_posted(self):
+        with self.assertRaises(pictures.npc.Refused):
+            self._run(Reply.GOOD, verdicts=["it looks fine to me"])
+
+    def test_a_reread_that_is_no_longer_a_cartoon_is_dropped(self):
+        photo = Reply.GOOD.replace("comic-strip", "photograph")
+        reply = lambda n: Reply.GOOD if n == 1 else photo
+        with self.assertRaises(pictures.npc.Refused):
+            self._run(reply, verdicts=["ABSENT | five men | four men"])
 
     def test_a_cartoon_kind_passes_with_its_alt(self):
         r = self._run(Reply.GOOD)

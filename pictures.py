@@ -898,10 +898,12 @@ def parse_reply(text):
             "caricature": found.get("caricature", "").strip().lower().startswith("y")}
 
 
-def classify(image_bytes, year, log=print):
-    """The model's reading of one candidate, parsed, or None."""
+def classify(image_bytes, year, log=print, extra=""):
+    """The model's reading of one candidate, parsed, or None. `extra` is
+    appended to the prompt: clips.verified_description() passes the claims
+    a check against the image rejected."""
     for attempt in range(2):
-        raw = transcribe.ask(image_bytes, year, PICTURE_PROMPT, log=log)
+        raw = transcribe.ask(image_bytes, year, PICTURE_PROMPT + extra, log=log)
         if raw is None:
             return None
         r = parse_reply(raw)
@@ -1000,7 +1002,7 @@ def clip_cartoon(lccn, date, ed=1, seq=None, log=print):
         ad = len(clips.ad_markers(clips.ocr_text(nameplate.words_in(c["words"], fbox))))
         ranked.append((round(clear, 2), ad, -area, page, c, pi, fbox))
     ranked.sort(key=lambda t: (t[0], t[1], t[2]))
-    kinds_seen = []
+    kinds_seen, unverified = [], []
     for clear, ad, _, page, c, pi, fbox in ranked[:MODEL_CALLS_PER_ISSUE]:
         try:
             image_box, data = clips._fetch(page, fbox, width=CROP_WIDTH)
@@ -1014,6 +1016,22 @@ def clip_cartoon(lccn, date, ed=1, seq=None, log=print):
         if r["kind"] not in KINDS_POSTED:
             kinds_seen.append(f"p{page.seq} {r['kind']}")
             log(f"  picture p{page.seq}: {r['kind']}, not a cartoon")
+            continue
+        # ⚠️ The description is checked against the image before it is
+        # used, his call of 5 October 2026 ("Add the same verifier to the
+        # cartoon lane"), the picture box's check (clips.verified_description).
+        # Only a cartoon kind pays for it. A retry is a whole new reading, so
+        # one that no longer calls the picture a cartoon is dropped here too.
+        def reread(extra, data=data):
+            again = classify(data, date[:4], log=log, extra=extra)
+            if again is not None and again["kind"] not in KINDS_POSTED:
+                log(f"  picture p{page.seq}: re-read as {again['kind']}, not a cartoon")
+                return None
+            return again
+        r = clips.verified_description(data, date[:4], r, reread, log=log,
+                                       what=f"picture p{page.seq} description")
+        if r is None:
+            unverified.append(f"p{page.seq}")
             continue
         inside = nameplate.words_in(c["words"], fbox)
         verdict, page_hits = clips._verdict("cartoon", lccn, date, inside, c["words"], True)
@@ -1030,6 +1048,10 @@ def clip_cartoon(lccn, date, ed=1, seq=None, log=print):
                              "printed": r["words"], "caricature": r["caricature"]})
         res["alt"] = compose_alt(meta, date, page.seq, r)
         return res
+    if unverified:
+        raise npc.Refused(f"cartoon found but its description failed the check against "
+                          f"the image: {', '.join(unverified)}"
+                          + (f"; not cartoons: {', '.join(kinds_seen)}" if kinds_seen else ""))
     if kinds_seen:
         raise npc.Refused(f"pictures found but none a cartoon: {', '.join(kinds_seen)}")
     raise npc.Refused("no picture-sized hole in the OCR on any page looked at")

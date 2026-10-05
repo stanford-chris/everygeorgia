@@ -1733,3 +1733,30 @@ The Cordele article was deleted and reposted with the fixed alt
 (`3mx3l2mqced2t`, `reposted_from` in its state entry). Headline lane checked
 on all 11 posted headlines: no right-edge truncation. A 45-page before/after
 of `_headline_item` and `_article_span` changed only the Macon item.
+
+✅ **The cartoon lane's description is verified too, his call the same day**
+("Add the same verifier to the cartoon lane"). The loop is now one function,
+`clips.verified_description()`, which the picture box and
+`pictures.clip_cartoon()` both call; `pictures.classify()` takes an `extra`
+for the retry's banned claims. In the cartoon lane it runs only after the
+model's KIND is a cartoon kind, so refused pictures cost no extra call. A
+retry is a whole new reading: one that no longer calls the picture a cartoon
+is dropped, and the caricature and vocabulary REVIEW checks read the
+reading that passed. A cartoon whose description cannot be verified is not
+posted: the lane moves to the issue's next candidate, and if none passes it
+refuses with "cartoon found but its description failed the check against
+the image", never the old "no picture-sized hole", which would have been
+untrue. Only the PICTURE line is checked; the title and balloons are
+transcriptions. Five tests in `test_pictures.py` (`Lane`), whose model stub
+now answers the verifier separately; four mutations caught on a scratch copy.
+Measured live on two strips the lane had already posted (Otto Auto,
+Americus Times-Recorder 5 February 1920; the red-flannels strip, Augusta
+Herald 12 November 1922). The check rejected real errors: "men finally
+shaking hands" (nobody does), "woman stands by a doorway". Both strips then
+passed, in 114 s and 204 s. ⚠️ **What passed was still not wholly right, and
+the gap is who people are, not where they are**: Otto, a boy, became "a man in
+overalls"; Elmer, a boy in a cap, became one of "two bald, mustached men".
+The check locates "a man" at the boy and calls it FOUND. The descriptions
+already posted on those strips, written before the check, made the same
+mistake ("two old men, Elmer and Clem"). Age and sex are the next thing to
+ask the verifier about, if this is worth closing.
