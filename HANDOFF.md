@@ -1830,3 +1830,27 @@ banner above it out. `test_headline_spread.py`, 23 tests (a synthetic
 three-column page, the bottom's rules, the alt's blocks and furniture); nine
 mutations, six caught, three masked by a neighbouring rule (bottom up versus
 down, the cap held, a gutter probe as neighbour), each named in the session.
+
+✅ **A changed crop on an approved item goes back to review, his call the same
+evening ("Send them back to review with the new crop").** `choose_approved()`
+used to DROP an approved item whose re-cut landed on a different box, and the
+two-column crop changed every approved headline's box. Now `requeue()` queues
+the new crop as a review item (mailed, with a reason line naming the crop he
+approved) and writes a `"requeue"` decision that supersedes the approval, so
+approving the new item posts the new crop; a refusal on the re-cut still
+fails. A dry run only says it would. Seven approved headlines were requeued
+and mailed that evening; he approved the Griffin Daily News and Sun of
+12 September 1911 the same night. ⚠️ **One stays pending and fails every
+run**: sn89053815 1881-03-10, whose chosen headline now transcribes with an
+unread word ("[illegible]ott County Tennesse,. 322 Acres.", a land sale) and
+is refused on each re-cut, logged as a transient failure.
+⚠️⚠️ **The first test run under `requeue()` wrote EIGHT requeue lines into the
+real `data/review_decisions.jsonl`**, superseding real approvals with no review
+item behind them: the headline `pick()` test in `test_everygeorgia_post.py`
+redirected `REVIEW_FILE` and not `DECISIONS_FILE`, so it read his real
+approvals and, once `choose_approved()` could write, wrote back. Found by the
+lines' timestamps (the test runs) and their missing review lines; removed by
+exactly that test, before/after diffed. The test module now redirects
+`DECISIONS_FILE`, `REVIEW_FILE` and `STATE_FILE` at import, and a full run
+was confirmed to leave all three real files byte-identical (shasum). Same
+trap as `reference_dry_run_guard_does_not_stop_tests` in auto-memory.

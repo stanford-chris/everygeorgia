@@ -22,6 +22,17 @@ from unittest.mock import patch
 
 import everygeorgia_post as ep
 import gates
+
+# ⚠️ No test reads or writes the real decisions or review files. Some classes
+# redirect REVIEW_FILE and not DECISIONS_FILE; pick() then read his real
+# approvals, and once choose_approved() could WRITE ("requeue", 5 October
+# 2026) a test run wrote five requeue lines into data/review_decisions.jsonl,
+# superseding real approvals. Redirected here for the whole module; a class
+# that redirects again restores to these, never to the real paths.
+_TMP = tempfile.mkdtemp(prefix="everygeorgia-test-")
+ep.DECISIONS_FILE = os.path.join(_TMP, "review_decisions.jsonl")
+ep.REVIEW_FILE = os.path.join(_TMP, "review.jsonl")
+ep.STATE_FILE = os.path.join(_TMP, "post_state.json")
 import nameplate_crop as npc
 import profile as prof
 
@@ -790,7 +801,9 @@ class ApprovedReviewItems(unittest.TestCase):
         self.assertIn("sn00000002:1880-01-01:nameplate", s["approved_failed"])
         self.assertEqual(ep.approved_pending(s, "nameplate"), [])
 
-    def test_recut_on_a_different_box_is_dropped(self):
+    def test_recut_on_a_different_box_goes_back_to_review_and_reapproval_posts_it(self):
+        # 5 October 2026, his call ("Send them back to review with the new
+        # crop"): a changed crop is never posted unseen and never lost
         ep.decide("sn00000002:1880-01-01", "approve", log=self.log)
         def clip(lane, l, d, e=1, seq=1, phrase=None):
             r = fake_result(l, d, gates.REVIEW, page_hits={"negro"})
@@ -799,7 +812,35 @@ class ApprovedReviewItems(unittest.TestCase):
         ep.CLIP = clip
         s = self.state()
         self.assertEqual(ep.choose_approved(s, "nameplate", log=self.log), (None, None))
-        self.assertIn("sn00000002:1880-01-01:nameplate", s["approved_failed"])
+        self.assertNotIn("sn00000002:1880-01-01:nameplate", s.get("approved_failed", {}))
+        self.assertEqual(ep.approved_pending(s, "nameplate"), [], "the old approval is superseded")
+        with open(ep.REVIEW_FILE) as f:
+            last = json.loads(f.read().splitlines()[-1])
+        self.assertEqual((last["lccn"], last["image_box"]), ("sn00000002", [0, 0, 100, 99]))
+        self.assertIn("crop has changed", last["reasons"][-1])
+        self.assertFalse(last["dry"])
+        # he approves the new item, and the same re-cut now posts
+        ep.decide("sn00000002:1880-01-01:nameplate", "approve", log=self.log)
+        lccn, r = ep.choose_approved(s, "nameplate", log=self.log)
+        self.assertEqual((lccn, r["date"]), ("sn00000002", "1880-01-01"))
+        self.assertTrue(r["approved"])
+
+    def test_a_dry_run_only_says_a_changed_crop_would_go_back(self):
+        ep.decide("sn00000002:1880-01-01", "approve", log=self.log)
+        def clip(lane, l, d, e=1, seq=1, phrase=None):
+            r = fake_result(l, d, gates.REVIEW, page_hits={"negro"})
+            r["image_box"] = (0, 0, 100, 99)
+            return r
+        ep.CLIP = clip
+        size = os.path.getsize(ep.REVIEW_FILE)
+        saved, ep._DRY_RUN = ep._DRY_RUN, True
+        try:
+            s = self.state()
+            self.assertEqual(ep.choose_approved(s, "nameplate", log=self.log), (None, None))
+        finally:
+            ep._DRY_RUN = saved
+        self.assertEqual(os.path.getsize(ep.REVIEW_FILE), size)
+        self.assertEqual(len(ep.approved_pending(s, "nameplate")), 1, "still approved, nothing written")
 
     def test_pick_takes_an_approved_item_before_the_title_order(self):
         ep.decide("sn00000002:1880-01-01", "approve", log=self.log)

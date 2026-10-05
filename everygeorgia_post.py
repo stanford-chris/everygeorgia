@@ -635,7 +635,7 @@ def aspect_ratio(data):
 # ----------------------------------------------------------------- choosing
 
 
-def log_review(r, state):
+def log_review(r, state, note=None):
     """Append one line a person can act on. The run does not wait for them.
 
     ✅ Since 25 September 2026, his ask ("email me with new review items, with
@@ -659,7 +659,8 @@ def log_review(r, state):
         "lccn": r["lccn"], "date": r["date"], "edition": r["edition"],
         "url": r["url"], "caption": r["caption"], "lane": r.get("lane"),
         "image_box": r.get("image_box"), "words": r.get("words"),
-        "page_hits": r["page_hits"], "reasons": r["verdict"].reasons,
+        "page_hits": r["page_hits"],
+        "reasons": list(r["verdict"].reasons) + ([note] if note else []),
         "pass": state.get("pass"), "image": image, "dry": _DRY_RUN,
     }
     os.makedirs(DATA, exist_ok=True)
@@ -802,6 +803,29 @@ def decide(spec, decision, log=print):
     return line
 
 
+def requeue(state, d, r, log=print):
+    """Queue the re-cut `r` of approved item `d` for his review again, and
+    record a "requeue" decision that supersedes the approval (approved_pending
+    reads the latest decision per item). A dry run only says so."""
+    lane = d.get("lane") or "nameplate"
+    note = (f"approved earlier with a different crop ({d.get('image_box')}); "
+            f"the lane's crop has changed, so this is the new one to approve")
+    if _DRY_RUN:
+        log(f"  approved {lane} {d['lccn']} {d['date']}: crop changed, would go back to review")
+        return
+    r = dict(r, lane=lane)
+    log_review(r, state, note=note)
+    line = {"at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "decision": "requeue", "lccn": d["lccn"], "date": d["date"],
+            "edition": d.get("edition", 1), "lane": lane, "seq": d.get("seq", 1),
+            "image_box": r.get("image_box"), "words": r.get("words"),
+            "was": d.get("image_box")}
+    os.makedirs(DATA, exist_ok=True)
+    with open(DECISIONS_FILE, "a") as f:
+        f.write(json.dumps(line, ensure_ascii=False) + "\n")
+    log(f"  approved {lane} {d['lccn']} {d['date']}: crop changed, back to review with the new crop")
+
+
 def approved_pending(state, lane):
     """Approved items for `lane` not yet posted and not given up on, in the
     order they were approved."""
@@ -856,7 +880,15 @@ def choose_approved(state, lane, log=print):
         if r["verdict"].outcome == "REFUSE":      # gates.REFUSE
             why = f"refused on the re-cut: {'; '.join(r['verdict'].reasons)}"
         elif d.get("image_box") and list(r.get("image_box") or []) != list(d["image_box"]):
-            why = f"re-cut landed on {r.get('image_box')}, not the approved {d['image_box']}"
+            # ⚠️ A changed CROP goes back to him, his call of 5 October 2026
+            # ("Send them back to review with the new crop"), when the
+            # headline lane's two-column crop replaced the crops he had
+            # approved: the new crop is queued and mailed as a review item,
+            # and a "requeue" decision supersedes the old approval, so
+            # approving the new item posts the new crop. Never posted
+            # unseen, never lost. A refusal on the re-cut still fails.
+            requeue(state, d, r, log=log)
+            continue
         if why:
             state.setdefault("approved_failed", {})[k] = why
             log(f"  approved {lane} {d['lccn']} {d['date']}: dropped, {why}")
