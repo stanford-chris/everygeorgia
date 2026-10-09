@@ -1555,6 +1555,30 @@ class HeadlineArticleClosureMargins(unittest.TestCase):
         self.assertEqual(box[1], hbox[1])                 # starts at the headline's own top
         self.assertGreater(box[3], hbox[3])                # taller than the headline alone
 
+    # _article_picture, 9 October 2026: the posted crop is looser than the
+    # transcribed one, and its bottom never runs through a line of type
+    def test_article_picture_holds_the_tight_box_with_a_margin(self):
+        hbox, box = clips._article_span(self.coords, self.page)
+        pic = clips._article_picture(self.page, self.coords, hbox, box)
+        self.assertLess(pic[0], min(box[0], hbox[0]))
+        self.assertGreater(pic[0] + pic[2], max(box[0] + box[2], hbox[0] + hbox[2]))
+        self.assertLess(pic[1], box[1])
+        self.assertGreaterEqual(pic[1] + pic[3], box[1] + box[3])
+
+    def test_article_picture_bottom_cuts_no_word(self):
+        hbox, box = clips._article_span(self.coords, self.page)
+        pic = clips._article_picture(self.page, self.coords, hbox, box)
+        y1 = pic[1] + pic[3]
+        cut = [w[4] for w in self.coords["words"]
+               if pic[0] <= w[0] + w[2] / 2.0 < pic[0] + pic[2] and w[1] < y1 < w[1] + w[3]]
+        self.assertEqual(cut, [])
+
+    def test_clip_article_posts_the_picture_not_the_old_loosened_box(self):
+        import inspect
+        src = inspect.getsource(clips.clip_article)
+        self.assertIn("_article_picture(", src)
+        self.assertNotIn("_loosen(box", src)
+
 
 class WideHeadingSplit(unittest.TestCase):
     def setUp(self):

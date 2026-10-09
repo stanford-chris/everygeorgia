@@ -1654,7 +1654,7 @@ def _one_column(page, c, hbox, inside, ch):
     return hbox
 
 
-def _article_span(c, page, diagnostics=None):
+def _article_span(c, page, diagnostics=None, max_lines=None, max_frac=None):
     """The headline item's box plus the row range of its first paragraph, as
     clip_article() builds it -- factored out so crop_closure_check.py can
     re-derive just the geometry, with `diagnostics` on, without spending a
@@ -1682,6 +1682,8 @@ def _article_span(c, page, diagnostics=None):
             diagnostics["bottom"] = None if reason is None else \
                 {"reason": reason, "ratio": ratio, "text": text}
 
+    max_lines = max_lines or ARTICLE_LINES
+    max_frac = max_frac or ARTICLE_MAX_FRAC
     chosen = _headline_item(c, page, max_width=ARTICLE_MAX_WIDTH)
     if chosen is None:
         raise npc.Refused("no headline item below the nameplate")
@@ -1716,7 +1718,7 @@ def _article_span(c, page, diagnostics=None):
         if tight(i + 1) and tight(i + 2) and max(w[3] for w in lines[i][3]) < 1.6 * med:
             start = i
             break
-        if lines[i][0] - hbot > ARTICLE_MAX_FRAC * ch:
+        if lines[i][0] - hbot > max_frac * ch:
             break
     if start is None:
         raise npc.Refused("no paragraph of body text under the headline")
@@ -1731,11 +1733,11 @@ def _article_span(c, page, diagnostics=None):
         if i - start >= 2 and lines[i][2] > left_mode + INDENT * med:
             _note("indent", None, ocr_text(lines[i][3]))
             break                               # an indented line: the next paragraph
-        if lines[i][1] - read_top > ARTICLE_MAX_FRAC * ch:
+        if lines[i][1] - read_top > max_frac * ch:
             _note("cap")
             break
         end = i
-        if end - start + 1 >= ARTICLE_LINES:
+        if end - start + 1 >= max_lines:
             _note("row-count-cap")
             break
     else:
@@ -1799,6 +1801,57 @@ def _to_column_edges(page, c, box):
     return (int(left), box[1], int(right - left), box[3])
 
 
+# _article_picture(): the POSTED article crop, looser than the transcribed
+# one. 9 October 2026, his call on two held Savannah Morning News crops
+# ("the other two crops are too tight", then "loosen the article crops"):
+# "SEVENTEEN KILL" (27 December 1903) was cut at the right because the box's
+# width is the headline's OCR words and the OCR read nothing for "ED"; "A
+# VALLEY OF DEATH" (3 June 1889) stopped at ARTICLE_LINES mid-sentence, and
+# the margin showed half a line of the next. So the picture takes the
+# column (_to_column_edges, already trusted for the transcription) plus the
+# LOOSE_W margin, runs to the paragraph's own end under the looser
+# ARTICLE_SHOW_* caps, then ARTICLE_TAIL whole lines more, and ends between
+# two lines. The alt still reads the ARTICLE_LINES paragraph, which keeps the
+# transcription under transcribe.MAX_CHARS. Rejected the same day, rendered
+# on six pages: the headline lane's two-column spread, which on the
+# Cordele Dispatch of 31 March 1920 took half the front page under its
+# banner and on two pages found no spread at all.
+ARTICLE_SHOW_LINES = 20  # the paragraph the picture shows, at most
+ARTICLE_SHOW_FRAC = 0.40
+ARTICLE_TAIL = 3         # whole lines of the story shown past it
+
+
+def _article_picture(page, c, hbox, box):
+    """The posted crop of an article: OCR-space (x, y, w, h)."""
+    W, H = c["width"], c["height"]
+    med = nameplate.page_median_height(c["words"]) or 1
+    try:
+        _, shown = _article_span(c, page, max_lines=ARTICLE_SHOW_LINES,
+                                 max_frac=ARTICLE_SHOW_FRAC)
+    except npc.Refused:
+        shown = box
+    if shown[1] + shown[3] < box[1] + box[3]:
+        shown = box
+    x0 = min(box[0], hbox[0])
+    wide = (x0, box[1], max(box[0] + box[2], hbox[0] + hbox[2]) - x0, box[3])
+    col = _to_column_edges(page, c, wide)
+    cx0, cx1 = col[0], col[0] + col[2]
+    pend = shown[1] + shown[3]
+    below = [w for w in c["words"] if cx0 <= w[0] + w[2] / 2.0 < cx1 and w[1] >= pend - 0.3 * med]
+    lines = [ln for ln in _lines(_rows(below), med) if ln[0] >= pend - 0.3 * med]
+    y1 = pend
+    if lines:
+        last = lines[min(ARTICLE_TAIL, len(lines)) - 1]
+        y1 = last[1] + 0.5 * med
+        if len(lines) > ARTICLE_TAIL and lines[ARTICLE_TAIL][0] < y1:
+            y1 = (last[1] + lines[ARTICLE_TAIL][0]) / 2.0     # end between two lines
+    mx = int(W * LOOSE_W)
+    x0, x1 = max(0, int(cx0) - mx), min(W, int(cx1) + mx)
+    y0 = max(0, box[1] - int(H * LOOSE_H))
+    y1 = min(H, int(y1))
+    return (x0, y0, x1 - x0, y1 - y0)
+
+
 def clip_article(lccn, date, ed=1, seq=None, log=print):
     """The headline item plus its first paragraph. His ask, 11 September
     2026: "a headline and first graf." See _article_span() above for how
@@ -1813,7 +1866,7 @@ def clip_article(lccn, date, ed=1, seq=None, log=print):
     words = transcribe.transcribe(tight, date[:4], log=log)
     if not words:
         raise npc.Refused("article could not be transcribed")
-    image_box, data = _fetch(page, _loosen(box, c, LOOSE_W, LOOSE_H))
+    image_box, data = _fetch(page, _article_picture(page, c, hbox, box))
     # ⚠️ Four markers for an article, not two: a news paragraph on the British
     # Order in Council "shutting off German trade" carried "trade" and
     # "orders" and was refused as an advertisement at two.
