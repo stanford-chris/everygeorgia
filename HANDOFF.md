@@ -1854,3 +1854,22 @@ exactly that test, before/after diffed. The test module now redirects
 `DECISIONS_FILE`, `REVIEW_FILE` and `STATE_FILE` at import, and a full run
 was confirmed to leave all three real files byte-identical (shasum). Same
 trap as `reference_dry_run_guard_does_not_stop_tests` in auto-memory.
+
+## ✅ The article lane's posted crop loosened, 9 October 2026 (his call)
+
+"The other two crops are too tight", then "loosen the article crops", on two
+held Savannah Morning News front pages: "SEVENTEEN KILL" (27 December 1903, the
+box's width was the headline's OCR words, which missed "ED") and "A VALLEY OF
+DEATH" (3 June 1889, stopped at `ARTICLE_LINES` mid-sentence, half a line
+showing under it). `clips._article_picture()` now makes the POSTED crop: the
+column (`_to_column_edges`) plus `LOOSE_W`, down to the paragraph's own end
+under `ARTICLE_SHOW_LINES`/`ARTICLE_SHOW_FRAC` (20, 0.40), `ARTICLE_TAIL` (3)
+whole lines more, cut between two lines. The transcription is unchanged (the
+`ARTICLE_LINES` paragraph), which keeps it under `transcribe.MAX_CHARS`.
+Rendered on those two and the four posted articles before shipping; all six
+read wider or equal and none cuts a line. ⛔ Rejected: the headline lane's
+two-column spread (half the Cordele Dispatch front page under its banner, 31
+March 1920; no spread at all on two of six). Both held items were re-cut and
+mailed for review again. Tests: three in `HeadlineArticleClosureMargins`; the
+"no margin" mutation is caught, a bottom through a line is NOT (the synthetic
+page has too few lines past the paragraph to reach the tail).
