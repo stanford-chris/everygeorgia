@@ -30,12 +30,12 @@ to the next, and the rotation continues from the lane that last posted.
 | Lane | Source | From | Text in the alt |
 | --- | --- | --- | --- |
 | nameplate | front page, title order | any date | the band under the masthead, model-transcribed |
-| headline | front page of a daily, title order | 1880 | headline and decks, model-transcribed |
-| article | front page of a daily, title order | 1880 | headline and first paragraph, one column; must carry a dateline or wire credit |
+| headline | front page of a daily, title order | 1880 | every headline in the crop, model-transcribed; the crop takes the headline's column and the one beside it (or a banner's span) down to three lines into the story; a headline over a picture is cropped to its printed box and the picture described |
+| article | front page of a daily, title order | 1880 | headline and first paragraph, one column; must carry a dateline or wire credit; the picture runs three lines past the paragraph and ends between lines |
 | ad | search on advertising phrases | 1867 | OCR if legible, else model-transcribed; a boxed ad is cropped to its printed border |
 | market | search on market-report phrases | 1867 | OCR; the whole headed section |
 | classified | search on want-ad phrases | 1867 | OCR; a run of items in one column |
-| cartoon | syndicate credit-line search, then title order (dailies) | 1900 | a model description plus the printed words |
+| cartoon | syndicate credit-line search, then title order (dailies) | 1900 | a model description, checked against the image, plus the printed words |
 
 `HELD_LANES` is where a lane waits before joining the rotation (`--lane <x>`
 runs it by hand). It is currently empty.
@@ -44,7 +44,10 @@ Selection is one issue per **title**, titles in a fixed shuffled order, so every
 paper posts once before any posts twice. Only issues DLG marks "No Copyright -
 United States" are used; there is no year cutoff of our own. Model-written words
 are labelled `A.I.-transcribed` (cartoon descriptions `A.I.-described`) wherever
-they reach a reader. Post text is the paper's name and date, the credit, and
+they reach a reader. A picture description (cartoon lane, or a headline's
+picture box) is checked by a second model call that locates each claim in the
+image; a rejected claim is banned by name for up to two retries, and a
+description that still fails, or cannot be checked, is not posted. Post text is the paper's name and date, the credit, and
 `#Georgia #History` plus a tag for the paper's town (`#FortValley`) when the
 roster knows it.
 
@@ -67,8 +70,10 @@ REVIEW item is never posted by the ordinary path and never blocks the run.
    Decisions go to `data/review_decisions.jsonl`; the latest per item wins.
 4. Approved items post in their lane's turn, alternating with ordinary picks
    and never back to back from one title family. Each is re-cut first: it is
-   dropped if the re-cut is refused (rights, era, geometry) or lands on a
-   different crop, and the alt uses the words the reviewer read. Approval
+   dropped if the re-cut is refused (rights, era, geometry); if it lands on a
+   different crop (the lane's cropping changed since approval), the new crop
+   goes back to review and the old approval is superseded. The alt uses the
+   words the reviewer read. Approval
    lifts the vocabulary hold and nothing else.
 
 ## Running it
