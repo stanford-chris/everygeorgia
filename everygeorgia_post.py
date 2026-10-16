@@ -850,6 +850,48 @@ def approved_pending(state, lane):
             and k not in done and k not in failed]
 
 
+def recut_phrases(lane):
+    """The phrases a search lane's item may have been found by, in the
+    order to try them; None means the lane's phrase-less path."""
+    if lane == "ad":
+        return [None] + list(clips.AD_PHRASES)
+    if lane == "market":
+        return list(clips.MARKET_PHRASES)
+    if lane == "classified":
+        return list(clips.CLASSIFIED_PHRASES)
+    return None
+
+
+def recut(lane, d):
+    """Re-cut approved item `d`. ✅ Since 16 October 2026: a search lane's
+    clip depends on the phrase that found it, and no review line records
+    one, so a bare CLIP() searched for the lane's FIRST phrase only and an
+    approved classified ("Cows strayed or stolen", 1899) failed every run
+    with "phrase 'light housekeeping' not found". Each phrase is tried and
+    the first cut landing on the approved image_box wins; with none on it,
+    the first cut that worked goes on, so choose_approved() sends the
+    changed crop back to review rather than losing the item. Pages are
+    cached, so the extra tries cost no fetch."""
+    args = (lane, d["lccn"], d["date"], d.get("edition", 1), d.get("seq", 1))
+    phrases = recut_phrases(lane)
+    if not phrases:
+        return CLIP(*args)
+    want = list(d.get("image_box") or [])
+    first, err = None, None
+    for ph in phrases:
+        try:
+            r = CLIP(*args, phrase=ph)
+        except npc.Refused as e:
+            err = err or e
+            continue
+        if not want or list(r.get("image_box") or []) == want:
+            return r
+        first = first or r
+    if first is not None:
+        return first
+    raise err or npc.Refused("no phrase found on the page")
+
+
 def choose_approved(state, lane, log=print):
     """An approved item for this lane's turn, or (None, None). Every other
     turn only: none right after an approved post. Skips one from
@@ -872,7 +914,7 @@ def choose_approved(state, lane, log=print):
         tries += 1
         k = _item_key(d["lccn"], d["date"], lane)
         try:
-            r = CLIP(lane, d["lccn"], d["date"], d.get("edition", 1), d.get("seq", 1))
+            r = recut(lane, d)
         except (npc.Refused, ghn_api.FetchError, ValueError) as e:
             log(f"  approved {lane} {d['lccn']} {d['date']}: re-cut failed, {e}")
             continue                       # transient: tried again next run

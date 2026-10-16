@@ -33,6 +33,7 @@ _TMP = tempfile.mkdtemp(prefix="everygeorgia-test-")
 ep.DECISIONS_FILE = os.path.join(_TMP, "review_decisions.jsonl")
 ep.REVIEW_FILE = os.path.join(_TMP, "review.jsonl")
 ep.STATE_FILE = os.path.join(_TMP, "post_state.json")
+import clips
 import nameplate_crop as npc
 import profile as prof
 
@@ -848,6 +849,59 @@ class ApprovedReviewItems(unittest.TestCase):
         s["tried"]["nameplate"] = {}
         lccn, r = ep.pick(s, {"nameplate": {"sn00000009": [("1901-01-01", 1)]}}, "nameplate", log=self.log)
         self.assertEqual(lccn, "sn00000002")
+
+
+class RecutTriesEveryPhrase(unittest.TestCase):
+    """16 October 2026: an approved classified failed every run because the
+    re-cut searched only the lane's first phrase. The re-cut tries each
+    phrase and keeps the one landing on the approved box."""
+
+    def setUp(self):
+        self._saved = ep.CLIP
+        self.tried = []
+
+    def tearDown(self):
+        ep.CLIP = self._saved
+
+    def fake(self, boxes):
+        """boxes: phrase -> image_box, or missing to refuse."""
+        def clip(lane, lccn, date, ed=1, seq=1, phrase=None):
+            self.tried.append(phrase)
+            if phrase not in boxes:
+                raise npc.Refused(f"phrase {phrase!r} not found on the page's OCR")
+            return {"image_box": boxes[phrase], "phrase": phrase}
+        ep.CLIP = clip
+
+    def item(self, box):
+        return {"lccn": "sn1", "date": "1899-01-26", "edition": 1, "seq": 2,
+                "lane": "classified", "image_box": box}
+
+    def test_a_later_phrase_on_the_approved_box_wins(self):
+        later = clips.CLASSIFIED_PHRASES[3]
+        self.fake({clips.CLASSIFIED_PHRASES[1]: [9, 9, 9, 9], later: [1, 2, 3, 4]})
+        self.assertEqual(ep.recut("classified", self.item([1, 2, 3, 4]))["phrase"], later)
+
+    def test_no_phrase_on_the_box_returns_the_first_cut_for_requeue(self):
+        first = clips.CLASSIFIED_PHRASES[1]
+        self.fake({first: [9, 9, 9, 9], clips.CLASSIFIED_PHRASES[2]: [8, 8, 8, 8]})
+        self.assertEqual(ep.recut("classified", self.item([1, 2, 3, 4]))["phrase"], first)
+
+    def test_every_phrase_refused_raises(self):
+        self.fake({})
+        with self.assertRaises(npc.Refused):
+            ep.recut("classified", self.item([1, 2, 3, 4]))
+        self.assertEqual(self.tried, list(clips.CLASSIFIED_PHRASES))
+
+    def test_ad_tries_the_phraseless_path_first(self):
+        self.fake({None: [1, 2, 3, 4]})
+        ep.recut("ad", dict(self.item([1, 2, 3, 4]), lane="ad"))
+        self.assertEqual(self.tried, [None])
+
+    def test_a_lane_without_phrases_is_cut_once_without_one(self):
+        self.fake({None: [1, 2, 3, 4]})
+        ep.recut("nameplate", dict(self.item([5, 5, 5, 5]), lane="nameplate"))
+        self.assertEqual(self.tried, [None])
+
 
 if __name__ == "__main__":
     unittest.main()
