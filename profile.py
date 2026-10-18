@@ -29,10 +29,11 @@ BIO = (
     # added, "before 1931" gone with the cutoff, and NO disclosure line here:
     # 256 characters will not hold both it and the DLG credit, and the alt
     # text carries "A.I.-transcribed" on every image, which is where it is
-    # read. Post 4 says it in words. 239 characters, the peach and the closed-up
-    # space his own touch.
+    # read. Post 4 says it in words. The peach and the closed-up space his
+    # own touch. Classifieds and cartoons joined the list 18 October 2026, so
+    # it names all seven lanes, as the README does.
     "A 🤖 posting clippings from Georgia's old newspapers: Nameplates, headlines, "
-    "articles, ads, market reports.🗞️🍑\n\n"
+    "articles, ads, classifieds, market reports, cartoons.🗞️🍑\n\n"
     # "courtesy of", his call on launch evening (11 September 2026), matching
     # the posts' own credit line.
     "From Georgia Historic Newspapers, courtesy of the Digital Library "
