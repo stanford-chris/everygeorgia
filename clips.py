@@ -1819,6 +1819,8 @@ def _to_column_edges(page, c, box):
 ARTICLE_SHOW_LINES = 20  # the paragraph the picture shows, at most
 ARTICLE_SHOW_FRAC = 0.40
 ARTICLE_TAIL = 3         # whole lines of the story shown past it
+ARTICLE_TAIL_REACH = 4   # ...and up to this many more when they close the story
+ARTICLE_HEAD_TYPE = 2.2  # a line this many text heights tall is the next item's heading
 
 
 def _article_picture(page, c, hbox, box):
@@ -1841,10 +1843,26 @@ def _article_picture(page, c, hbox, box):
     lines = [ln for ln in _lines(_rows(below), med) if ln[0] >= pend - 0.3 * med]
     y1 = pend
     if lines:
-        last = lines[min(ARTICLE_TAIL, len(lines)) - 1]
+        # ⚠️ 22 October 2026, his call ("too tight") on the Atlanta Georgian's
+        # Southern League box score of 1 September 1917: three lines stopped
+        # on the pitchers' line with the umpires and "Only Games today." still
+        # to come. When the next item's heading (display type) is within
+        # ARTICLE_TAIL_REACH lines past the tail, the crop runs on to just
+        # above it, so a short story or a section ends whole. Further off,
+        # the tail is unchanged. ⚠️ Judged on the MEDIAN WORD's height, not
+        # the line's: a line merged across two sub-columns spans more than
+        # one row of body type and read as a heading on the Banner-Herald of
+        # 17 January 1927, running the crop into the story beside it.
+        n = min(ARTICLE_TAIL, len(lines))
+        for k in range(ARTICLE_TAIL, min(len(lines), ARTICLE_TAIL + ARTICLE_TAIL_REACH + 1)):
+            hs = sorted(w[3] for w in lines[k][3])
+            if hs[len(hs) // 2] >= ARTICLE_HEAD_TYPE * med:
+                n = k
+                break
+        last = lines[n - 1]
         y1 = last[1] + 0.5 * med
-        if len(lines) > ARTICLE_TAIL and lines[ARTICLE_TAIL][0] < y1:
-            y1 = (last[1] + lines[ARTICLE_TAIL][0]) / 2.0     # end between two lines
+        if len(lines) > n and lines[n][0] < y1:
+            y1 = (last[1] + lines[n][0]) / 2.0     # end between two lines
     mx = int(W * LOOSE_W)
     x0, x1 = max(0, int(cx0) - mx), min(W, int(cx1) + mx)
     y0 = max(0, box[1] - int(H * LOOSE_H))

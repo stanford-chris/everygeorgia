@@ -1580,6 +1580,61 @@ class HeadlineArticleClosureMargins(unittest.TestCase):
         self.assertNotIn("_loosen(box", src)
 
 
+class ArticleTailRunsToTheNextHeading(unittest.TestCase):
+    """_article_picture, 22 October 2026: the Atlanta Georgian's Southern
+    League box score (1 September 1917) stopped three lines past its first
+    paragraph, mid-section. A heading within ARTICLE_TAIL_REACH lines of
+    the tail now carries the crop down to just above it."""
+
+    BODY = 100
+    COL = (1000, 1000, 2000, 1000)          # the paragraph box and its column
+
+    def _page(self, below):
+        """Body words fill the paragraph; `below` is [(y, height)], one
+        line each, in the column under it."""
+        words = []
+        for i in range(10):                  # the paragraph itself
+            words += [(1000 + 300 * j, 1000 + 100 * i, 250, self.BODY, "word") for j in range(6)]
+        for y, h in below:
+            words += [(1000 + 300 * j, y, 250, h, "word") for j in range(6)]
+        return {"width": 10000, "height": 40000, "words": words}
+
+    def _bottom(self, c):
+        box = self.COL
+        with patch.object(clips, "_article_span", return_value=(box, box)), \
+             patch.object(clips, "_to_column_edges", return_value=box):
+            pic = clips._article_picture(None, c, box, box)
+        return pic[1] + pic[3]
+
+    def _lines(self, n, start=2050, step=150):
+        return [(start + step * i, self.BODY) for i in range(n)]
+
+    def test_a_heading_just_past_the_tail_takes_the_crop_down_to_it(self):
+        body = self._lines(6)                # 3 tail lines, then 3 more
+        head_y = body[-1][0] + 200
+        y1 = self._bottom(self._page(body + [(head_y, 300)]))
+        self.assertGreaterEqual(y1, body[-1][0] + self.BODY)    # every body line shown
+        self.assertLess(y1, head_y)                             # the heading is not
+
+    def test_without_a_heading_the_tail_is_three_lines(self):
+        body = self._lines(12)
+        y1 = self._bottom(self._page(body))
+        self.assertGreaterEqual(y1, body[2][0] + self.BODY)
+        self.assertLessEqual(y1, body[3][0])
+
+    def test_a_heading_beyond_reach_changes_nothing(self):
+        body = self._lines(3 + clips.ARTICLE_TAIL_REACH + 1)
+        y1 = self._bottom(self._page(body + [(body[-1][0] + 200, 300)]))
+        self.assertLessEqual(y1, body[3][0])
+
+    def test_one_tall_word_in_a_body_line_is_not_a_heading(self):
+        # a line merged across two sub-columns (Banner-Herald, 17 January 1927)
+        body = self._lines(8)
+        c = self._page(body)
+        c["words"].append((2800, body[4][0], 150, 300, "GREAT"))
+        self.assertLessEqual(self._bottom(c), body[3][0])
+
+
 class WideHeadingSplit(unittest.TestCase):
     def setUp(self):
         self.page = BannerHeadingPage()

@@ -1873,3 +1873,25 @@ March 1920; no spread at all on two of six). Both held items were re-cut and
 mailed for review again. Tests: three in `HeadlineArticleClosureMargins`; the
 "no margin" mutation is caught, a bottom through a line is NOT (the synthetic
 page has too few lines past the paragraph to reach the tail).
+
+## ✅ The article tail runs on to the next heading, 22 October 2026 (his call)
+
+"Too tight," of no. 5 in the 21 October review mail: the Atlanta Georgian's
+Southern League box score (1 September 1917), whose crop stopped on the
+pitchers' line, three lines (`ARTICLE_TAIL`) past its "first paragraph", with
+the umpires, "Nashville-Chattanooga game off; rain." and "Only Games today."
+still to come before the boxed "National League" heading. `_article_picture()`
+now looks up to `ARTICLE_TAIL_REACH` (4) lines past the tail for a line of
+display type (median word at least `ARTICLE_HEAD_TYPE`, 2.2 text heights) and,
+if it finds one, ends the crop just above it, so a short story or a section
+ends whole. Further off, the tail is unchanged; the crop never gets tighter.
+⚠️ **The median WORD, not the line's height**: the first version measured the
+merged line and ran the Banner-Herald's Catalina swim story (17 January 1927)
+into "GREAT THRONG PAYS FINAL TRIBUTE" beside it, because a line merged across
+two sub-columns spans two rows of body type. Re-cut on all fourteen article
+crops on record (the five in that review plus every posted one): three
+changed, all deeper, none tighter, and only no. 5 is unposted. The other is
+the Cordele Dispatch’s McAdoo story (31 March 1920), which now ends at
+"democratic institutions." above "UPSHAW INVITES WILSON TO ATTEND". The
+Catalina crop is unchanged under the word test. `ArticleTailRunsToTheNextHeading` in
+`test_clips.py` (4); three mutations, all caught.
