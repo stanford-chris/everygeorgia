@@ -2168,6 +2168,47 @@ class HeadlineItemBoundaries(unittest.TestCase):
                          [["FRENCH", "DESTROY"], ["MEMORIAL", "DAY"]])
 
 
+class DropInitialReadingOrder(unittest.TestCase):
+    """reading_order() must not let a drop initial's tall box swallow the
+    lines set beside it. Word boxes are the real OCR of the Savannah Morning
+    News, 9 February 1890, page 8, whose alt (posted 18 October 2026) read
+    "BECAUSE contract our is installment the fairest sale"."""
+
+    WORDS = [
+        (18628, 7597, 690, 406, 'BECAUSE'), (19573, 7616, 614, 109, 'installment'),
+        (19346, 7635, 194, 66, 'our'), (20216, 7654, 194, 80, 'sale'),
+        (19540, 7724, 80, 85, 'is'), (18917, 7729, 468, 76, 'contract'),
+        (19748, 7729, 180, 85, 'the'), (20069, 7743, 340, 104, 'fairest'),
+        (18917, 7814, 397, 104, 'known'), (19361, 7828, 260, 109, 'fully'),
+        (19654, 7847, 567, 113, 'protecting'), (20249, 7861, 161, 90, 'the'),
+        (18917, 7928, 553, 94, 'purchaser'), (19512, 7942, 104, 80, 'in'),
+        (19923, 7951, 123, 85, 'he'), (19649, 7961, 231, 66, 'case'),
+        (20102, 7961, 85, 85, 'is'), (20249, 7989, 128, 66, 'un-'),
+        (18609, 8031, 222, 76, 'fortunate'), (19191, 8041, 194, 85, 'and'),
+        (19427, 8065, 373, 71, 'cannot'), (19843, 8079, 227, 85, 'pay'),
+        (18628, 8343, 369, 406, 'BUY'), (19342, 8353, 369, 99, 'Pianos'),
+        (19035, 8367, 260, 80, 'your'), (19767, 8372, 208, 85, 'and'),
+        (20036, 8376, 378, 109, 'Organs'), (18912, 8452, 279, 85, 'from'),
+        (19422, 8471, 208, 85, 'and'), (19233, 8485, 142, 76, 'us'),
+        (19975, 8490, 194, 85, 'will'), (19691, 8494, 213, 85, 'you'),
+        (20244, 8518, 170, 71, 'not'), (18912, 8580, 345, 85, 'regret'),
+    ]
+
+    def test_lines_beside_a_drop_initial_read_in_order(self):
+        self.assertEqual(
+            clips.ocr_text(self.WORDS),
+            "BECAUSE our installment sale contract is the fairest known fully "
+            "protecting the purchaser in case he is un- fortunate and cannot pay "
+            "BUY your Pianos and Organs from us and you will not regret")
+
+    def test_a_row_of_display_type_is_matched_as_before(self):
+        # no word is a drop initial here (none is 2.5x the median), so the
+        # tall first word's height still sets the tolerance, as it always did
+        words = [(0, 0, 300, 120, "JUST"), (400, 40, 500, 90, "RECEIVED"),
+                 (0, 200, 100, 60, "A"), (120, 205, 200, 60, "LARGE")]
+        self.assertEqual(clips.ocr_text(words), "JUST RECEIVED A LARGE")
+
+
 # ⚠️ Keep this LAST: classes defined below it never run when the file is run
 # directly (25 September 2026: four classes appended after it went unrun).
 if __name__ == "__main__":

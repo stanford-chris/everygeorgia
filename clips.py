@@ -295,9 +295,49 @@ def legibility(words):
     return sum(1 for t in toks if wordlike(t)) / float(len(toks)), len(toks)
 
 
+READING_ROW_TOL = 0.5    # reading_order(): a word joins a row when its top is
+                         # within this of the larger of its height and the
+                         # row's reference word's...
+READING_DROP_INITIAL = 2.5  # ...except that a word more than this many median
+                         # heights tall is a drop initial when ordinary words
+                         # follow it BESIDE it (to its right, within its
+                         # height), and is not their reference: the first
+                         # ordinary word in the row is, and until there is
+                         # one, the ordinary word's own height sets the
+                         # tolerance. The Savannah Morning News of 9 February
+                         # 1890, page 8, set "BECAUSE" with a three-line B
+                         # (406 px against a 151-px median); its height
+                         # widened the tolerance to 203 px, took in the two
+                         # lines beside it and read them interleaved,
+                         # "BECAUSE contract our is installment the fairest
+                         # sale", in an alt posted 18 October 2026. A row of
+                         # display type is matched exactly as before.
+
+
 def reading_order(words):
     """Words in reading order: rows by top, then left to right."""
-    rows = nameplate.rows_of(sorted(words, key=lambda w: (w[1], w[0])), row_tol=0.5)
+    words = sorted(words, key=lambda w: (w[1], w[0]))
+    if not words:
+        return []
+    heights = sorted(w[3] for w in words)
+    tall = READING_DROP_INITIAL * heights[len(heights) // 2]
+    rows = []
+    for w in words:
+        if rows:
+            row = rows[-1]
+            ref = row[0]
+            if ref[3] > tall and w[3] <= tall and w[0] >= ref[0] + 0.25 * ref[2] \
+                    and w[1] < ref[1] + ref[3]:
+                ordinary = [x for x in row if x[3] <= tall]
+                ref = ordinary[0] if ordinary else None
+                h = max(ref[3], w[3]) if ref else w[3]
+                ref = ref or row[0]
+            else:
+                h = max(ref[3], w[3])
+            if abs(w[1] - ref[1]) <= READING_ROW_TOL * h:
+                row.append(w)
+                continue
+        rows.append([w])
     out = []
     for r in rows:
         out.extend(sorted(r, key=lambda w: w[0]))
