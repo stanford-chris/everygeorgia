@@ -63,6 +63,7 @@ Usage:
     python3 everygeorgia_post.py --status
     python3 everygeorgia_post.py --approve LCCN:DATE   # a held review item may post
     python3 everygeorgia_post.py --reject LCCN:DATE    # recorded, never posts
+    python3 everygeorgia_post.py --decide-mail "1, 2 & 3"  # latest mail: skip these, approve the rest
 """
 import argparse
 import collections
@@ -738,6 +739,7 @@ def review_mail(offset, send=None):
             print(f"  (review mail not sent: {(r.stderr or '').strip()})")
             return 0
         print(f"Review mail sent: {n} item(s), {len(images)} crop(s).")
+        save_last_mail(items, roster)
         return n
     except Exception as e:                          # noqa: BLE001 - best-effort
         print(f"  (review mail not sent: {e})")
@@ -760,6 +762,83 @@ def review_mail(offset, send=None):
 # the words he read in the mail (the band is a model transcription and can
 # come back differently). A REFUSE on the re-cut (rights, era, geometry) is
 # never overridden: approval covers the vocabulary hold and nothing else.
+
+# ✅ "gip", 30 October 2026, his ask ("something like gip 1, 2 & 3, meaning
+# skip clippings 1-3"): the numbers are the latest review mail's. Every sent
+# mail records its numbered items here, beside the queue in use (so a test's
+# temp queue gets its own), and --decide-mail rejects the numbers named and
+# approves the rest of THAT mail, the way he answered the first two mails
+# ("All but no. 4 ... Reject no. 4", "skip 1 and 2"). Only a SENT mail is
+# recorded: numbers from a mail he never got must never be decidable.
+
+def last_mail_path():
+    return os.path.join(os.path.dirname(REVIEW_FILE), "review_mail_last.json")
+
+
+def save_last_mail(items, roster=None):
+    roster = roster or {}
+    rec = {"sent_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+           "items": [{"n": i, "lccn": it["lccn"], "date": it["date"],
+                      "lane": it.get("lane") or "nameplate",
+                      "title": (roster.get(it["lccn"]) or {}).get("title") or it["lccn"]}
+                     for i, it in enumerate(items, 1)]}
+    try:
+        tmp = last_mail_path() + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(rec, f, ensure_ascii=False, indent=1)
+        os.replace(tmp, last_mail_path())
+    except OSError as e:
+        print(f"  (review mail numbers not saved: {e})")
+
+
+def parse_skips(spec, count):
+    """'1, 2 & 3', '1-3', '2 and 4', '4' -> the set of numbers to reject;
+    'none' -> nothing rejected. Refuses anything else, and any number the
+    mail did not carry, rather than guess at what was meant."""
+    s = spec.strip().lower().replace("\u2013", "-")
+    if s in ("none", "0"):
+        return set()
+    toks = re.sub(r"\s*-\s*", "-", re.sub(r"\band\b|[,&]", " ", s)).split()
+    if not toks:
+        raise ValueError("no clipping numbers given (use 'none' to approve them all)")
+    out = set()
+    for t in toks:
+        m = re.fullmatch(r"(\d+)(?:-(\d+))?", t)
+        if not m:
+            raise ValueError(f"{spec!r}: can't read {t!r}")
+        a, b = int(m.group(1)), int(m.group(2) or m.group(1))
+        if a > b:
+            raise ValueError(f"{spec!r}: {t!r} runs backwards")
+        out.update(range(a, b + 1))
+    bad = sorted(n for n in out if not 1 <= n <= count)
+    if bad:
+        raise ValueError(f"the latest review mail has {count} clipping(s); no {bad}")
+    return out
+
+
+def decide_mail(spec, log=print):
+    """Reject the numbers in `spec` from the latest sent review mail and
+    approve the rest. Nothing is recorded unless every number reads."""
+    try:
+        with open(last_mail_path()) as f:
+            rec = json.load(f)
+    except (OSError, ValueError) as e:
+        log(f"  no review mail on record ({e}); nothing recorded")
+        return None
+    items = rec.get("items") or []
+    try:
+        skips = parse_skips(spec, len(items))
+    except ValueError as e:
+        log(f"  {e}; nothing recorded")
+        return None
+    log(f"Review mail of {rec.get('sent_at')}: {len(items)} clipping(s)")
+    done = []
+    for it in items:
+        decision = "reject" if it["n"] in skips else "approve"
+        log(f"{it['n']}. {it['title']}, {it['date']} ({it['lane']})")
+        done.append(decide(_item_key(it["lccn"], it["date"], it["lane"]), decision, log=log))
+    return done
+
 
 def _item_key(lccn, date, lane):
     return f"{lccn}:{date}:{lane or 'nameplate'}"
@@ -1227,8 +1306,13 @@ def main():
                     help="let a held review item post in its lane's next turns")
     ap.add_argument("--reject", metavar="LCCN:DATE[:LANE]", action="append", default=[],
                     help="record that a held review item is never to post")
+    ap.add_argument("--decide-mail", metavar="NUMBERS",
+                    help="the latest review mail: reject these ('1, 2 & 3', '1-3'; "
+                         "'none' for no rejections) and approve the rest")
     args = ap.parse_args()
 
+    if args.decide_mail is not None:
+        sys.exit(0 if decide_mail(args.decide_mail) is not None else 1)
     if args.approve or args.reject:
         for spec in args.approve:
             decide(spec, "approve")

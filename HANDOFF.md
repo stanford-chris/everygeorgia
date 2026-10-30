@@ -1895,3 +1895,17 @@ the Cordele Dispatch’s McAdoo story (31 March 1920), which now ends at
 "democratic institutions." above "UPSHAW INVITES WILSON TO ATTEND". The
 Catalina crop is unchanged under the word test. `ArticleTailRunsToTheNextHeading` in
 `test_clips.py` (4); three mutations, all caught.
+
+## ✅ "gip": deciding a review mail by its numbers, 30 October 2026 (his ask)
+
+"Is there a shorthand command ... something like gip 1, 2 & 3, meaning skip
+clippings 1-3." `--decide-mail "1, 2 & 3"` REJECTS the numbers named from the
+latest review mail and APPROVES the rest of it, which is how he answered both
+mails so far. `review_mail()` records each SENT mail's numbered items in
+`data/review_mail_last.json` (gitignored, beside the queue in use, so tests
+write their own); a failed send leaves the previous mail's numbers standing.
+`parse_skips()` reads "1, 2 & 3", "1-3", "1 and 2", "none", and refuses
+anything else or any number the mail did not carry, recording nothing. The
+`gip` skill in `~/.claude/skills/gip/` runs it from chat. The 29 October mail's
+numbers were seeded by hand from `review.jsonl`. `DecideMail` in
+`test_everygeorgia_post.py` (7); five mutations caught on a scratch copy.

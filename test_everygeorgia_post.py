@@ -707,6 +707,78 @@ class ReviewMail(unittest.TestCase):
         self.assertIn("if not args.dry_run:\n            review_mail(review_from)", src)
 
 
+class DecideMail(unittest.TestCase):
+    """30 October 2026, his ask: "gip 1, 2 & 3" skips those clippings from the
+    latest review mail and approves the rest. Nothing is mailed: the mailer is
+    stubbed, and every file sits in a temp dir."""
+
+    def setUp(self):
+        from PIL import Image
+        self.tmp = tempfile.TemporaryDirectory()
+        self._saved = (ep.REVIEW_FILE, ep.DECISIONS_FILE, ep._DRY_RUN)
+        ep.REVIEW_FILE = os.path.join(self.tmp.name, "review.jsonl")
+        ep.DECISIONS_FILE = os.path.join(self.tmp.name, "review_decisions.jsonl")
+        buf = io.BytesIO()
+        Image.new("RGB", (40, 30), "white").save(buf, "JPEG")
+        ep._DRY_RUN = False
+        verdict = type("V", (), {"reasons": ["held"]})()
+        start = ep.review_size()
+        for d in ("1904-08-26", "1912-09-28", "1904-09-09", "1904-11-11"):
+            ep.log_review({"lccn": "sn91099153", "date": d, "edition": 1, "seq": 1,
+                           "url": "https://example.org/x/seq-1/", "caption": "",
+                           "lane": "nameplate", "image_box": [1, 2, 3, 4], "words": d,
+                           "page_hits": {}, "verdict": verdict,
+                           "bytes": buf.getvalue()}, {"pass": 1})
+        ok = lambda cmd, **kw: type("R", (), {"returncode": 0, "stderr": ""})()
+        with patch.object(ep.npc, "roster", return_value={}):
+            self.assertEqual(ep.review_mail(start, send=ok), 4)
+
+    def tearDown(self):
+        ep.REVIEW_FILE, ep.DECISIONS_FILE, ep._DRY_RUN = self._saved
+        self.tmp.cleanup()
+
+    def decisions(self):
+        with open(ep.DECISIONS_FILE) as f:
+            return [(d["date"], d["decision"]) for d in map(json.loads, f)]
+
+    def test_the_named_numbers_are_rejected_and_the_rest_approved(self):
+        ep.decide_mail("1, 2 & 3", log=lambda *a: None)
+        self.assertEqual(self.decisions(), [("1904-08-26", "reject"), ("1912-09-28", "reject"),
+                                            ("1904-09-09", "reject"), ("1904-11-11", "approve")])
+
+    def test_ranges_and_words_read_the_same(self):
+        for spec in ("1-3", "1 – 3", "1, 2 and 3", "3,2,1"):
+            self.assertEqual(ep.parse_skips(spec, 4), {1, 2, 3}, spec)
+
+    def test_none_approves_them_all(self):
+        ep.decide_mail("none", log=lambda *a: None)
+        self.assertEqual({d for _, d in self.decisions()}, {"approve"})
+
+    def test_a_number_the_mail_did_not_carry_records_nothing(self):
+        self.assertIsNone(ep.decide_mail("2, 5", log=lambda *a: None))
+        self.assertFalse(os.path.exists(ep.DECISIONS_FILE))
+
+    def test_an_unreadable_spec_records_nothing(self):
+        for spec in ("", "1 2 x", "3-1", "all"):
+            self.assertIsNone(ep.decide_mail(spec, log=lambda *a: None), spec)
+        self.assertFalse(os.path.exists(ep.DECISIONS_FILE))
+
+    def test_a_failed_send_leaves_the_previous_mail_s_numbers(self):
+        before = open(ep.last_mail_path()).read()
+        start = ep.review_size()
+        ep.log_review({"lccn": "sn1", "date": "1900-01-01", "edition": 1, "seq": 1,
+                       "url": "u", "caption": "", "lane": "ad", "image_box": None,
+                       "words": "", "page_hits": {},
+                       "verdict": type("V", (), {"reasons": []})()}, {"pass": 1})
+        bad = lambda cmd, **kw: type("R", (), {"returncode": 1, "stderr": "down"})()
+        with patch.object(ep.npc, "roster", return_value={}):
+            self.assertEqual(ep.review_mail(start, send=bad), 0)
+        self.assertEqual(open(ep.last_mail_path()).read(), before)
+
+    def test_the_numbers_live_beside_the_queue_in_use(self):
+        self.assertEqual(os.path.dirname(ep.last_mail_path()), self.tmp.name)
+
+
 # ⚠️ Keep this LAST: a class defined below it never runs when the file is
 # run directly (25 September 2026, the same trap test_clips.py had).
 

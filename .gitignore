@@ -11,3 +11,4 @@ data/review.jsonl
 __pycache__/
 data/review/
 data/review_decisions.jsonl
+data/review_mail_last.json

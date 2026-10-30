@@ -67,6 +67,12 @@ REVIEW item is never posted by the ordinary path and never blocks the run.
    python3 everygeorgia_post.py --approve LCCN:DATE[:LANE]
    python3 everygeorgia_post.py --reject LCCN:DATE[:LANE]
    ```
+   Or by the latest mail's numbers, skipping (rejecting) those named and
+   approving the rest:
+   ```bash
+   python3 everygeorgia_post.py --decide-mail "1, 2 & 3"   # or "1-3"; "none" approves all
+   ```
+   Each sent mail's numbered items are kept in `data/review_mail_last.json`.
    Decisions go to `data/review_decisions.jsonl`; the latest per item wins.
 4. Approved items post in their lane's turn, alternating with ordinary picks
    and never back to back from one title family. Each is re-cut first: it is
